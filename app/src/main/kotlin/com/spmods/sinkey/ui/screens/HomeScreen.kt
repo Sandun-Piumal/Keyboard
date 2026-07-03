@@ -8,6 +8,12 @@ import android.os.Looper
 import android.provider.Settings
 import android.view.inputmethod.InputMethodManager
 import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInVertically
@@ -40,8 +46,10 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.text.font.FontWeight
@@ -107,6 +115,31 @@ fun HomeScreen() {
         }
     }
 
+    // 🌟 animations
+    val infiniteTransition = rememberInfiniteTransition(label = "star")
+
+    // rotate 360 continuously
+    val rotation by infiniteTransition.animateFloat(
+        initialValue = 0f,
+        targetValue = 360f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(3000, easing = FastOutSlowInEasing),
+            repeatMode = RepeatMode.Restart
+        ),
+        label = "rotate"
+    )
+
+    // pulse scale up/down
+    val scale by infiniteTransition.animateFloat(
+        initialValue = 0.85f,
+        targetValue = 1.15f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(900, easing = FastOutSlowInEasing),
+            repeatMode = RepeatMode.Reverse
+        ),
+        label = "pulse"
+    )
+
     Column(modifier = Modifier.fillMaxWidth().padding(bottom = 24.dp)) {
         Column(modifier = Modifier.padding(22.dp, 18.dp, 22.dp, 4.dp)) {
             Text(
@@ -171,6 +204,8 @@ fun HomeScreen() {
                 Box(
                     modifier = Modifier
                         .size(56.dp)
+                        .scale(scale)
+                        .graphicsLayer { rotationZ = rotation }
                         .background(
                             brush = Brush.radialGradient(
                                 colors = listOf(Color(0xFFE8D5C4), Color(0xFFD4B896))
@@ -182,9 +217,7 @@ fun HomeScreen() {
                 ) {
                     Text(
                         "🌟",
-                        fontSize = 13.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = Color(0xFF1A2744)
+                        fontSize = 22.sp
                     )
                 }
             }
