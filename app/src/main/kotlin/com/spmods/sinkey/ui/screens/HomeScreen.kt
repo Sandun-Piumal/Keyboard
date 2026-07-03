@@ -7,9 +7,16 @@ import android.os.Handler
 import android.os.Looper
 import android.provider.Settings
 import android.view.inputmethod.InputMethodManager
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
+import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
@@ -19,6 +26,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -34,6 +42,7 @@ import androidx.compose.ui.unit.sp
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import com.spmods.sinkey.ui.theme.AccentGradient
+import kotlinx.coroutines.delay
 
 private fun isImeEnabled(context: Context): Boolean {
     val imm = context.getSystemService(InputMethodManager::class.java)
@@ -87,17 +96,19 @@ fun HomeScreen() {
         }
     }
 
+    var showSinhala by remember { mutableStateOf(true) }
+
+    LaunchedEffect(Unit) {
+        while (true) {
+            delay(2800)
+            showSinhala = !showSinhala
+        }
+    }
+
     Column(modifier = Modifier.fillMaxWidth().padding(bottom = 24.dp)) {
         Column(modifier = Modifier.padding(22.dp, 18.dp, 22.dp, 4.dp)) {
             Text(
-                "WELCOME",
-                fontSize = 11.sp,
-                fontWeight = FontWeight.Bold,
-                letterSpacing = 1.5.sp,
-                color = MaterialTheme.colorScheme.secondary
-            )
-            Text(
-                "SinKey යතුරුපුවරුව",
+                "SinKey Board",
                 fontSize = 22.sp,
                 fontWeight = FontWeight.ExtraBold,
                 color = MaterialTheme.colorScheme.onBackground
@@ -118,7 +129,21 @@ fun HomeScreen() {
                 .background(AccentGradient)
                 .padding(20.dp)
         ) {
-            Text("ආයුබෝවන්", fontSize = 26.sp, fontWeight = FontWeight.Bold, color = Color.White)
+            AnimatedContent(
+                targetState = showSinhala,
+                transitionSpec = {
+                    (fadeIn() + slideInVertically { it / 2 })
+                        .togetherWith(fadeOut() + slideOutVertically { -it / 2 })
+                },
+                label = "greeting"
+            ) { isSinhala ->
+                Text(
+                    text = if (isSinhala) "ආයුබෝවන්" else "Welcome",
+                    fontSize = 26.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = Color.White
+                )
+            }
             Text(
                 "Type naturally in Sinhala or English — switch anytime.",
                 fontSize = 13.sp,
