@@ -15,13 +15,21 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
 import com.spmods.sinkey.ui.theme.AccentGradient
 
 private fun isImeEnabled(context: Context): Boolean {
@@ -37,8 +45,25 @@ private fun isImeDefault(context: Context): Boolean {
 @Composable
 fun HomeScreen() {
     val context = LocalContext.current
-    val enabled = isImeEnabled(context)
-    val isDefault = isImeDefault(context)
+    val lifecycleOwner = LocalLifecycleOwner.current
+
+    // isImeEnabled/isImeDefault only reflect system state at the moment they're
+    // called. Without this, the setup steps stay stale after the user flips the
+    // keyboard on in system Settings and returns — they'd need to kill and
+    // reopen the app to see it update. Re-checking on ON_RESUME fixes that.
+    var enabled by remember { mutableStateOf(isImeEnabled(context)) }
+    var isDefault by remember { mutableStateOf(isImeDefault(context)) }
+
+    DisposableEffect(lifecycleOwner) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_RESUME) {
+                enabled = isImeEnabled(context)
+                isDefault = isImeDefault(context)
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+    }
 
     Column(modifier = Modifier.fillMaxWidth().padding(bottom = 24.dp)) {
         Column(modifier = Modifier.padding(22.dp, 18.dp, 22.dp, 4.dp)) {
