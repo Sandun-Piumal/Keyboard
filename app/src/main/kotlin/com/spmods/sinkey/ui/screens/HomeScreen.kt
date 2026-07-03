@@ -14,14 +14,20 @@ import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Button
+import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -41,6 +47,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
+import androidx.compose.ui.graphics.Brush
 import com.spmods.sinkey.ui.theme.AccentGradient
 import kotlinx.coroutines.delay
 
@@ -121,38 +128,74 @@ fun HomeScreen() {
             )
         }
 
-        Column(
+        val cardGradient = Brush.linearGradient(
+            colors = listOf(Color(0xFF1A2744), Color(0xFF2C3E6B), Color(0xFF3D2060)),
+            start = androidx.compose.ui.geometry.Offset(0f, 0f),
+            end = androidx.compose.ui.geometry.Offset(Float.POSITIVE_INFINITY, 0f)
+        )
+
+        Card(
             modifier = Modifier
                 .padding(22.dp, 14.dp, 22.dp, 0.dp)
-                .fillMaxWidth()
-                .clip(RoundedCornerShape(20.dp))
-                .background(AccentGradient)
-                .padding(20.dp)
+                .fillMaxWidth(),
+            shape = RoundedCornerShape(20.dp),
+            elevation = CardDefaults.cardElevation(defaultElevation = 6.dp),
+            colors = CardDefaults.cardColors(containerColor = Color(0xFF1A2744))
         ) {
-            AnimatedContent(
-                targetState = showSinhala,
-                transitionSpec = {
-                    (fadeIn() + slideInVertically { it / 2 })
-                        .togetherWith(fadeOut() + slideOutVertically { -it / 2 })
-                },
-                label = "greeting"
-            ) { isSinhala ->
-                Text(
-                    text = if (isSinhala) "ආයුබෝවන්" else "Welcome",
-                    fontSize = 26.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = Color.White
-                )
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .background(cardGradient)
+                    .padding(20.dp),
+                verticalAlignment = androidx.compose.ui.Alignment.CenterVertically
+            ) {
+                Column(modifier = Modifier.weight(1f)) {
+                    AnimatedContent(
+                        targetState = showSinhala,
+                        transitionSpec = {
+                            (fadeIn() + slideInVertically { it / 2 })
+                                .togetherWith(fadeOut() + slideOutVertically { -it / 2 })
+                        },
+                        label = "greeting"
+                    ) { isSinhala ->
+                        Text(
+                            text = if (isSinhala) "ආයුබෝවන්" else "Welcome",
+                            fontSize = 26.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = Color.White
+                        )
+                    }
+                    Text(
+                        "Type naturally in Sinhala or English — switch anytime.",
+                        fontSize = 13.sp,
+                        color = Color.White.copy(alpha = 0.85f),
+                        modifier = Modifier.padding(top = 4.dp)
+                    )
+                }
+
+                Box(
+                    modifier = Modifier
+                        .size(56.dp)
+                        .background(
+                            brush = Brush.radialGradient(
+                                colors = listOf(Color(0xFFE8D5C4), Color(0xFFD4B896))
+                            ),
+                            shape = CircleShape
+                        )
+                        .border(2.dp, Color.White.copy(alpha = 0.3f), CircleShape),
+                    contentAlignment = androidx.compose.ui.Alignment.Center
+                ) {
+                    Text(
+                        "SiK",
+                        fontSize = 13.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = Color(0xFF1A2744)
+                    )
+                }
             }
-            Text(
-                "Type naturally in Sinhala or English — switch anytime.",
-                fontSize = 13.sp,
-                color = Color.White.copy(alpha = 0.85f),
-                modifier = Modifier.padding(top = 4.dp)
-            )
         }
 
-        Column(modifier = Modifier.padding(22.dp, 22.dp, 22.dp, 0.dp)) {
+        Column(modifier = Modifier.padding(22.dp, 28.dp, 22.dp, 0.dp)) {
             SetupStep(
                 number = "1",
                 title = "Enable SinKey",
