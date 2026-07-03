@@ -180,7 +180,7 @@ fun HomeScreen() {
                         .border(2.dp, Color.White.copy(alpha = 0.3f), CircleShape),
                     contentAlignment = Alignment.Center
                 ) {
-                    Text("🌟", fontSize = 22.sp)
+                    Text("Sink", fontSize = 22.sp)
                 }
             }
         }
