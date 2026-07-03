@@ -1,8 +1,10 @@
 package com.spmods.sinkey
 
+import android.app.Activity
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Home
@@ -16,6 +18,7 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -23,6 +26,9 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.toArgb
+import androidx.compose.ui.platform.LocalView
+import androidx.core.view.WindowCompat
 import com.spmods.sinkey.data.PreferencesManager
 import com.spmods.sinkey.data.ThemeMode
 import com.spmods.sinkey.ui.screens.HomeScreen
@@ -40,7 +46,25 @@ class MainActivity : ComponentActivity() {
 
         setContent {
             val themeMode by prefs.themeMode.collectAsState(initial = ThemeMode.SYSTEM)
+            val isDark = when (themeMode) {
+                ThemeMode.LIGHT -> false
+                ThemeMode.DARK -> true
+                ThemeMode.SYSTEM -> isSystemInDarkTheme()
+            }
+
             SinKeyTheme(themeMode = themeMode) {
+                // The status bar otherwise stays the launcher's default grey since
+                // nothing tells it to follow our Material color scheme. Push the
+                // background color + matching icon tint into the window each time
+                // the theme changes.
+                val statusBarColor = MaterialTheme.colorScheme.background.toArgb()
+                val view = LocalView.current
+                SideEffect {
+                    val window = (view.context as Activity).window
+                    window.statusBarColor = statusBarColor
+                    WindowCompat.getInsetsController(window, view).isAppearanceLightStatusBars = !isDark
+                }
+
                 Surface(color = MaterialTheme.colorScheme.background) {
                     SinKeyApp(prefs)
                 }
