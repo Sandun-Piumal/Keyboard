@@ -60,6 +60,17 @@ class SinKeyInputMethodService : InputMethodService() {
                 }
             }
         }
+
+        // InputMethodService's window is a Dialog; Compose's WindowRecomposer looks
+        // up the ViewTreeLifecycleOwner starting from the *window's decor view*
+        // (e.g. the internal "parentPanel" layout), not from composeView itself.
+        // Without this, attaching crashes with "ViewTreeLifecycleOwner not found".
+        window?.window?.decorView?.apply {
+            setViewTreeLifecycleOwner(lifecycleOwner)
+            setViewTreeSavedStateRegistryOwner(lifecycleOwner)
+            setViewTreeViewModelStoreOwner(lifecycleOwner)
+        }
+
         return composeView
     }
 
