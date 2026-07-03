@@ -101,11 +101,11 @@ fun KeyboardView(
                 horizontalArrangement = Arrangement.spacedBy(5.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                SpecialKey(label = "?123", weight = 1.5f) { /* TODO: number layout */ }
-                SpecialKey(label = "☺", weight = 1.2f) { /* TODO: emoji */ }
+                SpecialKey(label = "?123", weight = 2.0f) { /* TODO: number layout */ }
+                EmojiKey(weight = 1.5f, onTap = { onKey(",") }, onLongPress = { onKey("EMOJI") })
 
                 // Language toggle — with tooltip anchor
-                Box(modifier = Modifier.weight(1.4f)) {
+                Box(modifier = Modifier.weight(1.5f)) {
                     LangToggleKey(
                         currentLanguage = currentLanguage,
                         onTap = {
@@ -115,9 +115,9 @@ fun KeyboardView(
                     )
                 }
 
-                SpaceKey(weight = 4f) { onKey("SPACE") }
-                SpecialKey(label = ".", weight = 0.9f) { onKey(".") }
-                EnterKey(weight = 1.5f) { onKey("ENTER") }
+                SpaceKey(weight = 4.5f) { onKey("SPACE") }
+                SpecialKey(label = ".", weight = 0.8f) { onKey(".") }
+                EnterKey(weight = 2.0f) { onKey("ENTER") }
             }
         }
 
@@ -314,7 +314,7 @@ private fun RowScope.BackspaceKey(weight: Float, onTap: () -> Unit) {
                             delay(longPressDelay)
                             didLongPress = true
                             // Keep firing while finger held down
-                            while (true) {
+                            while (isActive) {
                                 onTap()
                                 delay(repeatInterval)
                             }
@@ -385,6 +385,29 @@ private fun LangToggleKey(currentLanguage: String, onTap: () -> Unit) {
     }
 }
 
+
+@OptIn(ExperimentalFoundationApi::class)
+@Composable
+private fun RowScope.EmojiKey(weight: Float, onTap: () -> Unit, onLongPress: () -> Unit) {
+    Box(
+        modifier = Modifier
+            .height(46.dp)
+            .weight(weight)
+            .clip(RoundedCornerShape(6.dp))
+            .background(Color(0xFFBCC4CC))
+            .combinedClickable(
+                onClick = { onTap() },
+                onLongClick = { onLongPress() }
+            ),
+        contentAlignment = Alignment.Center
+    ) {
+        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+            Text(text = "☺", fontSize = 13.sp, color = Color(0xFF333333), fontWeight = FontWeight.Medium)
+            Text(text = ",", fontSize = 10.sp, color = Color(0xFF333333), fontWeight = FontWeight.Medium)
+        }
+    }
+}
+
 @Composable
 private fun RowScope.SpaceKey(weight: Float, onTap: () -> Unit) {
     Box(
@@ -399,7 +422,8 @@ private fun RowScope.SpaceKey(weight: Float, onTap: () -> Unit) {
         Text(
             text = "SinKey",
             fontSize = 12.sp,
-            color = Color(0xFF888888)
+            color = Color(0xFF888888),
+            textAlign = androidx.compose.ui.text.style.TextAlign.Center
         )
     }
 }
