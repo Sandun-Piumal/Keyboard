@@ -306,7 +306,6 @@ private fun RowScope.BackspaceKey(weight: Float, onTap: () -> Unit) {
                 detectTapGestures(
                     onTap = { onTap() },
                     onPress = { _ ->
-                        // Wait for long-press threshold, then start repeating
                         val longPressDelay = 400L
                         val repeatInterval = 50L
                         var didLongPress = false
@@ -314,7 +313,7 @@ private fun RowScope.BackspaceKey(weight: Float, onTap: () -> Unit) {
                             delay(longPressDelay)
                             didLongPress = true
                             // Keep firing while finger held down
-                            while (isActive) {
+                            while (true) {  // <-- isActive වෙනුවට while(true)
                                 onTap()
                                 delay(repeatInterval)
                             }
