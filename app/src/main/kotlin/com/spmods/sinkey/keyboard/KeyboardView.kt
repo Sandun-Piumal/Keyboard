@@ -1,5 +1,10 @@
 package com.spmods.sinkey.keyboard
 
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -9,11 +14,14 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.wrapContentSize
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -21,62 +29,163 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.spmods.sinkey.ui.theme.AccentGradient
+import androidx.compose.ui.zIndex
+import kotlinx.coroutines.delay
 
-/**
- * The actual on-screen keyboard, rendered by [com.spmods.sinkey.ime.SinKeyInputMethodService].
- *
- * Key taps are reported through [onKey] with either a literal character,
- * or one of the control tokens: "BACKSPACE", "SPACE", "ENTER", "SHIFT",
- * "LANG_TOGGLE".
- */
+// Number labels for top row keys (QWERTYUIOP → 1–9, 0)
+private val topRowNumbers = listOf("1","2","3","4","5","6","7","8","9","0")
+
+// Dark green color matching Desh Keyboard style
+private val DeshGreen = Color(0xFF2D6A4F)
+
 @Composable
 fun KeyboardView(
     currentLanguage: String, // "en" or "si"
     onKey: (String) -> Unit
 ) {
     var shift by remember { mutableStateOf(false) }
+    var showLangTooltip by remember { mutableStateOf(false) }
 
-    Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .background(MaterialTheme.colorScheme.surface)
-            .padding(horizontal = 6.dp, vertical = 8.dp)
-    ) {
-        KeyRow(EnglishRows[0], shift) { onKey(it) }
-        KeyRow(EnglishRows[1], shift) { onKey(it) }
+    // Auto-hide tooltip after 1.5 seconds
+    LaunchedEffect(showLangTooltip) {
+        if (showLangTooltip) {
+            delay(1500)
+            showLangTooltip = false
+        }
+    }
 
-        Row(
-            modifier = Modifier.fillMaxWidth().padding(vertical = 3.dp),
-            horizontalArrangement = Arrangement.spacedBy(6.dp)
+    Box(modifier = Modifier.fillMaxWidth()) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .background(Color(0xFFDDE1E7))
+                .padding(horizontal = 4.dp, vertical = 6.dp)
         ) {
-            SpecialKey(label = "⇧", weight = 1.2f, active = shift) {
-                shift = !shift
-                onKey("SHIFT")
+            // Row 1: Q-P with number superscripts
+            NumberedKeyRow(EnglishRows[0], topRowNumbers, shift) { onKey(it) }
+
+            // Row 2: A-L
+            KeyRow(EnglishRows[1], shift) { onKey(it) }
+
+            // Row 3: Shift + Z-M + Backspace
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(vertical = 3.dp),
+                horizontalArrangement = Arrangement.spacedBy(5.dp)
+            ) {
+                ShiftKey(weight = 1.4f, active = shift) {
+                    shift = !shift
+                    onKey("SHIFT")
+                }
+                EnglishRows[2].forEach { k ->
+                    val display = if (shift) k.uppercase() else k
+                    LetterKey(label = display, weight = 1f) { onKey(display) }
+                }
+                BackspaceKey(weight = 1.4f) { onKey("BACKSPACE") }
             }
-            EnglishRows[2].forEach { k ->
-                val display = if (shift) k.uppercase() else k
-                LetterKey(label = display, weight = 1f) { onKey(display) }
+
+            // Row 4: ?123 | emoji | lang toggle | space | period | enter
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(vertical = 3.dp),
+                horizontalArrangement = Arrangement.spacedBy(5.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                SpecialKey(label = "?123", weight = 1.5f) { /* TODO: number layout */ }
+                SpecialKey(label = "☺", weight = 1.2f) { /* TODO: emoji */ }
+
+                // Language toggle — with tooltip anchor
+                Box(modifier = Modifier.weight(1.4f)) {
+                    LangToggleKey(
+                        currentLanguage = currentLanguage,
+                        onTap = {
+                            onKey("LANG_TOGGLE")
+                            showLangTooltip = true
+                        }
+                    )
+                }
+
+                SpaceKey(weight = 4f) { onKey("SPACE") }
+                SpecialKey(label = ".", weight = 0.9f) { onKey(".") }
+                EnterKey(weight = 1.5f) { onKey("ENTER") }
             }
-            SpecialKey(label = "⌫", weight = 1.2f) { onKey("BACKSPACE") }
         }
 
-        Row(
-            modifier = Modifier.fillMaxWidth().padding(vertical = 3.dp),
-            horizontalArrangement = Arrangement.spacedBy(6.dp),
-            verticalAlignment = Alignment.CenterVertically
+        // Tooltip overlay — floats above the keyboard
+        AnimatedVisibility(
+            visible = showLangTooltip,
+            enter = fadeIn() + slideInVertically { it },
+            exit = fadeOut() + slideOutVertically { it },
+            modifier = Modifier
+                .align(Alignment.BottomStart)
+                .padding(start = 96.dp, bottom = 62.dp)
+                .zIndex(10f)
         ) {
-            SpecialKey(label = if (currentLanguage == "en") "🌐 EN" else "🌐 සිං", weight = 1.6f) {
-                onKey("LANG_TOGGLE")
-            }
-            SpecialKey(label = ",", weight = 1f) { onKey(",") }
-            SpaceKey(weight = 4f) { onKey("SPACE") }
-            SpecialKey(label = ".", weight = 1f) { onKey(".") }
-            EnterKey(weight = 1.6f) { onKey("ENTER") }
+            LangTooltip(currentLanguage = currentLanguage)
+        }
+    }
+}
+
+@Composable
+private fun LangTooltip(currentLanguage: String) {
+    val label = if (currentLanguage == "en") "English enabled" else "සිංහල enabled"
+    Box(
+        modifier = Modifier
+            .shadow(4.dp, RoundedCornerShape(8.dp))
+            .clip(RoundedCornerShape(8.dp))
+            .background(DeshGreen)
+            .padding(horizontal = 14.dp, vertical = 8.dp)
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text("✓ ", fontSize = 13.sp, color = Color.White, fontWeight = FontWeight.Bold)
+            Text(
+                text = if (currentLanguage == "en") {
+                    buildAnnotatedStringBold("English", " enabled")
+                } else {
+                    buildAnnotatedStringBold("සිංහල", " enabled")
+                },
+                fontSize = 13.sp,
+                color = Color.White
+            )
+        }
+    }
+}
+
+// Helper to bold the first part
+@Composable
+private fun buildAnnotatedStringBold(bold: String, normal: String): androidx.compose.ui.text.AnnotatedString {
+    return androidx.compose.ui.text.buildAnnotatedString {
+        pushStyle(androidx.compose.ui.text.SpanStyle(fontWeight = FontWeight.Bold))
+        append(bold)
+        pop()
+        append(normal)
+    }
+}
+
+@Composable
+private fun NumberedKeyRow(
+    keys: List<String>,
+    numbers: List<String>,
+    shift: Boolean,
+    onKey: (String) -> Unit
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 3.dp),
+        horizontalArrangement = Arrangement.spacedBy(5.dp)
+    ) {
+        keys.forEachIndexed { index, k ->
+            val display = if (shift) k.uppercase() else k
+            val num = numbers.getOrNull(index) ?: ""
+            NumberedLetterKey(label = display, number = num, weight = 1f) { onKey(display) }
         }
     }
 }
@@ -88,13 +197,52 @@ private fun KeyRow(
     onKey: (String) -> Unit
 ) {
     Row(
-        modifier = Modifier.fillMaxWidth().padding(vertical = 3.dp),
-        horizontalArrangement = Arrangement.spacedBy(6.dp)
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 3.dp),
+        horizontalArrangement = Arrangement.spacedBy(5.dp)
     ) {
+        // Center row 2 (9 keys) with small padding
+        Box(modifier = Modifier.weight(0.5f))
         keys.forEach { k ->
             val display = if (shift) k.uppercase() else k
             LetterKey(label = display, weight = 1f) { onKey(display) }
         }
+        Box(modifier = Modifier.weight(0.5f))
+    }
+}
+
+@Composable
+private fun RowScope.NumberedLetterKey(
+    label: String,
+    number: String,
+    weight: Float,
+    onTap: () -> Unit
+) {
+    Box(
+        modifier = Modifier
+            .height(46.dp)
+            .weight(weight)
+            .clip(RoundedCornerShape(6.dp))
+            .background(Color.White)
+            .clickable { onTap() }
+    ) {
+        // Number superscript — top right
+        Text(
+            text = number,
+            fontSize = 9.sp,
+            color = Color(0xFF888888),
+            modifier = Modifier
+                .align(Alignment.TopEnd)
+                .padding(top = 3.dp, end = 4.dp)
+        )
+        // Main letter — center
+        Text(
+            text = label,
+            fontSize = 18.sp,
+            color = Color(0xFF1A1A1A),
+            modifier = Modifier.align(Alignment.Center)
+        )
     }
 }
 
@@ -104,26 +252,57 @@ private fun RowScope.LetterKey(label: String, weight: Float, onTap: () -> Unit) 
         modifier = Modifier
             .height(46.dp)
             .weight(weight)
-            .clip(RoundedCornerShape(10.dp))
-            .background(MaterialTheme.colorScheme.background)
+            .clip(RoundedCornerShape(6.dp))
+            .background(Color.White)
             .clickable { onTap() },
         contentAlignment = Alignment.Center
     ) {
-        Text(text = label, fontSize = 16.sp, color = MaterialTheme.colorScheme.onSurface)
+        Text(text = label, fontSize = 18.sp, color = Color(0xFF1A1A1A))
     }
 }
 
 @Composable
-private fun RowScope.SpecialKey(label: String, weight: Float, active: Boolean = false, onTap: () -> Unit) {
+private fun RowScope.ShiftKey(weight: Float, active: Boolean, onTap: () -> Unit) {
     Box(
         modifier = Modifier
             .height(46.dp)
             .weight(weight)
-            .clip(RoundedCornerShape(10.dp))
-            .background(
-                if (active) MaterialTheme.colorScheme.primary.copy(alpha = 0.15f)
-                else MaterialTheme.colorScheme.background
-            )
+            .clip(RoundedCornerShape(6.dp))
+            .background(if (active) Color(0xFFB0BEC5) else Color(0xFFBCC4CC))
+            .clickable { onTap() },
+        contentAlignment = Alignment.Center
+    ) {
+        Text(
+            text = if (active) "▲" else "△",
+            fontSize = 18.sp,
+            color = Color(0xFF333333)
+        )
+    }
+}
+
+@Composable
+private fun RowScope.BackspaceKey(weight: Float, onTap: () -> Unit) {
+    Box(
+        modifier = Modifier
+            .height(46.dp)
+            .weight(weight)
+            .clip(RoundedCornerShape(6.dp))
+            .background(Color(0xFFBCC4CC))
+            .clickable { onTap() },
+        contentAlignment = Alignment.Center
+    ) {
+        Text(text = "⌫", fontSize = 18.sp, color = Color(0xFF333333))
+    }
+}
+
+@Composable
+private fun RowScope.SpecialKey(label: String, weight: Float, onTap: () -> Unit) {
+    Box(
+        modifier = Modifier
+            .height(46.dp)
+            .weight(weight)
+            .clip(RoundedCornerShape(6.dp))
+            .background(Color(0xFFBCC4CC))
             .clickable { onTap() },
         contentAlignment = Alignment.Center
     ) {
@@ -131,8 +310,37 @@ private fun RowScope.SpecialKey(label: String, weight: Float, active: Boolean = 
             text = label,
             fontSize = 13.sp,
             fontWeight = FontWeight.Medium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant
+            color = Color(0xFF333333)
         )
+    }
+}
+
+@Composable
+private fun LangToggleKey(currentLanguage: String, onTap: () -> Unit) {
+    Box(
+        modifier = Modifier
+            .height(46.dp)
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(6.dp))
+            .background(Color(0xFFBCC4CC))
+            .clickable { onTap() },
+        contentAlignment = Alignment.Center
+    ) {
+        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+            Text(
+                text = "අ",
+                fontSize = 17.sp,
+                color = Color(0xFF333333),
+                fontWeight = FontWeight.Medium
+            )
+            // Green underline indicator
+            Box(
+                modifier = Modifier
+                    .padding(top = 1.dp)
+                    .background(DeshGreen, RoundedCornerShape(2.dp))
+                    .padding(horizontal = 8.dp, vertical = 1.5.dp)
+            )
+        }
     }
 }
 
@@ -142,12 +350,16 @@ private fun RowScope.SpaceKey(weight: Float, onTap: () -> Unit) {
         modifier = Modifier
             .height(46.dp)
             .weight(weight)
-            .clip(RoundedCornerShape(10.dp))
-            .background(MaterialTheme.colorScheme.background)
+            .clip(RoundedCornerShape(6.dp))
+            .background(Color.White)
             .clickable { onTap() },
         contentAlignment = Alignment.Center
     ) {
-        Text(text = "SPACE", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Text(
+            text = "SinKey",
+            fontSize = 12.sp,
+            color = Color(0xFF888888)
+        )
     }
 }
 
@@ -157,11 +369,11 @@ private fun RowScope.EnterKey(weight: Float, onTap: () -> Unit) {
         modifier = Modifier
             .height(46.dp)
             .weight(weight)
-            .clip(RoundedCornerShape(10.dp))
-            .background(AccentGradient)
+            .clip(RoundedCornerShape(6.dp))
+            .background(DeshGreen)
             .clickable { onTap() },
         contentAlignment = Alignment.Center
     ) {
-        Text(text = "↵", fontSize = 18.sp, color = Color.White)
+        Text(text = "↵", fontSize = 20.sp, color = Color.White)
     }
 }
