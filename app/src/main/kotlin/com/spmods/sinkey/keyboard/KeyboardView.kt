@@ -5,8 +5,11 @@ import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -14,9 +17,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.wrapContentSize
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -31,11 +32,13 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.zIndex
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.isActive
 
 // Number labels for top row keys (QWERTYUIOP → 1–9, 0)
 private val topRowNumbers = listOf("1","2","3","4","5","6","7","8","9","0")
@@ -185,7 +188,13 @@ private fun NumberedKeyRow(
         keys.forEachIndexed { index, k ->
             val display = if (shift) k.uppercase() else k
             val num = numbers.getOrNull(index) ?: ""
-            NumberedLetterKey(label = display, number = num, weight = 1f) { onKey(display) }
+            NumberedLetterKey(
+                label = display,
+                number = num,
+                weight = 1f,
+                onTap = { onKey(display) },
+                onLongPress = { onKey(num) }
+            )
         }
     }
 }
@@ -212,12 +221,14 @@ private fun KeyRow(
     }
 }
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun RowScope.NumberedLetterKey(
     label: String,
     number: String,
     weight: Float,
-    onTap: () -> Unit
+    onTap: () -> Unit,
+    onLongPress: () -> Unit
 ) {
     Box(
         modifier = Modifier
@@ -225,7 +236,10 @@ private fun RowScope.NumberedLetterKey(
             .weight(weight)
             .clip(RoundedCornerShape(6.dp))
             .background(Color.White)
-            .clickable { onTap() }
+            .combinedClickable(
+                onClick = { onTap() },
+                onLongClick = { onLongPress() }
+            )
     ) {
         // Number superscript — top right
         Text(
@@ -288,7 +302,29 @@ private fun RowScope.BackspaceKey(weight: Float, onTap: () -> Unit) {
             .weight(weight)
             .clip(RoundedCornerShape(6.dp))
             .background(Color(0xFFBCC4CC))
-            .clickable { onTap() },
+            .pointerInput(Unit) {
+                detectTapGestures(
+                    onTap = { onTap() },
+                    onPress = { _ ->
+                        // Wait for long-press threshold, then start repeating
+                        val longPressDelay = 400L
+                        val repeatInterval = 50L
+                        var didLongPress = false
+                        try {
+                            delay(longPressDelay)
+                            didLongPress = true
+                            // Keep firing while finger held down
+                            while (true) {
+                                onTap()
+                                delay(repeatInterval)
+                            }
+                        } finally {
+                            // If finger lifted before long press, onTap() already
+                            // called by onTap handler above — nothing extra needed
+                        }
+                    }
+                )
+            },
         contentAlignment = Alignment.Center
     ) {
         Text(text = "⌫", fontSize = 18.sp, color = Color(0xFF333333))
@@ -317,6 +353,7 @@ private fun RowScope.SpecialKey(label: String, weight: Float, onTap: () -> Unit)
 
 @Composable
 private fun LangToggleKey(currentLanguage: String, onTap: () -> Unit) {
+    val isSinhala = currentLanguage == "si"
     Box(
         modifier = Modifier
             .height(46.dp)
@@ -330,14 +367,18 @@ private fun LangToggleKey(currentLanguage: String, onTap: () -> Unit) {
             Text(
                 text = "අ",
                 fontSize = 17.sp,
-                color = Color(0xFF333333),
-                fontWeight = FontWeight.Medium
+                // Green text when Sinhala, grey when English
+                color = if (isSinhala) DeshGreen else Color(0xFF333333),
+                fontWeight = if (isSinhala) FontWeight.Bold else FontWeight.Medium
             )
-            // Green underline indicator
+            // Underline: filled green when Sinhala, transparent when English
             Box(
                 modifier = Modifier
-                    .padding(top = 1.dp)
-                    .background(DeshGreen, RoundedCornerShape(2.dp))
+                    .padding(top = 2.dp)
+                    .background(
+                        color = if (isSinhala) DeshGreen else Color.Transparent,
+                        shape = RoundedCornerShape(2.dp)
+                    )
                     .padding(horizontal = 8.dp, vertical = 1.5.dp)
             )
         }
