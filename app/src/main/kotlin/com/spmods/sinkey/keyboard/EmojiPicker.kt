@@ -30,17 +30,26 @@ private val TabActiveBg = Color(0xFFC8D0D8)
  * and that it doesn't contain unsupported flag/ZWJ sequences on older APIs.
  */
 private fun String.isSupported(): Boolean {
-    // Flag sequences: regional indicator pairs (U+1F1E6..U+1F1FF)
-    // These often show as boxes on older Android
     val codePoints = codePoints().toArray()
+    val sdk = android.os.Build.VERSION.SDK_INT
+
+    // Flag sequences (U+1F1E6..U+1F1FF): need Android 6.0+
     val hasFlagIndicator = codePoints.any { it in 0x1F1E6..0x1F1FF }
-    if (hasFlagIndicator && android.os.Build.VERSION.SDK_INT < 23) return false
+    if (hasFlagIndicator && sdk < 23) return false
 
-    // Very new emojis (Unicode 15+) may not render on older devices
-    if (codePoints.any { it > 0x1FAF8 } && android.os.Build.VERSION.SDK_INT < 33) return false
+    // Unicode 15.0 emojis (e.g. 🫨 U+1FAE8, 🪽 U+1FABD, etc.): need Android 14+ (API 34)
+    // Range: new codepoints beyond 0x1FAF8 added in Unicode 15.0
+    if (codePoints.any { it in 0x1FAD7..0x1FAFF } && sdk < 34) return false
 
-    // Keycap sequences and other complex ZWJ often fail — allow them but skip if >6 chars
-    // (simple emojis are ≤4 chars with variation selectors)
+    // Unicode 15.1 ZWJ sequences (e.g. 🙂‍↕️): need Android 14+ (API 34)
+    // Detect by checking for ZWJ (U+200D) combined with new directional arrows
+    val hasZwj = codePoints.any { it == 0x200D }
+    val hasDirectionalArrow = codePoints.any { it == 0x2195 || it == 0x2194 }
+    if (hasZwj && hasDirectionalArrow && sdk < 34) return false
+
+    // Unicode 14.0 emojis: need Android 12+ (API 31)
+    if (codePoints.any { it in 0x1FAB7..0x1FAC2 } && sdk < 31) return false
+
     return true
 }
 
