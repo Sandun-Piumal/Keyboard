@@ -38,6 +38,9 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.zIndex
+import androidx.compose.runtime.collectAsState
+import androidx.compose.ui.platform.LocalContext
+import com.spmods.sinkey.data.PreferencesManager
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.withTimeoutOrNull
 import androidx.compose.foundation.gestures.detectTapGestures
@@ -49,9 +52,6 @@ private val topRowNumbers = listOf("1","2","3","4","5","6","7","8","9","0")
 private val DeshGreen = Color(0xFF2D6A4F)
 private val KeyboardBg = Color(0xFFDDE1E7)
 
-// Recent emojis shown in the emoji bar (same as screenshot)
-private val recentEmojis = listOf("😒","🙄","😂","✅","🔷","🙂","💯","✨","👍")
-
 @Composable
 fun KeyboardView(
     currentLanguage: String, // "en" or "si"
@@ -59,6 +59,11 @@ fun KeyboardView(
 ) {
     var shift by remember { mutableStateOf(false) }
     var showLangTooltip by remember { mutableStateOf(false) }
+
+    // Collect real recent emojis from DataStore
+    val context = LocalContext.current
+    val prefsManager = remember { PreferencesManager(context) }
+    val recentEmojis by prefsManager.recentEmojis.collectAsState(initial = emptyList())
 
     // Auto-hide tooltip after 1.5 seconds
     LaunchedEffect(showLangTooltip) {
