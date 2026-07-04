@@ -71,4 +71,11 @@ dependencies {
     implementation("androidx.datastore:datastore-preferences:1.1.1")
     implementation("androidx.savedstate:savedstate-ktx:1.2.1")
     implementation("androidx.core:core-splashscreen:1.0.1")
+
+    // EmojiCompat: downloadable Noto Color Emoji font (Unicode 15.x)
+    // Allows modern emojis to render on any Android 7+ device without
+    // waiting for a system update. Font downloaded once from Google Fonts.
+    implementation("androidx.emoji2:emoji2:1.4.0")
+    implementation("androidx.emoji2:emoji2-bundled:1.4.0")
+    implementation("androidx.emoji2:emoji2-views:1.4.0")
 }
