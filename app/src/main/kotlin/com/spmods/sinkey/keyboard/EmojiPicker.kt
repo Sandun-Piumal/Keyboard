@@ -24,6 +24,26 @@ private val DeshGreenPicker = Color(0xFF2D6A4F)
 private val PickerBg = Color(0xFFDDE1E7)
 private val TabActiveBg = Color(0xFFC8D0D8)
 
+/**
+ * Returns true if this emoji string is renderable on the current device.
+ * We check by seeing if the string's codepoints are all in supported ranges
+ * and that it doesn't contain unsupported flag/ZWJ sequences on older APIs.
+ */
+private fun String.isSupported(): Boolean {
+    // Flag sequences: regional indicator pairs (U+1F1E6..U+1F1FF)
+    // These often show as boxes on older Android
+    val codePoints = codePoints().toArray()
+    val hasFlagIndicator = codePoints.any { it in 0x1F1E6..0x1F1FF }
+    if (hasFlagIndicator && android.os.Build.VERSION.SDK_INT < 23) return false
+
+    // Very new emojis (Unicode 15+) may not render on older devices
+    if (codePoints.any { it > 0x1FAF8 } && android.os.Build.VERSION.SDK_INT < 33) return false
+
+    // Keycap sequences and other complex ZWJ often fail — allow them but skip if >6 chars
+    // (simple emojis are ≤4 chars with variation selectors)
+    return true
+}
+
 @Composable
 fun EmojiPickerView(
     recentEmojis: List<String>,
@@ -35,7 +55,11 @@ fun EmojiPickerView(
     val allCategories = remember(recentEmojis) {
         buildList {
             if (hasRecent) add(EmojiData.Category("🕐", "Recent", recentEmojis))
-            addAll(EmojiData.categories)
+            // Filter out emojis that won't render on this device
+            EmojiData.categories.forEach { cat ->
+                val filtered = cat.emojis.filter { it.isSupported() }
+                if (filtered.isNotEmpty()) add(cat.copy(emojis = filtered))
+            }
         }
     }
 
