@@ -34,7 +34,8 @@ fun SettingsScreen(
     onLanguageChange: (String) -> Unit,
     onKeySoundChange: (Boolean) -> Unit,
     onKeyVibrateChange: (Boolean) -> Unit,
-    onThemeModeChange: (ThemeMode) -> Unit
+    onThemeModeChange: (ThemeMode) -> Unit,
+    onOpenKeyboardHeight: () -> Unit = {}
 ) {
     Column(modifier = Modifier.fillMaxWidth().padding(bottom = 24.dp)) {
         SectionHeader("PREFERENCES", "Settings")
@@ -60,6 +61,19 @@ fun SettingsScreen(
             }
             SettingRow(icon = "📳", title = "Vibrate on tap", subtitle = "Haptic feedback") {
                 Switch(checked = keyVibrateEnabled, onCheckedChange = onKeyVibrateChange)
+            }
+            // Keyboard height — navigates to sub-screen
+            SettingRow(
+                icon = "⌨",
+                title = "Keyboard height",
+                subtitle = "Adjust height, bottom space & borders",
+                modifier = Modifier.clickable { onOpenKeyboardHeight() }
+            ) {
+                Text(
+                    "›",
+                    fontSize = 20.sp,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
             }
         }
 
@@ -95,9 +109,15 @@ private fun SettingsGroup(content: @Composable ColumnScope.() -> Unit) {
 }
 
 @Composable
-private fun SettingRow(icon: String, title: String, subtitle: String, trailing: @Composable () -> Unit) {
+private fun SettingRow(
+    icon: String,
+    title: String,
+    subtitle: String,
+    modifier: Modifier = Modifier,
+    trailing: @Composable () -> Unit
+) {
     Row(
-        modifier = Modifier.fillMaxWidth().padding(16.dp, 14.dp),
+        modifier = modifier.fillMaxWidth().padding(16.dp, 14.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(12.dp)
     ) {
