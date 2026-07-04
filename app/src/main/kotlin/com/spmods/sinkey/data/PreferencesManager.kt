@@ -14,7 +14,7 @@ enum class ThemeMode { SYSTEM, LIGHT, DARK }
 
 /**
  * Central, DataStore-backed store for every user-facing preference:
- * theme mode, default typing language, key sound, and vibration.
+ * theme mode, default typing language, key sound, vibration, and recent emojis.
  */
 class PreferencesManager(private val context: Context) {
 
@@ -23,6 +23,7 @@ class PreferencesManager(private val context: Context) {
         val DEFAULT_LANG = stringPreferencesKey("default_lang") // "si" or "en"
         val KEY_SOUND = booleanPreferencesKey("key_sound")
         val KEY_VIBRATE = booleanPreferencesKey("key_vibrate")
+        val RECENT_EMOJIS = stringPreferencesKey("recent_emojis") // comma-separated
     }
 
     val themeMode: Flow<ThemeMode> = context.dataStore.data.map { prefs ->
@@ -45,6 +46,13 @@ class PreferencesManager(private val context: Context) {
         prefs[Keys.KEY_VIBRATE] ?: false
     }
 
+    /** Emits the most-recently-used emojis list (up to [MAX_RECENT] entries). */
+    val recentEmojis: Flow<List<String>> = context.dataStore.data.map { prefs ->
+        val raw = prefs[Keys.RECENT_EMOJIS] ?: ""
+        if (raw.isBlank()) emptyList()
+        else raw.split(",").filter { it.isNotBlank() }
+    }
+
     suspend fun setThemeMode(mode: ThemeMode) {
         context.dataStore.edit { it[Keys.THEME_MODE] = mode.name }
     }
@@ -59,5 +67,23 @@ class PreferencesManager(private val context: Context) {
 
     suspend fun setKeyVibrateEnabled(enabled: Boolean) {
         context.dataStore.edit { it[Keys.KEY_VIBRATE] = enabled }
+    }
+
+    /**
+     * Pushes [emoji] to the front of the recent-emojis list and persists it.
+     * Duplicates are removed and the list is capped at [MAX_RECENT].
+     */
+    suspend fun addRecentEmoji(emoji: String) {
+        context.dataStore.edit { prefs ->
+            val current = (prefs[Keys.RECENT_EMOJIS] ?: "")
+                .split(",")
+                .filter { it.isNotBlank() && it != emoji } // remove duplicate
+            val updated = (listOf(emoji) + current).take(MAX_RECENT)
+            prefs[Keys.RECENT_EMOJIS] = updated.joinToString(",")
+        }
+    }
+
+    companion object {
+        const val MAX_RECENT = 9 // matches the 9 slots visible in the emoji row
     }
 }
