@@ -10,6 +10,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.Box
@@ -23,6 +24,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -55,7 +57,16 @@ private val topRowNumbers = listOf("1","2","3","4","5","6","7","8","9","0")
 
 // Dark green color matching Desh Keyboard style
 private val DeshGreen = Color(0xFF2D6A4F)
-private val KeyboardBg = Color(0xFFDDE1E7)
+private val KeyboardBgLight = Color(0xFFDDE1E7)
+private val KeyboardBgDark = Color(0xFF1A1A1F)
+private val KeyBgLight = Color.White
+private val KeyBgDark = Color(0xFF2C2C34)
+private val KeySpecialBgLight = Color(0xFFBCC4CC)
+private val KeySpecialBgDark = Color(0xFF3A3A45)
+private val KeyTextLight = Color(0xFF1A1A1A)
+private val KeyTextDark = Color(0xFFE8E8EE)
+private val KeySubTextLight = Color(0xFF555555)
+private val KeySubTextDark = Color(0xFFAAAAAA)
 
 /** Convert a 0..3 slider step to a concrete key-row height in dp. */
 private fun stepToKeyHeight(step: Float): Dp = when (Math.round(step)) {
@@ -83,9 +94,17 @@ fun KeyboardView(
     onKey: (String) -> Unit,
     onDismiss: (() -> Unit)? = null      // called when keyboard should close (tap outside in preview)
 ) {
+    val isDark = isSystemInDarkTheme()
+    val keyboardBg = if (isDark) KeyboardBgDark else KeyboardBgLight
+    val keyBgBase = if (isDark) KeyBgDark else KeyBgLight
+    val keySpecialBg = if (isDark) KeySpecialBgDark else KeySpecialBgLight
+    val keyTextColor = if (isDark) KeyTextDark else KeyTextLight
+    val keySubTextColor = if (isDark) KeySubTextDark else KeySubTextLight
+    val spaceKeyBg = if (isDark) Color(0xFF38383F) else Color.White
+
     val keyHeight = stepToKeyHeight(keyboardHeight)
     val bottomPadding = if (bottomSpaceEnabled) stepToBottomPadding(bottomSpaceSize) else 4.dp
-    val keyBg = if (showKeyBorders) Color.White else Color(0xFFF0F2F5)
+    val keyBg = if (showKeyBorders) keyBgBase else if (isDark) Color(0xFF252530) else Color(0xFFF0F2F5)
     val keyShape = if (showKeyBorders) RoundedCornerShape(6.dp) else RoundedCornerShape(4.dp)
     var shift by remember { mutableStateOf(false) }
     var showLangTooltip by remember { mutableStateOf(false) }
@@ -119,16 +138,17 @@ fun KeyboardView(
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .background(KeyboardBg)
+                .background(keyboardBg)
         ) {
             // ── Toolbar row (icons at top) ──────────────────────────────
-            ToolbarRow(onKey = onKey)
+            ToolbarRow(onKey = onKey, keyboardBg = keyboardBg, iconColor = keySubTextColor)
 
             // ── Recent emoji row ────────────────────────────────────────
             EmojiRow(
                 emojis = recentEmojis,
                 onKey = onKey,
-                onMoreClick = { showEmojiPicker = true }
+                onMoreClick = { showEmojiPicker = true },
+                keyboardBg = keyboardBg
             )
 
             // ── Letter rows ─────────────────────────────────────────────
@@ -139,10 +159,10 @@ fun KeyboardView(
                     .padding(bottom = bottomPadding)
             ) {
                 // Row 1: Q-P with number superscripts
-                NumberedKeyRow(EnglishRows[0], topRowNumbers, shift, keyHeight, keyBg, keyShape) { onKey(it) }
+                NumberedKeyRow(EnglishRows[0], topRowNumbers, shift, keyHeight, keyBg, keyShape, keyTextColor) { onKey(it) }
 
                 // Row 2: A-L
-                KeyRow(EnglishRows[1], shift, keyHeight, keyBg, keyShape) { onKey(it) }
+                KeyRow(EnglishRows[1], shift, keyHeight, keyBg, keyShape, keyTextColor) { onKey(it) }
 
                 // Row 3: Shift + Z-M + Backspace
                 Row(
@@ -151,15 +171,15 @@ fun KeyboardView(
                         .padding(vertical = 3.dp),
                     horizontalArrangement = Arrangement.spacedBy(5.dp)
                 ) {
-                    ShiftKey(weight = 1.4f, active = shift, keyHeight = keyHeight, keyShape = keyShape) {
+                    ShiftKey(weight = 1.4f, active = shift, keyHeight = keyHeight, keyShape = keyShape, keySpecialBg = keySpecialBg, keyTextColor = keyTextColor) {
                         shift = !shift
                         onKey("SHIFT")
                     }
                     EnglishRows[2].forEach { k ->
                         val display = if (shift) k.uppercase() else k
-                        LetterKey(label = display, weight = 1f, keyHeight = keyHeight, keyBg = keyBg, keyShape = keyShape) { onKey(display) }
+                        LetterKey(label = display, weight = 1f, keyHeight = keyHeight, keyBg = keyBg, keyShape = keyShape, keyTextColor = keyTextColor) { onKey(display) }
                     }
-                    BackspaceKey(weight = 1.4f, keyHeight = keyHeight, keyShape = keyShape) { onKey("BACKSPACE") }
+                    BackspaceKey(weight = 1.4f, keyHeight = keyHeight, keyShape = keyShape, keySpecialBg = keySpecialBg, keyTextColor = keyTextColor) { onKey("BACKSPACE") }
                 }
 
                 // Row 4: ?123 | emoji | lang toggle | space | period | enter
@@ -170,11 +190,13 @@ fun KeyboardView(
                     horizontalArrangement = Arrangement.spacedBy(5.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    SpecialKey(label = "?123", weight = 1.8f, keyHeight = keyHeight, keyShape = keyShape) { /* TODO: number layout */ }
+                    SpecialKey(label = "?123", weight = 1.8f, keyHeight = keyHeight, keyShape = keyShape, keySpecialBg = keySpecialBg, keyTextColor = keyTextColor) { /* TODO: number layout */ }
                     EmojiKey(
                         weight = 1.3f,
                         keyHeight = keyHeight,
                         keyShape = keyShape,
+                        keySpecialBg = keySpecialBg,
+                        keyTextColor = keyTextColor,
                         onTap = { onKey(",") },
                         onLongPress = { showEmojiPicker = true }
                     )
@@ -185,6 +207,8 @@ fun KeyboardView(
                             currentLanguage = currentLanguage,
                             keyHeight = keyHeight,
                             keyShape = keyShape,
+                            keySpecialBg = keySpecialBg,
+                            keyTextColor = keyTextColor,
                             onTap = {
                                 onKey("LANG_TOGGLE")
                                 showLangTooltip = true
@@ -197,11 +221,13 @@ fun KeyboardView(
                         weight = 4.5f,
                         keyHeight = keyHeight,
                         keyShape = keyShape,
+                        spaceKeyBg = spaceKeyBg,
+                        keyTextColor = keyTextColor,
                         onTap = { onKey("SPACE") },
                         onLongPress = { onKey("SWITCH_KEYBOARD") }
                     )
 
-                    SpecialKey(label = ".", weight = 0.8f, keyHeight = keyHeight, keyShape = keyShape) { onKey(".") }
+                    SpecialKey(label = ".", weight = 0.8f, keyHeight = keyHeight, keyShape = keyShape, keySpecialBg = keySpecialBg, keyTextColor = keyTextColor) { onKey(".") }
                     EnterKey(weight = 2.0f, keyHeight = keyHeight, keyShape = keyShape) { onKey("ENTER") }
                 }
             }
@@ -226,7 +252,7 @@ fun KeyboardView(
 // Toolbar row  (apps, sticker, clipboard, font-A, translate, settings, mic)
 // ─────────────────────────────────────────────────────────────────────────────
 @Composable
-private fun ToolbarRow(onKey: (String) -> Unit) {
+private fun ToolbarRow(onKey: (String) -> Unit, keyboardBg: Color, iconColor: Color) {
     // Icon labels (unicode symbols that look similar to the screenshot icons)
     val tools = listOf(
         "⊞" to "TOOL_APPS",
@@ -239,7 +265,7 @@ private fun ToolbarRow(onKey: (String) -> Unit) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .background(KeyboardBg)
+            .background(keyboardBg)
             .padding(horizontal = 8.dp, vertical = 2.dp),
         horizontalArrangement = Arrangement.SpaceBetween,
         verticalAlignment = Alignment.CenterVertically
@@ -252,15 +278,16 @@ private fun ToolbarRow(onKey: (String) -> Unit) {
                     .clickable { onKey(action) },
                 contentAlignment = Alignment.Center
             ) {
-                Text(text = label, fontSize = 18.sp, color = Color(0xFF555555))
+                Text(text = label, fontSize = 18.sp, color = iconColor)
             }
         }
         // Mic button on the far right (filled circle)
+        val micBg = if (iconColor == KeySubTextDark) Color(0xFF38383F) else Color.White
         Box(
             modifier = Modifier
                 .size(38.dp)
                 .clip(RoundedCornerShape(50))
-                .background(Color.White)
+                .background(micBg)
                 .clickable { onKey("TOOL_MIC") },
             contentAlignment = Alignment.Center
         ) {
@@ -273,7 +300,7 @@ private fun ToolbarRow(onKey: (String) -> Unit) {
 // Recent emoji row
 // ─────────────────────────────────────────────────────────────────────────────
 @Composable
-private fun EmojiRow(emojis: List<String>, onKey: (String) -> Unit, onMoreClick: () -> Unit) {
+private fun EmojiRow(emojis: List<String>, onKey: (String) -> Unit, onMoreClick: () -> Unit, keyboardBg: Color) {
     // LazyRow is the CORRECT way to get horizontal scrolling in Compose.
     // Regular Row + horizontalScroll + fillMaxWidth conflict with each other.
     // LazyRow handles clipping and scrolling natively without those issues.
@@ -281,7 +308,7 @@ private fun EmojiRow(emojis: List<String>, onKey: (String) -> Unit, onMoreClick:
     LazyRow(
         modifier = Modifier
             .fillMaxWidth()
-            .background(KeyboardBg)
+            .background(keyboardBg)
             .padding(vertical = 2.dp),
         horizontalArrangement = Arrangement.spacedBy(2.dp),
         verticalAlignment = Alignment.CenterVertically,
@@ -365,6 +392,7 @@ private fun NumberedKeyRow(
     keyHeight: Dp,
     keyBg: Color,
     keyShape: RoundedCornerShape,
+    keyTextColor: Color,
     onKey: (String) -> Unit
 ) {
     Row(
@@ -383,6 +411,7 @@ private fun NumberedKeyRow(
                 keyHeight = keyHeight,
                 keyBg = keyBg,
                 keyShape = keyShape,
+                keyTextColor = keyTextColor,
                 onTap = { onKey(display) },
                 onLongPress = { onKey(num) }
             )
@@ -397,6 +426,7 @@ private fun KeyRow(
     keyHeight: Dp,
     keyBg: Color,
     keyShape: RoundedCornerShape,
+    keyTextColor: Color,
     onKey: (String) -> Unit
 ) {
     Row(
@@ -408,7 +438,7 @@ private fun KeyRow(
         Box(modifier = Modifier.weight(0.5f))
         keys.forEach { k ->
             val display = if (shift) k.uppercase() else k
-            LetterKey(label = display, weight = 1f, keyHeight = keyHeight, keyBg = keyBg, keyShape = keyShape) { onKey(display) }
+            LetterKey(label = display, weight = 1f, keyHeight = keyHeight, keyBg = keyBg, keyShape = keyShape, keyTextColor = keyTextColor) { onKey(display) }
         }
         Box(modifier = Modifier.weight(0.5f))
     }
@@ -426,6 +456,7 @@ private fun RowScope.NumberedLetterKey(
     keyHeight: Dp = 46.dp,
     keyBg: Color = Color.White,
     keyShape: RoundedCornerShape = RoundedCornerShape(6.dp),
+    keyTextColor: Color = Color(0xFF1A1A1A),
     onTap: () -> Unit,
     onLongPress: () -> Unit
 ) {
@@ -443,7 +474,7 @@ private fun RowScope.NumberedLetterKey(
         Text(
             text = number,
             fontSize = 9.sp,
-            color = Color(0xFF888888),
+            color = keyTextColor.copy(alpha = 0.5f),
             modifier = Modifier
                 .align(Alignment.TopEnd)
                 .padding(top = 3.dp, end = 4.dp)
@@ -451,7 +482,7 @@ private fun RowScope.NumberedLetterKey(
         Text(
             text = label,
             fontSize = 18.sp,
-            color = Color(0xFF1A1A1A),
+            color = keyTextColor,
             modifier = Modifier.align(Alignment.Center)
         )
     }
@@ -464,6 +495,7 @@ private fun RowScope.LetterKey(
     keyHeight: Dp = 46.dp,
     keyBg: Color = Color.White,
     keyShape: RoundedCornerShape = RoundedCornerShape(6.dp),
+    keyTextColor: Color = Color(0xFF1A1A1A),
     onTap: () -> Unit
 ) {
     Box(
@@ -475,7 +507,7 @@ private fun RowScope.LetterKey(
             .clickable { onTap() },
         contentAlignment = Alignment.Center
     ) {
-        Text(text = label, fontSize = 18.sp, color = Color(0xFF1A1A1A))
+        Text(text = label, fontSize = 18.sp, color = keyTextColor)
     }
 }
 
@@ -485,21 +517,24 @@ private fun RowScope.ShiftKey(
     active: Boolean,
     keyHeight: Dp = 46.dp,
     keyShape: RoundedCornerShape = RoundedCornerShape(6.dp),
+    keySpecialBg: Color = Color(0xFFBCC4CC),
+    keyTextColor: Color = Color(0xFF333333),
     onTap: () -> Unit
 ) {
+    val activeBg = keySpecialBg.copy(alpha = 0.7f)
     Box(
         modifier = Modifier
             .height(keyHeight)
             .weight(weight)
             .clip(keyShape)
-            .background(if (active) Color(0xFFB0BEC5) else Color(0xFFBCC4CC))
+            .background(if (active) activeBg else keySpecialBg)
             .clickable { onTap() },
         contentAlignment = Alignment.Center
     ) {
         Text(
             text = if (active) "▲" else "△",
             fontSize = 18.sp,
-            color = Color(0xFF333333)
+            color = keyTextColor
         )
     }
 }
@@ -509,6 +544,8 @@ private fun RowScope.BackspaceKey(
     weight: Float,
     keyHeight: Dp = 46.dp,
     keyShape: RoundedCornerShape = RoundedCornerShape(6.dp),
+    keySpecialBg: Color = Color(0xFFBCC4CC),
+    keyTextColor: Color = Color(0xFF333333),
     onTap: () -> Unit
 ) {
     Box(
@@ -516,7 +553,7 @@ private fun RowScope.BackspaceKey(
             .height(keyHeight)
             .weight(weight)
             .clip(keyShape)
-            .background(Color(0xFFBCC4CC))
+            .background(keySpecialBg)
             .pointerInput(Unit) {
                 detectTapGestures(
                     onPress = { _ ->
@@ -550,7 +587,7 @@ private fun RowScope.BackspaceKey(
             },
         contentAlignment = Alignment.Center
     ) {
-        Text(text = "⌫", fontSize = 18.sp, color = Color(0xFF333333))
+        Text(text = "⌫", fontSize = 18.sp, color = keyTextColor)
     }
 }
 
@@ -560,6 +597,8 @@ private fun RowScope.SpecialKey(
     weight: Float,
     keyHeight: Dp = 46.dp,
     keyShape: RoundedCornerShape = RoundedCornerShape(6.dp),
+    keySpecialBg: Color = Color(0xFFBCC4CC),
+    keyTextColor: Color = Color(0xFF333333),
     onTap: () -> Unit
 ) {
     Box(
@@ -567,7 +606,7 @@ private fun RowScope.SpecialKey(
             .height(keyHeight)
             .weight(weight)
             .clip(keyShape)
-            .background(Color(0xFFBCC4CC))
+            .background(keySpecialBg)
             .clickable { onTap() },
         contentAlignment = Alignment.Center
     ) {
@@ -575,7 +614,7 @@ private fun RowScope.SpecialKey(
             text = label,
             fontSize = 13.sp,
             fontWeight = FontWeight.Medium,
-            color = Color(0xFF333333)
+            color = keyTextColor
         )
     }
 }
@@ -585,6 +624,8 @@ private fun LangToggleKey(
     currentLanguage: String,
     keyHeight: Dp = 46.dp,
     keyShape: RoundedCornerShape = RoundedCornerShape(6.dp),
+    keySpecialBg: Color = Color(0xFFBCC4CC),
+    keyTextColor: Color = Color(0xFF333333),
     onTap: () -> Unit
 ) {
     val isSinhala = currentLanguage == "si"
@@ -593,15 +634,15 @@ private fun LangToggleKey(
             .height(keyHeight)
             .fillMaxWidth()
             .clip(keyShape)
-            .background(Color(0xFFBCC4CC))
+            .background(keySpecialBg)
             .clickable { onTap() },
         contentAlignment = Alignment.Center
     ) {
         Column(horizontalAlignment = Alignment.CenterHorizontally) {
             Text(
                 text = "අ",
-                fontSize = 13.sp,   // smaller — matches screenshot
-                color = if (isSinhala) DeshGreen else Color(0xFF333333),
+                fontSize = 13.sp,
+                color = if (isSinhala) DeshGreen else keyTextColor,
                 fontWeight = if (isSinhala) FontWeight.Bold else FontWeight.Normal
             )
             // Green underline indicator when Sinhala active
@@ -609,7 +650,7 @@ private fun LangToggleKey(
                 modifier = Modifier
                     .padding(top = 2.dp)
                     .height(2.dp)
-                    .width(18.dp)
+                    .width(14.dp)
                     .background(
                         color = if (isSinhala) DeshGreen else Color.Transparent,
                         shape = RoundedCornerShape(1.dp)
@@ -625,6 +666,8 @@ private fun RowScope.EmojiKey(
     weight: Float,
     keyHeight: Dp = 46.dp,
     keyShape: RoundedCornerShape = RoundedCornerShape(6.dp),
+    keySpecialBg: Color = Color(0xFFBCC4CC),
+    keyTextColor: Color = Color(0xFF444444),
     onTap: () -> Unit,
     onLongPress: () -> Unit
 ) {
@@ -634,7 +677,7 @@ private fun RowScope.EmojiKey(
             .height(keyHeight)
             .weight(weight)
             .clip(keyShape)
-            .background(Color(0xFFBCC4CC))
+            .background(keySpecialBg)
             .combinedClickable(
                 onClick = { onTap() },
                 onLongClick = { onLongPress() }
@@ -648,13 +691,13 @@ private fun RowScope.EmojiKey(
             Text(
                 text = "☺",
                 fontSize = 16.sp,
-                color = Color(0xFF444444),
+                color = keyTextColor,
                 lineHeight = 18.sp
             )
             Text(
                 text = ",",
                 fontSize = 10.sp,
-                color = Color(0xFF444444),
+                color = keyTextColor,
                 lineHeight = 11.sp
             )
         }
@@ -667,6 +710,8 @@ private fun RowScope.SpaceKey(
     weight: Float,
     keyHeight: Dp = 46.dp,
     keyShape: RoundedCornerShape = RoundedCornerShape(6.dp),
+    spaceKeyBg: Color = Color.White,
+    keyTextColor: Color = Color(0xFF888888),
     onTap: () -> Unit,
     onLongPress: () -> Unit
 ) {
@@ -675,7 +720,7 @@ private fun RowScope.SpaceKey(
             .height(keyHeight)
             .weight(weight)
             .clip(keyShape)
-            .background(Color.White)
+            .background(spaceKeyBg)
             .combinedClickable(
                 onClick = { onTap() },
                 onLongClick = { onLongPress() }
@@ -685,7 +730,7 @@ private fun RowScope.SpaceKey(
         Text(
             text = "Desh Keyboard",
             fontSize = 12.sp,
-            color = Color(0xFF888888),
+            color = keyTextColor.copy(alpha = 0.6f),
             textAlign = androidx.compose.ui.text.style.TextAlign.Center
         )
     }
