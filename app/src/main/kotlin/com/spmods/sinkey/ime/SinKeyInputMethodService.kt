@@ -144,37 +144,38 @@ class SinKeyInputMethodService : InputMethodService() {
 
         when (key) {
             "BACKSPACE" -> {
-                if (wordBuffer.isNotEmpty()) {
-                    // Remove the last *romanized* character from the buffer,
-                    // then re-render the live Sinhala preview.
+                // PRIORITY 1: If user has a selection, always delete it first —
+                // regardless of whether wordBuffer has content.
+                // This fixes the bug where Sinhala composing text was being
+                // edited instead of deleting the user's text selection.
+                val selectedText = ic.getSelectedText(0)
+                if (!selectedText.isNullOrEmpty()) {
+                    // Clear the composing buffer too — selection crosses word boundary
+                    wordBuffer.clear()
+                    ic.finishComposingText()
+                    ic.commitText("", 1) // replaces selection with empty = delete
+                } else if (wordBuffer.isNotEmpty()) {
+                    // PRIORITY 2: In-progress Sinhala word — remove last roman letter.
                     wordBuffer.deleteCharAt(wordBuffer.length - 1)
                     if (wordBuffer.isEmpty()) {
-                        // Nothing left to compose — clear composing region entirely
+                        // Buffer is now empty — cancel composing without committing.
+                        // setComposingText("", 1) removes the composing text entirely.
+                        ic.setComposingText("", 1)
                         ic.finishComposingText()
-                        ic.deleteSurroundingText(0, 0) // no-op, just ends compose
                     } else {
                         ic.setComposingText(renderBuffer(), 1)
                     }
                 } else {
-                    // No composing word in progress.
-                    // If there is a selection, delete it; otherwise delete one
-                    // *Unicode code point* (not one UTF-16 char) before the cursor.
-                    // deleteSurroundingText(1,0) can split a surrogate pair (e.g. an
-                    // emoji stored as two UTF-16 chars), so use the codepoint variant.
-                    val selectedText = ic.getSelectedText(0)
-                    if (!selectedText.isNullOrEmpty()) {
-                        ic.commitText("", 1)
+                    // PRIORITY 3: No composing, no selection — delete character before cursor.
+                    // Use codepoint-aware deletion so emoji/Sinhala chars
+                    // (which can be multiple UTF-16 units) are deleted correctly.
+                    val beforeCursor = ic.getTextBeforeCursor(4, 0)
+                    if (!beforeCursor.isNullOrEmpty()) {
+                        val lastCodePoint = Character.codePointBefore(beforeCursor, beforeCursor.length)
+                        val charCount = Character.charCount(lastCodePoint)
+                        ic.deleteSurroundingText(charCount, 0)
                     } else {
-                        // Get character before cursor to check if it's multi-char (emoji/Sinhala)
-                        val beforeCursor = ic.getTextBeforeCursor(4, 0)
-                        if (!beforeCursor.isNullOrEmpty()) {
-                            // Count how many UTF-16 units the last code point occupies
-                            val lastCodePoint = Character.codePointBefore(beforeCursor, beforeCursor.length)
-                            val charCount = Character.charCount(lastCodePoint)
-                            ic.deleteSurroundingText(charCount, 0)
-                        } else {
-                            ic.deleteSurroundingText(1, 0)
-                        }
+                        ic.deleteSurroundingText(1, 0)
                     }
                 }
             }
