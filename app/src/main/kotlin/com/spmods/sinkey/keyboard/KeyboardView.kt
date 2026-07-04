@@ -159,7 +159,11 @@ fun KeyboardView(
                     }
 
                     // Space — center, largest weight
-                    SpaceKey(weight = 4.5f) { onKey("SPACE") }
+                    SpaceKey(
+                        weight = 4.5f,
+                        onTap = { onKey("SPACE") },
+                        onLongPress = { onKey("SWITCH_KEYBOARD") }
+                    )
 
                     SpecialKey(label = ".", weight = 0.8f) { onKey(".") }
                     EnterKey(weight = 2.0f) { onKey("ENTER") }
@@ -566,19 +570,23 @@ private fun RowScope.EmojiKey(weight: Float, onTap: () -> Unit, onLongPress: () 
     }
 }
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
-private fun RowScope.SpaceKey(weight: Float, onTap: () -> Unit) {
+private fun RowScope.SpaceKey(weight: Float, onTap: () -> Unit, onLongPress: () -> Unit) {
     Box(
         modifier = Modifier
             .height(46.dp)
             .weight(weight)
             .clip(RoundedCornerShape(6.dp))
             .background(Color.White)
-            .clickable { onTap() },
+            .combinedClickable(
+                onClick = { onTap() },
+                onLongClick = { onLongPress() }
+            ),
         contentAlignment = Alignment.Center
     ) {
         Text(
-            text = "SinKey board",
+            text = "Desh Keyboard",
             fontSize = 12.sp,
             color = Color(0xFF888888),
             textAlign = androidx.compose.ui.text.style.TextAlign.Center
