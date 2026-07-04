@@ -46,6 +46,8 @@ import com.spmods.sinkey.data.PreferencesManager
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.withTimeoutOrNull
 import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.rememberLazyListState
 
 // Number labels for top row keys (QWERTYUIOP → 1–9, 0)
 private val topRowNumbers = listOf("1","2","3","4","5","6","7","8","9","0")
@@ -239,23 +241,22 @@ private fun ToolbarRow(onKey: (String) -> Unit) {
 // ─────────────────────────────────────────────────────────────────────────────
 @Composable
 private fun EmojiRow(emojis: List<String>, onKey: (String) -> Unit, onMoreClick: () -> Unit) {
-    val scrollState = rememberScrollState()
-    // NOTE: Must NOT use fillMaxWidth() here — it prevents horizontal scrolling.
-    // Instead wrap in a Box that fills width, and let the Row be scrollable inside it.
-    Box(
+    // LazyRow is the CORRECT way to get horizontal scrolling in Compose.
+    // Regular Row + horizontalScroll + fillMaxWidth conflict with each other.
+    // LazyRow handles clipping and scrolling natively without those issues.
+    val items = emojis + listOf("MORE_BTN")
+    LazyRow(
         modifier = Modifier
             .fillMaxWidth()
             .background(KeyboardBg)
-            .padding(vertical = 2.dp)
-    ) {
-    Row(
-        modifier = Modifier
-            .horizontalScroll(scrollState),
+            .padding(vertical = 2.dp),
         horizontalArrangement = Arrangement.spacedBy(2.dp),
-        verticalAlignment = Alignment.CenterVertically
+        verticalAlignment = Alignment.CenterVertically,
+        state = rememberLazyListState()
     ) {
-        Spacer(modifier = Modifier.width(4.dp))
-        emojis.forEach { emoji ->
+        item { Spacer(modifier = Modifier.width(4.dp)) }
+        items(emojis.size) { index ->
+            val emoji = emojis[index]
             Box(
                 modifier = Modifier
                     .size(40.dp)
@@ -266,19 +267,20 @@ private fun EmojiRow(emojis: List<String>, onKey: (String) -> Unit, onMoreClick:
                 Text(text = emoji, fontSize = 22.sp)
             }
         }
-        // "..." more button → opens full emoji picker
-        Box(
-            modifier = Modifier
-                .size(40.dp)
-                .clip(RoundedCornerShape(6.dp))
-                .clickable { onMoreClick() },
-            contentAlignment = Alignment.Center
-        ) {
-            Text(text = "•••", fontSize = 14.sp, color = Color(0xFF888888))
+        // "•••" more button → opens full emoji picker
+        item {
+            Box(
+                modifier = Modifier
+                    .size(40.dp)
+                    .clip(RoundedCornerShape(6.dp))
+                    .clickable { onMoreClick() },
+                contentAlignment = Alignment.Center
+            ) {
+                Text(text = "•••", fontSize = 14.sp, color = Color(0xFF888888))
+            }
         }
-        Spacer(modifier = Modifier.width(4.dp))
+        item { Spacer(modifier = Modifier.width(4.dp)) }
     }
-    } // end Box
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
