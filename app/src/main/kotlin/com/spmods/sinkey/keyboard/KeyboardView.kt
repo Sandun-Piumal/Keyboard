@@ -11,6 +11,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -59,6 +60,7 @@ fun KeyboardView(
 ) {
     var shift by remember { mutableStateOf(false) }
     var showLangTooltip by remember { mutableStateOf(false) }
+    var showEmojiPicker by remember { mutableStateOf(false) }
 
     // Collect real recent emojis from DataStore
     val context = LocalContext.current
@@ -73,6 +75,17 @@ fun KeyboardView(
         }
     }
 
+    // ── Emoji picker replaces keyboard when open ────────────────────────────
+    if (showEmojiPicker) {
+        EmojiPickerView(
+            recentEmojis = recentEmojis,
+            onEmojiSelected = { emoji -> onKey(emoji) },
+            onBackspace = { onKey("BACKSPACE") },
+            onDismiss = { showEmojiPicker = false }
+        )
+        return
+    }
+
     Box(modifier = Modifier.fillMaxWidth()) {
         Column(
             modifier = Modifier
@@ -83,7 +96,11 @@ fun KeyboardView(
             ToolbarRow(onKey = onKey)
 
             // ── Recent emoji row ────────────────────────────────────────
-            EmojiRow(emojis = recentEmojis, onKey = onKey)
+            EmojiRow(
+                emojis = recentEmojis,
+                onKey = onKey,
+                onMoreClick = { showEmojiPicker = true }
+            )
 
             // ── Letter rows ─────────────────────────────────────────────
             Column(
@@ -124,7 +141,11 @@ fun KeyboardView(
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     SpecialKey(label = "?123", weight = 1.8f) { /* TODO: number layout */ }
-                    EmojiKey(weight = 1.3f, onTap = { onKey(",") }, onLongPress = { onKey("EMOJI") })
+                    EmojiKey(
+                        weight = 1.3f,
+                        onTap = { onKey(",") },
+                        onLongPress = { showEmojiPicker = true }
+                    )
 
                     // Language toggle — with tooltip anchor
                     Box(modifier = Modifier.weight(1.3f)) {
@@ -212,7 +233,7 @@ private fun ToolbarRow(onKey: (String) -> Unit) {
 // Recent emoji row
 // ─────────────────────────────────────────────────────────────────────────────
 @Composable
-private fun EmojiRow(emojis: List<String>, onKey: (String) -> Unit) {
+private fun EmojiRow(emojis: List<String>, onKey: (String) -> Unit, onMoreClick: () -> Unit) {
     val scrollState = rememberScrollState()
     Row(
         modifier = Modifier
@@ -234,12 +255,12 @@ private fun EmojiRow(emojis: List<String>, onKey: (String) -> Unit) {
                 Text(text = emoji, fontSize = 22.sp)
             }
         }
-        // "..." more button
+        // "..." more button → opens full emoji picker
         Box(
             modifier = Modifier
                 .size(40.dp)
                 .clip(RoundedCornerShape(6.dp))
-                .clickable { onKey("EMOJI_MORE") },
+                .clickable { onMoreClick() },
             contentAlignment = Alignment.Center
         ) {
             Text(text = "•••", fontSize = 14.sp, color = Color(0xFF888888))
@@ -490,18 +511,20 @@ private fun LangToggleKey(currentLanguage: String, onTap: () -> Unit) {
         Column(horizontalAlignment = Alignment.CenterHorizontally) {
             Text(
                 text = "අ",
-                fontSize = 17.sp,
+                fontSize = 13.sp,   // smaller — matches screenshot
                 color = if (isSinhala) DeshGreen else Color(0xFF333333),
-                fontWeight = if (isSinhala) FontWeight.Bold else FontWeight.Medium
+                fontWeight = if (isSinhala) FontWeight.Bold else FontWeight.Normal
             )
+            // Green underline indicator when Sinhala active
             Box(
                 modifier = Modifier
                     .padding(top = 2.dp)
+                    .height(2.dp)
+                    .width(18.dp)
                     .background(
                         color = if (isSinhala) DeshGreen else Color.Transparent,
-                        shape = RoundedCornerShape(2.dp)
+                        shape = RoundedCornerShape(1.dp)
                     )
-                    .padding(horizontal = 8.dp, vertical = 1.5.dp)
             )
         }
     }
@@ -510,6 +533,7 @@ private fun LangToggleKey(currentLanguage: String, onTap: () -> Unit) {
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun RowScope.EmojiKey(weight: Float, onTap: () -> Unit, onLongPress: () -> Unit) {
+    // Screenshot shows: emoji face icon on top, comma below — single key
     Box(
         modifier = Modifier
             .height(46.dp)
@@ -522,9 +546,22 @@ private fun RowScope.EmojiKey(weight: Float, onTap: () -> Unit, onLongPress: () 
             ),
         contentAlignment = Alignment.Center
     ) {
-        Column(horizontalAlignment = Alignment.CenterHorizontally) {
-            Text(text = "☺", fontSize = 13.sp, color = Color(0xFF333333), fontWeight = FontWeight.Medium)
-            Text(text = ",", fontSize = 10.sp, color = Color(0xFF333333), fontWeight = FontWeight.Medium)
+        Column(
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.Center
+        ) {
+            Text(
+                text = "☺",
+                fontSize = 16.sp,
+                color = Color(0xFF444444),
+                lineHeight = 18.sp
+            )
+            Text(
+                text = ",",
+                fontSize = 10.sp,
+                color = Color(0xFF444444),
+                lineHeight = 11.sp
+            )
         }
     }
 }
@@ -541,7 +578,7 @@ private fun RowScope.SpaceKey(weight: Float, onTap: () -> Unit) {
         contentAlignment = Alignment.Center
     ) {
         Text(
-            text = "Desh Keyboard",
+            text = "SinKey board",
             fontSize = 12.sp,
             color = Color(0xFF888888),
             textAlign = androidx.compose.ui.text.style.TextAlign.Center
@@ -560,6 +597,7 @@ private fun RowScope.EnterKey(weight: Float, onTap: () -> Unit) {
             .clickable { onTap() },
         contentAlignment = Alignment.Center
     ) {
-        Text(text = "↵", fontSize = 20.sp, color = Color.White)
+        // Screenshot: left-pointing return arrow ←
+        Text(text = "←", fontSize = 22.sp, color = Color.White)
     }
 }
