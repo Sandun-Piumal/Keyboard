@@ -39,7 +39,6 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.zIndex
 import kotlinx.coroutines.delay
-import kotlinx.coroutines.isActive
 import kotlinx.coroutines.withTimeoutOrNull
 import androidx.compose.foundation.gestures.detectTapGestures
 
@@ -430,13 +429,16 @@ private fun RowScope.BackspaceKey(weight: Float, onTap: () -> Unit) {
                         } else {
                             // Finger still held → start repeating until released
                             onTap()
-                            while (isActive) {
-                                delay(repeatInterval)
-                                if (!isActive) break
-                                onTap()
-                                // Check if finger was released
-                                val stillHeld = withTimeoutOrNull(1) { tryAwaitRelease() }
-                                if (stillHeld != null) break
+                            try {
+                                while (true) {
+                                    delay(repeatInterval)
+                                    onTap()
+                                    // Check if finger was released (1ms window)
+                                    val done = withTimeoutOrNull(1L) { tryAwaitRelease() }
+                                    if (done != null) break
+                                }
+                            } catch (_: Exception) {
+                                // Coroutine cancelled (finger released / gesture ended)
                             }
                         }
                     }
