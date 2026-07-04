@@ -3,6 +3,7 @@ package com.spmods.sinkey.data
 import android.content.Context
 import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.edit
+import androidx.datastore.preferences.core.floatPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import kotlinx.coroutines.flow.Flow
@@ -24,6 +25,11 @@ class PreferencesManager(private val context: Context) {
         val KEY_SOUND = booleanPreferencesKey("key_sound")
         val KEY_VIBRATE = booleanPreferencesKey("key_vibrate")
         val RECENT_EMOJIS = stringPreferencesKey("recent_emojis") // comma-separated
+        // Keyboard Height settings
+        val KEYBOARD_HEIGHT = floatPreferencesKey("keyboard_height") // 0f=S, 1f=M, 2f=L, 3f=XL
+        val BOTTOM_SPACE_ENABLED = booleanPreferencesKey("bottom_space_enabled")
+        val BOTTOM_SPACE_SIZE = floatPreferencesKey("bottom_space_size") // 0f=S, 1f=M, 2f=L, 3f=XL
+        val SHOW_KEY_BORDERS = booleanPreferencesKey("show_key_borders")
     }
 
     val themeMode: Flow<ThemeMode> = context.dataStore.data.map { prefs ->
@@ -44,6 +50,24 @@ class PreferencesManager(private val context: Context) {
 
     val keyVibrateEnabled: Flow<Boolean> = context.dataStore.data.map { prefs ->
         prefs[Keys.KEY_VIBRATE] ?: false
+    }
+
+    // 0f=S, 1f=M, 2f=L, 3f=XL — default M (1f)
+    val keyboardHeight: Flow<Float> = context.dataStore.data.map { prefs ->
+        prefs[Keys.KEYBOARD_HEIGHT] ?: 1f
+    }
+
+    val bottomSpaceEnabled: Flow<Boolean> = context.dataStore.data.map { prefs ->
+        prefs[Keys.BOTTOM_SPACE_ENABLED] ?: true
+    }
+
+    // 0f=S, 1f=M, 2f=L, 3f=XL — default S (0f)
+    val bottomSpaceSize: Flow<Float> = context.dataStore.data.map { prefs ->
+        prefs[Keys.BOTTOM_SPACE_SIZE] ?: 0f
+    }
+
+    val showKeyBorders: Flow<Boolean> = context.dataStore.data.map { prefs ->
+        prefs[Keys.SHOW_KEY_BORDERS] ?: true
     }
 
     /** Emits the most-recently-used emojis list (up to [MAX_RECENT] entries). */
@@ -67,6 +91,22 @@ class PreferencesManager(private val context: Context) {
 
     suspend fun setKeyVibrateEnabled(enabled: Boolean) {
         context.dataStore.edit { it[Keys.KEY_VIBRATE] = enabled }
+    }
+
+    suspend fun setKeyboardHeight(value: Float) {
+        context.dataStore.edit { it[Keys.KEYBOARD_HEIGHT] = value }
+    }
+
+    suspend fun setBottomSpaceEnabled(enabled: Boolean) {
+        context.dataStore.edit { it[Keys.BOTTOM_SPACE_ENABLED] = enabled }
+    }
+
+    suspend fun setBottomSpaceSize(value: Float) {
+        context.dataStore.edit { it[Keys.BOTTOM_SPACE_SIZE] = value }
+    }
+
+    suspend fun setShowKeyBorders(enabled: Boolean) {
+        context.dataStore.edit { it[Keys.SHOW_KEY_BORDERS] = enabled }
     }
 
     /**
