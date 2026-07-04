@@ -137,18 +137,22 @@ class SinKeyInputMethodService : InputMethodService() {
                 ic.commitText(key, 1)
             }
             else -> {
-                // Check if the key is an emoji (Unicode surrogate or multi-codepoint)
+                // Check if the key is an emoji
                 if (isEmoji(key)) {
                     commitPendingWord()
                     ic.commitText(key, 1)
-                    // Save to recent emojis asynchronously
                     serviceScope.launch {
                         prefs.addRecentEmoji(key)
                     }
                 } else if (currentLanguage.value == "si") {
-                    wordBuffer.append(key)
-                    ic.setComposingText(renderBuffer(), 1)
+                    // Singlish mode: buffer the raw roman input, show live Sinhala preview
+                    val lower = key.lowercase()
+                    wordBuffer.append(lower)
+                    // Show transliterated preview as composing (underlined) text
+                    val preview = SinhalaTransliterator.transliterate(wordBuffer.toString())
+                    ic.setComposingText(preview, 1)
                 } else {
+                    // English mode: commit directly
                     ic.commitText(key, 1)
                 }
             }
