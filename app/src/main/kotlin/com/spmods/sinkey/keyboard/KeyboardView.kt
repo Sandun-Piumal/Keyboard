@@ -39,6 +39,9 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.zIndex
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.isActive
+import kotlinx.coroutines.withTimeoutOrNull
+import androidx.compose.foundation.gestures.detectTapGestures
 
 // Number labels for top row keys (QWERTYUIOP → 1–9, 0)
 private val topRowNumbers = listOf("1","2","3","4","5","6","7","8","9","0")
@@ -412,59 +415,32 @@ private fun RowScope.BackspaceKey(weight: Float, onTap: () -> Unit) {
             .clip(RoundedCornerShape(6.dp))
             .background(Color(0xFFBCC4CC))
             .pointerInput(Unit) {
-                awaitPointerEventScope {
-                    while (true) {
-                        // Wait for finger down
-                        val down = awaitPointerEvent()
-                        val pressed = down.changes.firstOrNull() ?: continue
-                        if (!pressed.pressed) continue
-
-                        pressed.consume()
-
-                        var isLongPress = false
-
-                        // Race: either finger lifts (tap) or 400ms passes (long press start)
-                        var elapsed = 0L
+                detectTapGestures(
+                    onPress = { _ ->
                         val longPressDelay = 400L
                         val repeatInterval = 50L
-                        var held = true
 
-                        // Poll pointer state while waiting for long press threshold
-                        while (elapsed < longPressDelay) {
-                            val event = awaitPointerEvent()
-                            val change = event.changes.firstOrNull()
-                            if (change == null || !change.pressed) {
-                                // Finger lifted before long press — it's a tap
-                                change?.consume()
-                                held = false
-                                break
-                            }
-                            change.consume()
-                            delay(16)
-                            elapsed += 16
-                        }
+                        // withTimeoutOrNull returns null on timeout (= long press),
+                        // or true if tryAwaitRelease returned before timeout (= tap).
+                        val released = withTimeoutOrNull(longPressDelay) { tryAwaitRelease() }
 
-                        if (!held) {
-                            // Normal tap
+                        if (released != null) {
+                            // Finger lifted within threshold → simple tap
                             onTap()
                         } else {
-                            // Long press — fire immediately then repeat while held
-                            isLongPress = true
+                            // Finger still held → start repeating until released
                             onTap()
-                            while (true) {
+                            while (isActive) {
                                 delay(repeatInterval)
-                                val event = awaitPointerEvent()
-                                val change = event.changes.firstOrNull()
-                                if (change == null || !change.pressed) {
-                                    change?.consume()
-                                    break
-                                }
-                                change.consume()
+                                if (!isActive) break
                                 onTap()
+                                // Check if finger was released
+                                val stillHeld = withTimeoutOrNull(1) { tryAwaitRelease() }
+                                if (stillHeld != null) break
                             }
                         }
                     }
-                }
+                )
             },
         contentAlignment = Alignment.Center
     ) {
