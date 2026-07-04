@@ -123,6 +123,11 @@ class SinKeyInputMethodService : InputMethodService() {
             "SHIFT" -> {
                 // handled visually inside KeyboardView; no text action here
             }
+            "SWITCH_KEYBOARD" -> {
+                // Show system keyboard picker (InputMethodManager switcher dialog)
+                val imm = getSystemService(INPUT_METHOD_SERVICE) as android.view.inputmethod.InputMethodManager
+                imm.showInputMethodPicker()
+            }
             "LANG_TOGGLE" -> {
                 commitPendingWord()
                 currentLanguage.value = if (currentLanguage.value == "en") "si" else "en"
