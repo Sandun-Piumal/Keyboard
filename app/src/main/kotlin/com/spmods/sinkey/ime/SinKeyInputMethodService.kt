@@ -106,10 +106,15 @@ class SinKeyInputMethodService : InputMethodService() {
             "BACKSPACE" -> {
                 if (wordBuffer.isNotEmpty()) {
                     wordBuffer.deleteCharAt(wordBuffer.length - 1)
-                    // re-render committed composing text as the buffer shrinks
                     ic.setComposingText(renderBuffer(), 1)
                 } else {
-                    ic.deleteSurroundingText(1, 0)
+                    // If there is a selection, delete it; otherwise delete one char before cursor
+                    val selectedText = ic.getSelectedText(0)
+                    if (!selectedText.isNullOrEmpty()) {
+                        ic.commitText("", 1)
+                    } else {
+                        ic.deleteSurroundingText(1, 0)
+                    }
                 }
             }
             "SPACE" -> {
