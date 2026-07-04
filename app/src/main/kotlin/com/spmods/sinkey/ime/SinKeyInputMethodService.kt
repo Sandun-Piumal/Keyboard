@@ -8,10 +8,8 @@ import android.view.inputmethod.EditorInfo
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.platform.ComposeView
 import androidx.compose.ui.platform.ViewCompositionStrategy
-import androidx.core.provider.FontRequest
 import androidx.emoji2.bundled.BundledEmojiCompatConfig
 import androidx.emoji2.text.EmojiCompat
-import androidx.emoji2.text.FontRequestEmojiCompatConfig
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.setViewTreeLifecycleOwner
 import androidx.savedstate.setViewTreeSavedStateRegistryOwner
@@ -72,48 +70,23 @@ class SinKeyInputMethodService : InputMethodService() {
     private fun initEmojiCompat() {
         // Skip if already initialised (service can be re-created)
         if (runCatching { EmojiCompat.get() }.isSuccess) return
-
         try {
-            // Google Fonts provider — ships on all GMS devices
-            val fontRequest = FontRequest(
-                "com.google.android.gms.fonts",          // authority
-                "com.google.android.gms",                // package
-                "Noto Color Emoji Compat",               // query
-                // SHA-512 certificate hash for the GMS fonts provider
-                listOf(
-                    listOf(
-                        0xEF, 0xBE, 0x6A, 0x5A, 0x41, 0xEF, 0x76, 0x3D,
-                        0x2D, 0xA1, 0x9C, 0x01, 0xEB, 0xAF, 0xC4, 0x2C,
-                        0x3A, 0x3F, 0xE3, 0x0E, 0x4F, 0x55, 0x9E, 0x7A,
-                        0xE1, 0xB3, 0x34, 0xBE, 0x31, 0x10, 0x2A, 0xF1,
-                        0xF5, 0xBE, 0xEB, 0xCB, 0xBB, 0x9D, 0x4E, 0xF4,
-                        0x85, 0xB0, 0xCA, 0x0D, 0x62, 0xBB, 0x48, 0xEA,
-                        0xD3, 0xA9, 0x94, 0x52, 0x9D, 0x30, 0xD0, 0x2E,
-                        0x13, 0xEB, 0x92, 0xC2, 0x73, 0x4D, 0x1A, 0x94
-                    ).map { it.toByte() }.toByteArray()
-                )
-            )
-
-            val config = FontRequestEmojiCompatConfig(this, fontRequest)
-                .setReplaceAll(true)              // replace ALL emoji, not just unsupported ones
+            // BundledEmojiCompatConfig bundles a recent Noto Color Emoji font
+            // directly in the APK via the emoji2-bundled artifact.
+            // No network access needed, no ByteArray cert hash issues.
+            val config = BundledEmojiCompatConfig(this)
+                .setReplaceAll(true)
                 .registerInitCallback(object : EmojiCompat.InitCallback() {
                     override fun onInitialized() {
-                        android.util.Log.i("SinKey", "EmojiCompat initialized (downloadable font)")
+                        android.util.Log.i("SinKey", "EmojiCompat (bundled) initialized")
                     }
                     override fun onFailed(throwable: Throwable?) {
-                        android.util.Log.w("SinKey", "EmojiCompat download failed, using bundled", throwable)
-                        // Fallback: use whatever emoji the system font has
-                        EmojiCompat.reset(BundledEmojiCompatConfig(this@SinKeyInputMethodService))
-                            .load()
+                        android.util.Log.w("SinKey", "EmojiCompat init failed", throwable)
                     }
                 })
-
             EmojiCompat.init(config)
         } catch (e: Exception) {
-            android.util.Log.w("SinKey", "EmojiCompat init failed, using bundled fallback", e)
-            try {
-                EmojiCompat.init(BundledEmojiCompatConfig(this))
-            } catch (_: Exception) { /* last resort: no EmojiCompat */ }
+            android.util.Log.w("SinKey", "EmojiCompat init exception", e)
         }
     }
 
