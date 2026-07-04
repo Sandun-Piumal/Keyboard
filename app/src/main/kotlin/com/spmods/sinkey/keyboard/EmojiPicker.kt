@@ -4,8 +4,9 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.GridItemSpan
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
-import androidx.compose.foundation.lazy.grid.items
+import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Text
 import androidx.compose.runtime.*
@@ -13,9 +14,11 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import kotlinx.coroutines.launch
 
 private val DeshGreenPicker = Color(0xFF2D6A4F)
 private val PickerBg = Color(0xFFDDE1E7)
@@ -28,20 +31,47 @@ fun EmojiPickerView(
     onBackspace: () -> Unit,
     onDismiss: () -> Unit
 ) {
-    // Recent category is index 0 only if there are recent emojis
     val hasRecent = recentEmojis.isNotEmpty()
-    val allCategories = buildList {
-        if (hasRecent) add(EmojiData.Category("🕐", "Recent", recentEmojis))
-        addAll(EmojiData.categories)
+    val allCategories = remember(recentEmojis) {
+        buildList {
+            if (hasRecent) add(EmojiData.Category("🕐", "Recent", recentEmojis))
+            addAll(EmojiData.categories)
+        }
     }
+
+    // Build a flat index map: gridItem index → category index
+    // Each category has 1 header item + N emoji items
+    // header items have full span (8 cols), emoji items have span 1
+    val categoryStartIndices = remember(allCategories) {
+        val indices = mutableListOf<Int>()
+        var cursor = 0
+        allCategories.forEach { cat ->
+            indices.add(cursor)
+            cursor += 1 + cat.emojis.size // 1 header + emojis
+        }
+        indices
+    }
+
     var selectedCategory by remember { mutableIntStateOf(0) }
+    val gridState = rememberLazyGridState()
+    val coroutineScope = rememberCoroutineScope()
+
+    // Auto-update selected tab based on scroll position
+    LaunchedEffect(gridState.firstVisibleItemIndex) {
+        val firstVisible = gridState.firstVisibleItemIndex
+        // Find which category this item belongs to
+        val catIndex = categoryStartIndices.indexOfLast { it <= firstVisible }
+        if (catIndex >= 0 && catIndex != selectedCategory) {
+            selectedCategory = catIndex
+        }
+    }
 
     Column(
         modifier = Modifier
             .fillMaxWidth()
             .background(PickerBg)
     ) {
-        // ── Top bar: back button + delete ──────────────────────────
+        // ── Top bar: back + delete ─────────────────────────────────
         Row(
             modifier = Modifier
                 .fillMaxWidth()
@@ -49,7 +79,6 @@ fun EmojiPickerView(
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically
         ) {
-            // Back to keyboard
             Box(
                 modifier = Modifier
                     .size(36.dp)
@@ -60,8 +89,6 @@ fun EmojiPickerView(
             ) {
                 Text("⌨️", fontSize = 18.sp)
             }
-
-            // Backspace
             Box(
                 modifier = Modifier
                     .size(36.dp)
@@ -89,19 +116,21 @@ fun EmojiPickerView(
                         .height(36.dp)
                         .clip(RoundedCornerShape(6.dp))
                         .background(if (isSelected) TabActiveBg else Color.Transparent)
-                        .clickable { selectedCategory = index },
+                        .clickable {
+                            selectedCategory = index
+                            coroutineScope.launch {
+                                // Scroll grid to the header of this category
+                                gridState.animateScrollToItem(categoryStartIndices[index])
+                            }
+                        },
                     contentAlignment = Alignment.Center
                 ) {
-                    Text(
-                        text = category.icon,
-                        fontSize = 18.sp,
-                        textAlign = TextAlign.Center
-                    )
+                    Text(text = category.icon, fontSize = 18.sp, textAlign = TextAlign.Center)
                 }
             }
         }
 
-        // Thin green indicator line under selected tab
+        // Green underline under selected tab
         Row(
             modifier = Modifier
                 .fillMaxWidth()
@@ -115,8 +144,7 @@ fun EmojiPickerView(
                         .height(2.dp)
                         .padding(horizontal = 4.dp)
                         .background(
-                            if (index == selectedCategory) DeshGreenPicker
-                            else Color.Transparent,
+                            if (index == selectedCategory) DeshGreenPicker else Color.Transparent,
                             shape = RoundedCornerShape(1.dp)
                         )
                 )
@@ -125,28 +153,52 @@ fun EmojiPickerView(
 
         Spacer(modifier = Modifier.height(4.dp))
 
-        // ── Emoji grid ─────────────────────────────────────────────
+        // ── Single unified grid with all categories ────────────────
         LazyVerticalGrid(
             columns = GridCells.Fixed(8),
+            state = gridState,
             modifier = Modifier
                 .fillMaxWidth()
                 .height(200.dp)
                 .padding(horizontal = 4.dp),
-            contentPadding = PaddingValues(bottom = 4.dp)
+            contentPadding = PaddingValues(bottom = 8.dp)
         ) {
-            items(allCategories[selectedCategory].emojis) { emoji ->
-                Box(
-                    modifier = Modifier
-                        .aspectRatio(1f)
-                        .clip(RoundedCornerShape(6.dp))
-                        .clickable { onEmojiSelected(emoji) },
-                    contentAlignment = Alignment.Center
+            allCategories.forEachIndexed { catIndex, category ->
+                // Category header — full width
+                item(
+                    key = "header_$catIndex",
+                    span = { GridItemSpan(8) }
                 ) {
                     Text(
-                        text = emoji,
-                        fontSize = 22.sp,
-                        textAlign = TextAlign.Center
+                        text = category.name,
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        color = Color(0xFF666666),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(start = 4.dp, top = 8.dp, bottom = 4.dp)
                     )
+                }
+
+                // Emoji items
+                items(
+                    count = category.emojis.size,
+                    key = { i -> "emoji_${catIndex}_$i" }
+                ) { i ->
+                    val emoji = category.emojis[i]
+                    Box(
+                        modifier = Modifier
+                            .aspectRatio(1f)
+                            .clip(RoundedCornerShape(6.dp))
+                            .clickable { onEmojiSelected(emoji) },
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(
+                            text = emoji,
+                            fontSize = 22.sp,
+                            textAlign = TextAlign.Center
+                        )
+                    }
                 }
             }
         }
