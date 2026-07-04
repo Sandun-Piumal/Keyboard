@@ -243,11 +243,12 @@ private fun EmojiRow(emojis: List<String>, onKey: (String) -> Unit, onMoreClick:
         modifier = Modifier
             .fillMaxWidth()
             .background(KeyboardBg)
-            .padding(horizontal = 4.dp, vertical = 2.dp)
+            .padding(vertical = 2.dp)
             .horizontalScroll(scrollState),
         horizontalArrangement = Arrangement.spacedBy(2.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
+        Spacer(modifier = Modifier.width(4.dp))
         emojis.forEach { emoji ->
             Box(
                 modifier = Modifier
@@ -269,6 +270,7 @@ private fun EmojiRow(emojis: List<String>, onKey: (String) -> Unit, onMoreClick:
         ) {
             Text(text = "•••", fontSize = 14.sp, color = Color(0xFF888888))
         }
+        Spacer(modifier = Modifier.width(4.dp))
     }
 }
 
