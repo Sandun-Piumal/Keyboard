@@ -97,6 +97,11 @@ private fun SinKeyApp(prefs: PreferencesManager) {
     val scope = rememberCoroutineScope()
 
     val themeMode by prefs.themeMode.collectAsState(initial = ThemeMode.SYSTEM)
+    val isDark = when (themeMode) {
+        ThemeMode.LIGHT  -> false
+        ThemeMode.DARK   -> true
+        ThemeMode.SYSTEM -> isSystemInDarkTheme()
+    }
     val defaultLanguage by prefs.defaultLanguage.collectAsState(initial = "si")
     val keySoundEnabled by prefs.keySoundEnabled.collectAsState(initial = true)
     val keyVibrateEnabled by prefs.keyVibrateEnabled.collectAsState(initial = false)
@@ -220,6 +225,7 @@ private fun SinKeyApp(prefs: PreferencesManager) {
                     bottomSpaceEnabled = bottomSpaceEnabled,
                     bottomSpaceSize = bottomSpaceSize,
                     showKeyBorders = showKeyBorders,
+                    isDark = isDark,
                     onKey = { /* preview — no real input dispatch */ },
                     onDismiss = { showKeyboardPreview = false }
                 )
