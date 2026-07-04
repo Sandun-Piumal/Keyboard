@@ -100,17 +100,24 @@ class SinKeyInputMethodService : InputMethodService() {
             setViewCompositionStrategy(ViewCompositionStrategy.DisposeOnDetachedFromWindowOrReleasedFromPool)
 
             setContent {
-                val keyboardHeight by prefs.keyboardHeight.collectAsState(initial = 1f)
+                val themeMode by prefs.themeMode.collectAsState(initial = com.spmods.sinkey.data.ThemeMode.SYSTEM)
+                val isDark = when (themeMode) {
+                    com.spmods.sinkey.data.ThemeMode.LIGHT  -> false
+                    com.spmods.sinkey.data.ThemeMode.DARK   -> true
+                    com.spmods.sinkey.data.ThemeMode.SYSTEM -> androidx.compose.foundation.isSystemInDarkTheme()
+                }
+                val keyboardHeight by prefs.keyboardHeight.collectAsState(initial = 2f)
                 val bottomSpaceEnabled by prefs.bottomSpaceEnabled.collectAsState(initial = true)
                 val bottomSpaceSize by prefs.bottomSpaceSize.collectAsState(initial = 0f)
                 val showKeyBorders by prefs.showKeyBorders.collectAsState(initial = true)
-                SinKeyTheme {
+                SinKeyTheme(themeMode = themeMode) {
                     KeyboardView(
                         currentLanguage = currentLanguage.value,
                         keyboardHeight = keyboardHeight,
                         bottomSpaceEnabled = bottomSpaceEnabled,
                         bottomSpaceSize = bottomSpaceSize,
                         showKeyBorders = showKeyBorders,
+                        isDark = isDark,
                         onKey = ::handleKey
                     )
                 }
