@@ -5,6 +5,8 @@ import android.os.VibrationEffect
 import android.os.Vibrator
 import android.view.View
 import android.view.inputmethod.EditorInfo
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.platform.ComposeView
 import androidx.compose.ui.platform.ViewCompositionStrategy
@@ -98,9 +100,17 @@ class SinKeyInputMethodService : InputMethodService() {
             setViewCompositionStrategy(ViewCompositionStrategy.DisposeOnDetachedFromWindowOrReleasedFromPool)
 
             setContent {
+                val keyboardHeight by prefs.keyboardHeight.collectAsState(initial = 1f)
+                val bottomSpaceEnabled by prefs.bottomSpaceEnabled.collectAsState(initial = true)
+                val bottomSpaceSize by prefs.bottomSpaceSize.collectAsState(initial = 0f)
+                val showKeyBorders by prefs.showKeyBorders.collectAsState(initial = true)
                 SinKeyTheme {
                     KeyboardView(
                         currentLanguage = currentLanguage.value,
+                        keyboardHeight = keyboardHeight,
+                        bottomSpaceEnabled = bottomSpaceEnabled,
+                        bottomSpaceSize = bottomSpaceSize,
+                        showKeyBorders = showKeyBorders,
                         onKey = ::handleKey
                     )
                 }
