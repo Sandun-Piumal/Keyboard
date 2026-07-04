@@ -240,11 +240,16 @@ private fun ToolbarRow(onKey: (String) -> Unit) {
 @Composable
 private fun EmojiRow(emojis: List<String>, onKey: (String) -> Unit, onMoreClick: () -> Unit) {
     val scrollState = rememberScrollState()
-    Row(
+    // NOTE: Must NOT use fillMaxWidth() here — it prevents horizontal scrolling.
+    // Instead wrap in a Box that fills width, and let the Row be scrollable inside it.
+    Box(
         modifier = Modifier
             .fillMaxWidth()
             .background(KeyboardBg)
             .padding(vertical = 2.dp)
+    ) {
+    Row(
+        modifier = Modifier
             .horizontalScroll(scrollState),
         horizontalArrangement = Arrangement.spacedBy(2.dp),
         verticalAlignment = Alignment.CenterVertically
@@ -273,6 +278,7 @@ private fun EmojiRow(emojis: List<String>, onKey: (String) -> Unit, onMoreClick:
         }
         Spacer(modifier = Modifier.width(4.dp))
     }
+    } // end Box
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
