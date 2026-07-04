@@ -52,9 +52,9 @@ class PreferencesManager(private val context: Context) {
         prefs[Keys.KEY_VIBRATE] ?: false
     }
 
-    // 0f=S, 1f=M, 2f=L, 3f=XL — default M (1f)
+    // 0f=S, 1f=M, 2f=L, 3f=XL — default L (2f)
     val keyboardHeight: Flow<Float> = context.dataStore.data.map { prefs ->
-        prefs[Keys.KEYBOARD_HEIGHT] ?: 1f
+        prefs[Keys.KEYBOARD_HEIGHT] ?: 2f
     }
 
     val bottomSpaceEnabled: Flow<Boolean> = context.dataStore.data.map { prefs ->
