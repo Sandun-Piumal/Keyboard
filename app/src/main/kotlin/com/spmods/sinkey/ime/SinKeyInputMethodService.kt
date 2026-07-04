@@ -17,7 +17,12 @@ import com.spmods.sinkey.data.PreferencesManager
 import com.spmods.sinkey.keyboard.KeyboardView
 import com.spmods.sinkey.keyboard.SinhalaTransliterator
 import com.spmods.sinkey.ui.theme.SinKeyTheme
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 
 /**
@@ -29,6 +34,7 @@ class SinKeyInputMethodService : InputMethodService() {
 
     private lateinit var lifecycleOwner: ImeLifecycleOwner
     private lateinit var prefs: PreferencesManager
+    private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
 
     // Buffer of the word currently being typed, used for Sinhala transliteration.
     private var wordBuffer = StringBuilder()
@@ -88,6 +94,7 @@ class SinKeyInputMethodService : InputMethodService() {
 
     override fun onDestroy() {
         lifecycleOwner.handleLifecycleEvent(Lifecycle.Event.ON_DESTROY)
+        serviceScope.cancel()
         super.onDestroy()
     }
 
@@ -125,7 +132,15 @@ class SinKeyInputMethodService : InputMethodService() {
                 ic.commitText(key, 1)
             }
             else -> {
-                if (currentLanguage.value == "si") {
+                // Check if the key is an emoji (Unicode surrogate or multi-codepoint)
+                if (isEmoji(key)) {
+                    commitPendingWord()
+                    ic.commitText(key, 1)
+                    // Save to recent emojis asynchronously
+                    serviceScope.launch {
+                        prefs.addRecentEmoji(key)
+                    }
+                } else if (currentLanguage.value == "si") {
                     wordBuffer.append(key)
                     ic.setComposingText(renderBuffer(), 1)
                 } else {
@@ -137,6 +152,26 @@ class SinKeyInputMethodService : InputMethodService() {
 
     /** Converts the in-progress romanized buffer into live Sinhala preview text. */
     private fun renderBuffer(): String = SinhalaTransliterator.transliterate(wordBuffer.toString())
+
+    /**
+     * Returns true if [key] is an emoji / non-letter character that should be
+     * committed directly and tracked in the recent-emojis list.
+     * We detect this by checking that the string contains no ASCII letters and
+     * has at least one Unicode code point in the emoji ranges.
+     */
+    private fun isEmoji(key: String): Boolean {
+        if (key.length > 8) return false // tool actions like "LANG_TOGGLE" are long
+        return key.codePoints().anyMatch { cp ->
+            // Emoji ranges: Miscellaneous Symbols, Emoticons, Supplemental Symbols,
+            // Enclosed Alphanumerics, Dingbats, flags, etc.
+            cp in 0x2600..0x27BF ||   // Misc symbols & dingbats
+            cp in 0x1F300..0x1FAFF || // Most emojis
+            cp in 0x1F900..0x1F9FF || // Supplemental
+            cp in 0x2300..0x23FF ||   // Misc technical
+            cp in 0x25A0..0x25FF ||   // Geometric shapes
+            cp in 0x2B00..0x2BFF      // Misc symbols & arrows
+        }
+    }
 
     private fun commitPendingWord() {
         if (wordBuffer.isEmpty()) return
