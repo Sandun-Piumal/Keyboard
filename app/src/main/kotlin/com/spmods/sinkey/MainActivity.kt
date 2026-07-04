@@ -3,6 +3,7 @@ package com.spmods.sinkey
 import android.app.Activity
 import android.os.Bundle
 import androidx.activity.ComponentActivity
+import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.slideInVertically
@@ -11,8 +12,6 @@ import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.Palette
@@ -55,9 +54,8 @@ import kotlinx.coroutines.launch
 
 private val DeshGreen = Color(0xFF1B5E37)
 
-private enum class Tab(val label: String) { HOME("Home"), THEMES("Themes"), SETTINGS("Settings") }
+private enum class Tab { HOME, THEMES, SETTINGS }
 
-// Separate navigation stack for sub-screens inside Settings
 private enum class SettingsSubScreen { MAIN, KEYBOARD_HEIGHT }
 
 class MainActivity : ComponentActivity() {
@@ -75,10 +73,6 @@ class MainActivity : ComponentActivity() {
             }
 
             SinKeyTheme(themeMode = themeMode) {
-                // The status bar otherwise stays the launcher's default grey since
-                // nothing tells it to follow our Material color scheme. Push the
-                // background color + matching icon tint into the window each time
-                // the theme changes.
                 val statusBarColor = MaterialTheme.colorScheme.background.toArgb()
                 val view = LocalView.current
                 SideEffect {
@@ -106,26 +100,48 @@ private fun SinKeyApp(prefs: PreferencesManager) {
     val defaultLanguage by prefs.defaultLanguage.collectAsState(initial = "si")
     val keySoundEnabled by prefs.keySoundEnabled.collectAsState(initial = true)
     val keyVibrateEnabled by prefs.keyVibrateEnabled.collectAsState(initial = false)
-    val keyboardHeight by prefs.keyboardHeight.collectAsState(initial = 1f)
+    val keyboardHeight by prefs.keyboardHeight.collectAsState(initial = 2f)
     val bottomSpaceEnabled by prefs.bottomSpaceEnabled.collectAsState(initial = true)
     val bottomSpaceSize by prefs.bottomSpaceSize.collectAsState(initial = 0f)
     val showKeyBorders by prefs.showKeyBorders.collectAsState(initial = true)
 
+    // ── Back press priority (highest → lowest) ───────────────────────────────
+    // 1. Keyboard preview open  → close preview
+    // 2. In a sub-screen        → go back to Settings main
+    // 3. On Themes / Settings tab → go to Home tab
+    // 4. On Home tab            → default (app minimize / close)
+
+    if (showKeyboardPreview) {
+        BackHandler { showKeyboardPreview = false }
+    }
+
+    if (settingsSubScreen == SettingsSubScreen.KEYBOARD_HEIGHT) {
+        BackHandler { settingsSubScreen = SettingsSubScreen.MAIN }
+    }
+
+    if (tab != Tab.HOME && !showKeyboardPreview) {
+        BackHandler { tab = Tab.HOME }
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+
     Scaffold(
         floatingActionButton = {
-            // FAB is shown on all screens — tapping shows keyboard preview overlay
-            FloatingActionButton(
-                onClick = { showKeyboardPreview = !showKeyboardPreview },
-                containerColor = DeshGreen,
-                contentColor = Color.White,
-                elevation = FloatingActionButtonDefaults.elevation(6.dp)
-            ) {
-                Text("⌨", fontSize = 22.sp)
+            // FAB only visible when keyboard preview is NOT shown
+            // (inside the preview itself there is no need for it)
+            if (!showKeyboardPreview) {
+                FloatingActionButton(
+                    onClick = { showKeyboardPreview = true },
+                    containerColor = DeshGreen,
+                    contentColor = Color.White,
+                    elevation = FloatingActionButtonDefaults.elevation(6.dp)
+                ) {
+                    Text("⌨", fontSize = 22.sp)
+                }
             }
         },
         bottomBar = {
-            // Hide nav bar when inside a sub-screen so the back arrow is the only nav
-            if (settingsSubScreen == SettingsSubScreen.MAIN) {
+            if (settingsSubScreen == SettingsSubScreen.MAIN && !showKeyboardPreview) {
                 NavigationBar {
                     NavigationBarItem(
                         selected = tab == Tab.HOME,
@@ -159,7 +175,6 @@ private fun SinKeyApp(prefs: PreferencesManager) {
                 color = MaterialTheme.colorScheme.background
             ) {
                 when {
-                    // Sub-screen: Keyboard height (inside Settings)
                     settingsSubScreen == SettingsSubScreen.KEYBOARD_HEIGHT -> {
                         KeyboardHeightScreen(
                             keyboardHeight = keyboardHeight,
@@ -173,8 +188,6 @@ private fun SinKeyApp(prefs: PreferencesManager) {
                             onBack = { settingsSubScreen = SettingsSubScreen.MAIN }
                         )
                     }
-
-                    // Main tabs
                     tab == Tab.HOME -> HomeScreen()
                     tab == Tab.THEMES -> ThemesScreen(
                         currentMode = themeMode,
@@ -194,7 +207,7 @@ private fun SinKeyApp(prefs: PreferencesManager) {
                 }
             }
 
-            // ── Keyboard preview overlay (slides up from bottom) ──────────
+            // ── Keyboard preview overlay ──────────────────────────────────
             AnimatedVisibility(
                 visible = showKeyboardPreview,
                 enter = slideInVertically { it },
