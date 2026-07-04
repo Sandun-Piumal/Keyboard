@@ -9,7 +9,7 @@ import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
-import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -18,8 +18,9 @@ import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -38,13 +39,16 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.zIndex
 import kotlinx.coroutines.delay
-import kotlinx.coroutines.isActive
 
 // Number labels for top row keys (QWERTYUIOP → 1–9, 0)
 private val topRowNumbers = listOf("1","2","3","4","5","6","7","8","9","0")
 
 // Dark green color matching Desh Keyboard style
 private val DeshGreen = Color(0xFF2D6A4F)
+private val KeyboardBg = Color(0xFFDDE1E7)
+
+// Recent emojis shown in the emoji bar (same as screenshot)
+private val recentEmojis = listOf("😒","🙄","😂","✅","🔷","🙂","💯","✨","👍")
 
 @Composable
 fun KeyboardView(
@@ -66,58 +70,72 @@ fun KeyboardView(
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .background(Color(0xFFDDE1E7))
-                .padding(horizontal = 4.dp, vertical = 6.dp)
+                .background(KeyboardBg)
         ) {
-            // Row 1: Q-P with number superscripts
-            NumberedKeyRow(EnglishRows[0], topRowNumbers, shift) { onKey(it) }
+            // ── Toolbar row (icons at top) ──────────────────────────────
+            ToolbarRow(onKey = onKey)
 
-            // Row 2: A-L
-            KeyRow(EnglishRows[1], shift) { onKey(it) }
+            // ── Recent emoji row ────────────────────────────────────────
+            EmojiRow(emojis = recentEmojis, onKey = onKey)
 
-            // Row 3: Shift + Z-M + Backspace
-            Row(
+            // ── Letter rows ─────────────────────────────────────────────
+            Column(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(vertical = 3.dp),
-                horizontalArrangement = Arrangement.spacedBy(5.dp)
+                    .padding(horizontal = 4.dp, vertical = 2.dp)
             ) {
-                ShiftKey(weight = 1.4f, active = shift) {
-                    shift = !shift
-                    onKey("SHIFT")
-                }
-                EnglishRows[2].forEach { k ->
-                    val display = if (shift) k.uppercase() else k
-                    LetterKey(label = display, weight = 1f) { onKey(display) }
-                }
-                BackspaceKey(weight = 1.4f) { onKey("BACKSPACE") }
-            }
+                // Row 1: Q-P with number superscripts
+                NumberedKeyRow(EnglishRows[0], topRowNumbers, shift) { onKey(it) }
 
-            // Row 4: ?123 | emoji | lang toggle | space | period | enter
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(vertical = 3.dp),
-                horizontalArrangement = Arrangement.spacedBy(5.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                SpecialKey(label = "?123", weight = 2.0f) { /* TODO: number layout */ }
-                EmojiKey(weight = 1.5f, onTap = { onKey(",") }, onLongPress = { onKey("EMOJI") })
+                // Row 2: A-L
+                KeyRow(EnglishRows[1], shift) { onKey(it) }
 
-                // Language toggle — with tooltip anchor
-                Box(modifier = Modifier.weight(1.5f)) {
-                    LangToggleKey(
-                        currentLanguage = currentLanguage,
-                        onTap = {
-                            onKey("LANG_TOGGLE")
-                            showLangTooltip = true
-                        }
-                    )
+                // Row 3: Shift + Z-M + Backspace
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(vertical = 3.dp),
+                    horizontalArrangement = Arrangement.spacedBy(5.dp)
+                ) {
+                    ShiftKey(weight = 1.4f, active = shift) {
+                        shift = !shift
+                        onKey("SHIFT")
+                    }
+                    EnglishRows[2].forEach { k ->
+                        val display = if (shift) k.uppercase() else k
+                        LetterKey(label = display, weight = 1f) { onKey(display) }
+                    }
+                    BackspaceKey(weight = 1.4f) { onKey("BACKSPACE") }
                 }
 
-                SpaceKey(weight = 4.5f) { onKey("SPACE") }
-                SpecialKey(label = ".", weight = 0.8f) { onKey(".") }
-                EnterKey(weight = 2.0f) { onKey("ENTER") }
+                // Row 4: ?123 | emoji | lang toggle | space | period | enter
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(vertical = 3.dp),
+                    horizontalArrangement = Arrangement.spacedBy(5.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    SpecialKey(label = "?123", weight = 1.8f) { /* TODO: number layout */ }
+                    EmojiKey(weight = 1.3f, onTap = { onKey(",") }, onLongPress = { onKey("EMOJI") })
+
+                    // Language toggle — with tooltip anchor
+                    Box(modifier = Modifier.weight(1.3f)) {
+                        LangToggleKey(
+                            currentLanguage = currentLanguage,
+                            onTap = {
+                                onKey("LANG_TOGGLE")
+                                showLangTooltip = true
+                            }
+                        )
+                    }
+
+                    // Space — center, largest weight
+                    SpaceKey(weight = 4.5f) { onKey("SPACE") }
+
+                    SpecialKey(label = ".", weight = 0.8f) { onKey(".") }
+                    EnterKey(weight = 2.0f) { onKey("ENTER") }
+                }
             }
         }
 
@@ -136,6 +154,95 @@ fun KeyboardView(
     }
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// Toolbar row  (apps, sticker, clipboard, font-A, translate, settings, mic)
+// ─────────────────────────────────────────────────────────────────────────────
+@Composable
+private fun ToolbarRow(onKey: (String) -> Unit) {
+    // Icon labels (unicode symbols that look similar to the screenshot icons)
+    val tools = listOf(
+        "⊞" to "TOOL_APPS",
+        "☺" to "TOOL_STICKER",
+        "📋" to "TOOL_CLIPBOARD",
+        "A" to "TOOL_FONT",
+        "🇦" to "TOOL_TRANSLATE",
+        "⚙" to "TOOL_SETTINGS"
+    )
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(KeyboardBg)
+            .padding(horizontal = 8.dp, vertical = 2.dp),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        tools.forEach { (label, action) ->
+            Box(
+                modifier = Modifier
+                    .size(38.dp)
+                    .clip(RoundedCornerShape(6.dp))
+                    .clickable { onKey(action) },
+                contentAlignment = Alignment.Center
+            ) {
+                Text(text = label, fontSize = 18.sp, color = Color(0xFF555555))
+            }
+        }
+        // Mic button on the far right (filled circle)
+        Box(
+            modifier = Modifier
+                .size(38.dp)
+                .clip(RoundedCornerShape(50))
+                .background(Color.White)
+                .clickable { onKey("TOOL_MIC") },
+            contentAlignment = Alignment.Center
+        ) {
+            Text(text = "🎤", fontSize = 16.sp)
+        }
+    }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Recent emoji row
+// ─────────────────────────────────────────────────────────────────────────────
+@Composable
+private fun EmojiRow(emojis: List<String>, onKey: (String) -> Unit) {
+    val scrollState = rememberScrollState()
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(KeyboardBg)
+            .padding(horizontal = 4.dp, vertical = 2.dp)
+            .horizontalScroll(scrollState),
+        horizontalArrangement = Arrangement.spacedBy(2.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        emojis.forEach { emoji ->
+            Box(
+                modifier = Modifier
+                    .size(40.dp)
+                    .clip(RoundedCornerShape(6.dp))
+                    .clickable { onKey(emoji) },
+                contentAlignment = Alignment.Center
+            ) {
+                Text(text = emoji, fontSize = 22.sp)
+            }
+        }
+        // "..." more button
+        Box(
+            modifier = Modifier
+                .size(40.dp)
+                .clip(RoundedCornerShape(6.dp))
+                .clickable { onKey("EMOJI_MORE") },
+            contentAlignment = Alignment.Center
+        ) {
+            Text(text = "•••", fontSize = 14.sp, color = Color(0xFF888888))
+        }
+    }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Tooltip
+// ─────────────────────────────────────────────────────────────────────────────
 @Composable
 private fun LangTooltip(currentLanguage: String) {
     val label = if (currentLanguage == "en") "English enabled" else "සිංහල enabled"
@@ -161,7 +268,6 @@ private fun LangTooltip(currentLanguage: String) {
     }
 }
 
-// Helper to bold the first part
 @Composable
 private fun buildAnnotatedStringBold(bold: String, normal: String): androidx.compose.ui.text.AnnotatedString {
     return androidx.compose.ui.text.buildAnnotatedString {
@@ -172,6 +278,9 @@ private fun buildAnnotatedStringBold(bold: String, normal: String): androidx.com
     }
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// Key rows
+// ─────────────────────────────────────────────────────────────────────────────
 @Composable
 private fun NumberedKeyRow(
     keys: List<String>,
@@ -211,7 +320,6 @@ private fun KeyRow(
             .padding(vertical = 3.dp),
         horizontalArrangement = Arrangement.spacedBy(5.dp)
     ) {
-        // Center row 2 (9 keys) with small padding
         Box(modifier = Modifier.weight(0.5f))
         keys.forEach { k ->
             val display = if (shift) k.uppercase() else k
@@ -221,6 +329,9 @@ private fun KeyRow(
     }
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// Individual keys
+// ─────────────────────────────────────────────────────────────────────────────
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun RowScope.NumberedLetterKey(
@@ -241,7 +352,6 @@ private fun RowScope.NumberedLetterKey(
                 onLongClick = { onLongPress() }
             )
     ) {
-        // Number superscript — top right
         Text(
             text = number,
             fontSize = 9.sp,
@@ -250,7 +360,6 @@ private fun RowScope.NumberedLetterKey(
                 .align(Alignment.TopEnd)
                 .padding(top = 3.dp, end = 4.dp)
         )
-        // Main letter — center
         Text(
             text = label,
             fontSize = 18.sp,
@@ -303,26 +412,59 @@ private fun RowScope.BackspaceKey(weight: Float, onTap: () -> Unit) {
             .clip(RoundedCornerShape(6.dp))
             .background(Color(0xFFBCC4CC))
             .pointerInput(Unit) {
-                detectTapGestures(
-                    onTap = { onTap() },
-                    onPress = { _ ->
+                awaitPointerEventScope {
+                    while (true) {
+                        // Wait for finger down
+                        val down = awaitPointerEvent()
+                        val pressed = down.changes.firstOrNull() ?: continue
+                        if (!pressed.pressed) continue
+
+                        pressed.consume()
+
+                        var isLongPress = false
+
+                        // Race: either finger lifts (tap) or 400ms passes (long press start)
+                        var elapsed = 0L
                         val longPressDelay = 400L
                         val repeatInterval = 50L
-                        var didLongPress = false
-                        try {
-                            delay(longPressDelay)
-                            didLongPress = true
-                            // Keep firing while finger held down
-                            while (true) {  // <-- isActive වෙනුවට while(true)
-                                onTap()
-                                delay(repeatInterval)
+                        var held = true
+
+                        // Poll pointer state while waiting for long press threshold
+                        while (elapsed < longPressDelay) {
+                            val event = awaitPointerEvent()
+                            val change = event.changes.firstOrNull()
+                            if (change == null || !change.pressed) {
+                                // Finger lifted before long press — it's a tap
+                                change?.consume()
+                                held = false
+                                break
                             }
-                        } finally {
-                            // If finger lifted before long press, onTap() already
-                            // called by onTap handler above — nothing extra needed
+                            change.consume()
+                            delay(16)
+                            elapsed += 16
+                        }
+
+                        if (!held) {
+                            // Normal tap
+                            onTap()
+                        } else {
+                            // Long press — fire immediately then repeat while held
+                            isLongPress = true
+                            onTap()
+                            while (true) {
+                                delay(repeatInterval)
+                                val event = awaitPointerEvent()
+                                val change = event.changes.firstOrNull()
+                                if (change == null || !change.pressed) {
+                                    change?.consume()
+                                    break
+                                }
+                                change.consume()
+                                onTap()
+                            }
                         }
                     }
-                )
+                }
             },
         contentAlignment = Alignment.Center
     ) {
@@ -366,11 +508,9 @@ private fun LangToggleKey(currentLanguage: String, onTap: () -> Unit) {
             Text(
                 text = "අ",
                 fontSize = 17.sp,
-                // Green text when Sinhala, grey when English
                 color = if (isSinhala) DeshGreen else Color(0xFF333333),
                 fontWeight = if (isSinhala) FontWeight.Bold else FontWeight.Medium
             )
-            // Underline: filled green when Sinhala, transparent when English
             Box(
                 modifier = Modifier
                     .padding(top = 2.dp)
@@ -383,7 +523,6 @@ private fun LangToggleKey(currentLanguage: String, onTap: () -> Unit) {
         }
     }
 }
-
 
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
@@ -419,7 +558,7 @@ private fun RowScope.SpaceKey(weight: Float, onTap: () -> Unit) {
         contentAlignment = Alignment.Center
     ) {
         Text(
-            text = "SinKey",
+            text = "Desh Keyboard",
             fontSize = 12.sp,
             color = Color(0xFF888888),
             textAlign = androidx.compose.ui.text.style.TextAlign.Center
