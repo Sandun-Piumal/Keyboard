@@ -9,7 +9,7 @@ import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
-import androidx.compose.foundation.isSystemInDarkTheme
+
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.Box
@@ -118,10 +118,10 @@ fun KeyboardView(
     bottomSpaceEnabled: Boolean = true,
     bottomSpaceSize: Float = 0f,
     showKeyBorders: Boolean = true,
+    isDark: Boolean = false,
     onKey: (String) -> Unit,
     onDismiss: (() -> Unit)? = null
 ) {
-    val isDark = isSystemInDarkTheme()
     val colors = keyboardColors(showKeyBorders, isDark)
 
     val keyHeight    = stepToKeyHeight(keyboardHeight)
