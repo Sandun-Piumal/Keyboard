@@ -302,12 +302,13 @@ class SinKeyInputMethodService : InputMethodService() {
     private fun handleSuggestion(word: String) {
         val ic = currentInputConnection ?: return
         if (currentLanguage.value == "si") {
-            // Replace composing Sinhala word
-            ic.finishComposingText()
+            // setComposingText("") removes composing span WITHOUT committing it,
+            // then commitText commits the suggestion exactly once.
+            ic.setComposingText("", 1)
             ic.commitText(word, 1)
             wordBuffer.clear()
         } else {
-            // Replace the English word already committed
+            // Delete the already-committed English word, then commit the suggestion.
             val len = englishBuffer.length
             if (len > 0) ic.deleteSurroundingText(len, 0)
             ic.commitText(word, 1)
