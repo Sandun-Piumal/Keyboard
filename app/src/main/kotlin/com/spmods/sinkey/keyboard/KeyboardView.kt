@@ -89,10 +89,10 @@ private fun keyboardColors(showKeyBorders: Boolean, isDark: Boolean): KeyboardCo
         )
     } else {
         KeyboardColors(
-            bg             = Color(0xFFDADFE5),
+            bg             = Color(0xFFCDD3DA),
             keyBg          = Color.White,
             specialKeyBg   = Color(0xFFC5CDD5),
-            keyText        = Color(0xFF1A1A1A),
+            keyText        = Color(0xFF000000),
             specialKeyText = Color(0xFF333333),
             subText        = Color(0xFF888888),
             spaceKeyBg     = Color.White,
@@ -134,7 +134,7 @@ fun KeyboardView(
 
     val keyHeight    = stepToKeyHeight(keyboardHeight)
     val bottomPadding = if (bottomSpaceEnabled) stepToBottomPadding(bottomSpaceSize) else 4.dp
-    val keyShape     = if (showKeyBorders) RoundedCornerShape(6.dp) else RoundedCornerShape(4.dp)
+    val keyShape     = if (showKeyBorders) RoundedCornerShape(10.dp) else RoundedCornerShape(6.dp)
 
     var shift by remember { mutableStateOf(false) }
     var showLangTooltip by remember { mutableStateOf(false) }
@@ -192,7 +192,7 @@ fun KeyboardView(
 
                 Row(
                     modifier = Modifier.fillMaxWidth().padding(vertical = 3.dp),
-                    horizontalArrangement = Arrangement.spacedBy(5.dp)
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)
                 ) {
                     ShiftKey(weight = 1.4f, active = shift, keyHeight = keyHeight, colors = colors, keyShape = keyShape) {
                         shift = !shift
@@ -207,7 +207,7 @@ fun KeyboardView(
 
                 Row(
                     modifier = Modifier.fillMaxWidth().padding(vertical = 3.dp),
-                    horizontalArrangement = Arrangement.spacedBy(5.dp),
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     SymbolsKey(weight = 1.8f, keyHeight = keyHeight, colors = colors, keyShape = keyShape) { }
@@ -448,7 +448,7 @@ private fun NumberedKeyRow(
 ) {
     Row(
         modifier = Modifier.fillMaxWidth().padding(vertical = 3.dp),
-        horizontalArrangement = Arrangement.spacedBy(5.dp)
+        horizontalArrangement = Arrangement.spacedBy(6.dp)
     ) {
         keys.forEachIndexed { index, k ->
             val display = if (shift) k.uppercase() else k
@@ -474,7 +474,7 @@ private fun KeyRow(
 ) {
     Row(
         modifier = Modifier.fillMaxWidth().padding(vertical = 3.dp),
-        horizontalArrangement = Arrangement.spacedBy(5.dp)
+        horizontalArrangement = Arrangement.spacedBy(6.dp)
     ) {
         Box(modifier = Modifier.weight(0.5f))
         keys.forEach { k ->
@@ -521,7 +521,7 @@ private fun RowScope.LetterKey(
             .clickable { onTap() },
         contentAlignment = Alignment.Center
     ) {
-        Text(text = label, fontSize = 20.sp, color = colors.keyText, fontWeight = FontWeight.Normal)
+        Text(text = label, fontSize = 22.sp, color = colors.keyText, fontWeight = FontWeight.Normal)
     }
 }
 
@@ -648,10 +648,11 @@ private fun LangToggleKey(
         contentAlignment = Alignment.Center
     ) {
         Column(horizontalAlignment = Alignment.CenterHorizontally) {
-            Text(
-                text = "අ", fontSize = 13.sp,
-                color = if (isSinhala) DeshGreen else colors.specialKeyText,
-                fontWeight = if (isSinhala) FontWeight.Bold else FontWeight.Normal
+            Icon(
+                painter = painterResource(id = R.drawable.ic_native_letter),
+                contentDescription = "Language",
+                modifier = Modifier.size(22.dp),
+                tint = if (isSinhala) DeshGreen else colors.specialKeyText
             )
             Box(
                 modifier = Modifier
