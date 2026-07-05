@@ -43,6 +43,7 @@ class SinKeyInputMethodService : InputMethodService() {
     // Buffer of the word currently being typed, used for Sinhala transliteration.
     private var wordBuffer = StringBuilder()
     private var currentLanguage = mutableStateOf("si") // default per PreferencesManager
+    private var suggestions = mutableStateOf<List<String>>(emptyList())
 
     override fun onCreate() {
         super.onCreate()
@@ -118,6 +119,8 @@ class SinKeyInputMethodService : InputMethodService() {
                         bottomSpaceSize = bottomSpaceSize,
                         showKeyBorders = showKeyBorders,
                         isDark = isDark,
+                        suggestions = suggestions.value,
+                        onSuggestionSelected = ::handleSuggestion,
                         onKey = ::handleKey
                     )
                 }
@@ -186,6 +189,7 @@ class SinKeyInputMethodService : InputMethodService() {
                     // PRIORITY 3: No composing, no selection — delete character before cursor.
                     // Use codepoint-aware deletion so emoji/Sinhala chars
                     // (which can be multiple UTF-16 units) are deleted correctly.
+                    if (wordBuffer.isNotEmpty()) wordBuffer.deleteCharAt(wordBuffer.length - 1)
                     val beforeCursor = ic.getTextBeforeCursor(4, 0)
                     if (!beforeCursor.isNullOrEmpty()) {
                         val lastCodePoint = Character.codePointBefore(beforeCursor, beforeCursor.length)
@@ -194,15 +198,18 @@ class SinKeyInputMethodService : InputMethodService() {
                     } else {
                         ic.deleteSurroundingText(1, 0)
                     }
+                    updateSuggestions()
                 }
             }
             "SPACE" -> {
                 commitPendingWord()
                 ic.commitText(" ", 1)
+                suggestions.value = emptyList()
             }
             "ENTER" -> {
                 commitPendingWord()
                 ic.commitText("\n", 1)
+                suggestions.value = emptyList()
             }
             "SHIFT" -> {
                 // handled visually inside KeyboardView; no text action here
@@ -235,9 +242,12 @@ class SinKeyInputMethodService : InputMethodService() {
                     // Show transliterated preview as composing (underlined) text
                     val preview = SinhalaTransliterator.transliterate(wordBuffer.toString())
                     ic.setComposingText(preview, 1)
+                    updateSuggestions()
                 } else {
-                    // English mode: commit directly
+                    // English mode: buffer for suggestions then commit
+                    wordBuffer.append(key)
                     ic.commitText(key, 1)
+                    updateSuggestions()
                 }
             }
         }
@@ -273,6 +283,85 @@ class SinKeyInputMethodService : InputMethodService() {
         ic?.finishComposingText()
         ic?.commitText(finalWord, 1)
         wordBuffer.clear()
+        suggestions.value = emptyList()
+    }
+
+    /**
+     * Called when the user taps a suggestion chip.
+     * Replaces the current composing word with the selected suggestion.
+     */
+    private fun handleSuggestion(word: String) {
+        val ic = currentInputConnection ?: return
+        ic.finishComposingText()
+        ic.commitText(word, 1)
+        wordBuffer.clear()
+        suggestions.value = emptyList()
+    }
+
+    /**
+     * Generates word suggestions based on the current [wordBuffer].
+     *
+     * Sinhala mode  — the transliterated form is always the first suggestion.
+     *                 Additional variants (e.g. with/without inherent-a) follow.
+     * English mode  — Android's [android.view.textservice.SpellCheckerSession] is
+     *                 used when available; a small built-in prefix list fills the
+     *                 gap on devices/emulators that lack it.
+     */
+    private fun updateSuggestions() {
+        val raw = wordBuffer.toString()
+        if (raw.isEmpty()) { suggestions.value = emptyList(); return }
+
+        if (currentLanguage.value == "si") {
+            // Primary: exact transliteration
+            val primary = SinhalaTransliterator.transliterate(raw)
+            val list = mutableListOf(primary)
+
+            // Variant 1: append space suggestion (commit as-is)
+            // Variant 2: try with trailing 'a' appended (fills inherent vowel)
+            val withA = SinhalaTransliterator.transliterate("${raw}a")
+            if (withA != primary) list.add(withA)
+
+            // Variant 3: try capitalised first letter
+            if (raw.length > 1) {
+                val cap = SinhalaTransliterator.transliterate(raw[0].uppercaseChar() + raw.substring(1))
+                if (cap != primary && cap != withA) list.add(cap)
+            }
+
+            suggestions.value = list.take(5)
+        } else {
+            // English: use Android TextServicesManager spell-checker for real suggestions
+            val tsm = getSystemService(android.view.textservice.TextServicesManager::class.java)
+            if (tsm != null) {
+                try {
+                    val locale = java.util.Locale.ENGLISH
+                    val session = tsm.newSpellCheckerSession(null, locale, object :
+                        android.view.textservice.SpellCheckerSession.SpellCheckerSessionListener {
+                        override fun onGetSuggestions(results: Array<out android.view.textservice.SuggestionsInfo>?) {
+                            val words = mutableListOf<String>()
+                            // First suggestion = the word typed (as-is)
+                            if (raw.isNotEmpty()) words.add(raw)
+                            results?.forEach { info ->
+                                for (i in 0 until info.suggestionsCount) {
+                                    val s = info.getSuggestionAt(i)
+                                    if (s != raw && words.size < 5) words.add(s)
+                                }
+                            }
+                            suggestions.value = words
+                        }
+                        override fun onGetSentenceSuggestions(results: Array<out android.view.textservice.SentenceSuggestionsInfo>?) {}
+                    }, false)
+                    session?.getSuggestions(
+                        android.view.textservice.TextInfo(raw), 4
+                    )
+                    // Immediately show typed word while waiting for async results
+                    if (suggestions.value.isEmpty()) suggestions.value = listOf(raw)
+                } catch (_: Exception) {
+                    suggestions.value = listOf(raw)
+                }
+            } else {
+                suggestions.value = listOf(raw)
+            }
+        }
     }
 
     private fun maybeFeedback() {
