@@ -89,9 +89,9 @@ private fun keyboardColors(showKeyBorders: Boolean, isDark: Boolean): KeyboardCo
         )
     } else {
         KeyboardColors(
-            bg             = Color(0xFFDDE1E7),
-            keyBg          = if (showKeyBorders) Color.White else Color(0xFFF0F2F5),
-            specialKeyBg   = Color(0xFFBCC4CC),
+            bg             = Color(0xFFDADFE5),
+            keyBg          = Color.White,
+            specialKeyBg   = Color(0xFFC5CDD5),
             keyText        = Color(0xFF1A1A1A),
             specialKeyText = Color(0xFF333333),
             subText        = Color(0xFF888888),
@@ -210,7 +210,7 @@ fun KeyboardView(
                     horizontalArrangement = Arrangement.spacedBy(5.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    SpecialKey(label = "?123", weight = 1.8f, keyHeight = keyHeight, colors = colors, keyShape = keyShape) { }
+                    SymbolsKey(weight = 1.8f, keyHeight = keyHeight, colors = colors, keyShape = keyShape) { }
                     EmojiKey(
                         weight = 1.3f,
                         keyHeight = keyHeight,
@@ -503,7 +503,7 @@ private fun RowScope.NumberedLetterKey(
     ) {
         Text(text = number, fontSize = 9.sp, color = colors.subText,
             modifier = Modifier.align(Alignment.TopEnd).padding(top = 3.dp, end = 4.dp))
-        Text(text = label, fontSize = 18.sp, color = colors.keyText,
+        Text(text = label, fontSize = 18.sp, color = colors.keyText, fontWeight = FontWeight.Normal,
             modifier = Modifier.align(Alignment.Center))
     }
 }
@@ -521,7 +521,7 @@ private fun RowScope.LetterKey(
             .clickable { onTap() },
         contentAlignment = Alignment.Center
     ) {
-        Text(text = label, fontSize = 22.sp, color = colors.keyText)
+        Text(text = label, fontSize = 20.sp, color = colors.keyText, fontWeight = FontWeight.Normal)
     }
 }
 
@@ -612,6 +612,28 @@ private fun RowScope.SpecialKey(
 }
 
 @Composable
+private fun RowScope.SymbolsKey(
+    weight: Float,
+    keyHeight: Dp, colors: KeyboardColors, keyShape: RoundedCornerShape,
+    onTap: () -> Unit
+) {
+    Box(
+        modifier = Modifier
+            .height(keyHeight).weight(weight)
+            .clip(keyShape).background(colors.specialKeyBg)
+            .clickable { onTap() },
+        contentAlignment = Alignment.Center
+    ) {
+        Icon(
+            painter = painterResource(id = R.drawable.ic_back_to_symbols),
+            contentDescription = "Symbols",
+            modifier = Modifier.size(26.dp),
+            tint = colors.specialKeyText
+        )
+    }
+}
+
+@Composable
 private fun LangToggleKey(
     currentLanguage: String,
     keyHeight: Dp, colors: KeyboardColors, keyShape: RoundedCornerShape,
@@ -658,7 +680,12 @@ private fun RowScope.EmojiKey(
         contentAlignment = Alignment.Center
     ) {
         Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
-            Text(text = "☺", fontSize = 16.sp, color = colors.specialKeyText, lineHeight = 18.sp)
+            Icon(
+                painter = painterResource(id = R.drawable.ic_emoji_for_compose),
+                contentDescription = "Emoji",
+                modifier = Modifier.size(20.dp),
+                tint = colors.specialKeyText
+            )
             Text(text = ",", fontSize = 10.sp, color = colors.specialKeyText, lineHeight = 11.sp)
         }
     }
