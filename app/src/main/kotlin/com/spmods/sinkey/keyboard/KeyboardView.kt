@@ -58,8 +58,8 @@ import androidx.compose.foundation.gestures.detectTapGestures
 // Number labels for top row keys
 private val topRowNumbers = listOf("1","2","3","4","5","6","7","8","9","0")
 
-// Brand green
-private val DeshGreen = Color(0xFF2D6A4F)
+// Brand teal - matches image enter key
+private val DeshGreen = Color(0xFF1B5E6E)
 
 // ── Theme-aware color helpers ─────────────────────────────────────────────────
 
@@ -93,7 +93,7 @@ private fun keyboardColors(showKeyBorders: Boolean, isDark: Boolean): KeyboardCo
             keyBg          = Color.White,
             specialKeyBg   = Color(0xFFC5CDD5),
             keyText        = Color(0xFF000000),
-            specialKeyText = Color(0xFF333333),
+            specialKeyText = Color(0xFF555555),
             subText        = Color(0xFF888888),
             spaceKeyBg     = Color.White,
             spaceKeyText   = Color(0xFF888888),
@@ -134,7 +134,7 @@ fun KeyboardView(
 
     val keyHeight    = stepToKeyHeight(keyboardHeight)
     val bottomPadding = if (bottomSpaceEnabled) stepToBottomPadding(bottomSpaceSize) else 4.dp
-    val keyShape     = if (showKeyBorders) RoundedCornerShape(10.dp) else RoundedCornerShape(6.dp)
+    val keyShape     = if (showKeyBorders) RoundedCornerShape(14.dp) else RoundedCornerShape(8.dp)
 
     var shift by remember { mutableStateOf(false) }
     var showLangTooltip by remember { mutableStateOf(false) }
@@ -210,16 +210,16 @@ fun KeyboardView(
                     horizontalArrangement = Arrangement.spacedBy(6.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    SymbolsKey(weight = 1.8f, keyHeight = keyHeight, colors = colors, keyShape = keyShape) { }
+                    SymbolsKey(weight = 2.0f, keyHeight = keyHeight, colors = colors, keyShape = keyShape) { }
                     EmojiKey(
-                        weight = 1.3f,
+                        weight = 1.2f,
                         keyHeight = keyHeight,
                         colors = colors,
                         keyShape = keyShape,
                         onTap = { onKey(",") },
                         onLongPress = { showEmojiPicker = true }
                     )
-                    Box(modifier = Modifier.weight(1.3f)) {
+                    Box(modifier = Modifier.weight(1.2f)) {
                         LangToggleKey(
                             currentLanguage = currentLanguage,
                             keyHeight = keyHeight,
@@ -232,7 +232,7 @@ fun KeyboardView(
                         )
                     }
                     SpaceKey(
-                        weight = 4.5f,
+                        weight = 5.5f,
                         keyHeight = keyHeight,
                         colors = colors,
                         keyShape = keyShape,
@@ -354,13 +354,13 @@ private fun AppsMicBar(
                 }
                 Box(
                     modifier = Modifier
-                        .size(36.dp)
+                        .size(42.dp)
                         .clip(RoundedCornerShape(50))
-                        .background(colors.specialKeyBg)
+                        .background(Color.White)
                         .clickable { onKey("TOOL_MIC") },
                     contentAlignment = Alignment.Center
                 ) {
-                    Text(text = "🎤", fontSize = 17.sp)
+                    Text(text = "🎤", fontSize = 19.sp)
                 }
             }
         }
@@ -503,7 +503,7 @@ private fun RowScope.NumberedLetterKey(
     ) {
         Text(text = number, fontSize = 9.sp, color = colors.subText,
             modifier = Modifier.align(Alignment.TopEnd).padding(top = 3.dp, end = 4.dp))
-        Text(text = label, fontSize = 18.sp, color = colors.keyText, fontWeight = FontWeight.Normal,
+        Text(text = label, fontSize = 22.sp, color = colors.keyText, fontWeight = FontWeight.Normal,
             modifier = Modifier.align(Alignment.Center))
     }
 }
@@ -607,7 +607,7 @@ private fun RowScope.SpecialKey(
             .clickable { onTap() },
         contentAlignment = Alignment.Center
     ) {
-        Text(text = label, fontSize = 15.sp, fontWeight = FontWeight.Medium, color = colors.specialKeyText)
+        Text(text = label, fontSize = 14.sp, fontWeight = FontWeight.Normal, color = colors.specialKeyText)
     }
 }
 
@@ -707,7 +707,7 @@ private fun RowScope.SpaceKey(
         contentAlignment = Alignment.Center
     ) {
         Text(
-            text = "Desh Keyboard", fontSize = 12.sp,
+            text = "Sinkey board", fontSize = 12.sp,
             color = colors.spaceKeyText,
             textAlign = androidx.compose.ui.text.style.TextAlign.Center
         )
