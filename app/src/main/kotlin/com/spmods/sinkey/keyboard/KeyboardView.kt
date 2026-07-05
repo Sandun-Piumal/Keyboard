@@ -330,37 +330,37 @@ private fun AppsMicBar(
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(52.dp)
+                    .height(44.dp)
                     .background(colors.bg)
-                    .padding(horizontal = 12.dp),
+                    .padding(horizontal = 8.dp),
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 tools.forEach { (iconRes, action) ->
                     Box(
                         modifier = Modifier
-                            .size(44.dp)
-                            .clip(RoundedCornerShape(8.dp))
+                            .size(36.dp)
+                            .clip(RoundedCornerShape(6.dp))
                             .clickable { onKey(action) },
                         contentAlignment = Alignment.Center
                     ) {
                         Icon(
                             painter = painterResource(id = iconRes),
                             contentDescription = null,
-                            modifier = Modifier.size(26.dp),
+                            modifier = Modifier.size(22.dp),
                             tint = colors.subText
                         )
                     }
                 }
                 Box(
                     modifier = Modifier
-                        .size(44.dp)
+                        .size(36.dp)
                         .clip(RoundedCornerShape(50))
                         .background(colors.specialKeyBg)
                         .clickable { onKey("TOOL_MIC") },
                     contentAlignment = Alignment.Center
                 ) {
-                    Text(text = "🎤", fontSize = 20.sp)
+                    Text(text = "🎤", fontSize = 17.sp)
                 }
             }
         }
