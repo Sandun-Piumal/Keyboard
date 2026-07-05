@@ -2,11 +2,8 @@ package com.spmods.sinkey.keyboard
 
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.ExperimentalAnimationApi
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
-import androidx.compose.animation.slideInVertically
-import androidx.compose.animation.slideOutVertically
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
@@ -247,8 +244,8 @@ fun KeyboardView(
 
         AnimatedVisibility(
             visible = showLangTooltip,
-            enter = fadeIn() + slideInVertically { it },
-            exit = fadeOut() + slideOutVertically { it },
+            enter = fadeIn(),
+            exit = fadeOut(),
             modifier = Modifier
                 .align(Alignment.BottomStart)
                 .padding(start = 96.dp, bottom = 62.dp)
@@ -271,12 +268,10 @@ private fun AppsMicBar(
 ) {
     val isTyping = suggestions.isNotEmpty()
 
-    @OptIn(ExperimentalAnimationApi::class)
     AnimatedContent(
         targetState = isTyping,
         transitionSpec = {
-            (fadeIn() + slideInVertically { -it }) togetherWith
-            (fadeOut() + slideOutVertically { -it })
+            fadeIn() togetherWith fadeOut()
         },
         label = "toolbar_anim"
     ) { typing ->
