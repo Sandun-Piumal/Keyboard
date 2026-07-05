@@ -2,8 +2,11 @@ package com.spmods.sinkey.keyboard
 
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.ExperimentalAnimationApi
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
@@ -244,8 +247,8 @@ fun KeyboardView(
 
         AnimatedVisibility(
             visible = showLangTooltip,
-            enter = fadeIn(),
-            exit = fadeOut(),
+            enter = fadeIn() + slideInVertically { it },
+            exit = fadeOut() + slideOutVertically { it },
             modifier = Modifier
                 .align(Alignment.BottomStart)
                 .padding(start = 96.dp, bottom = 62.dp)
@@ -268,10 +271,12 @@ private fun AppsMicBar(
 ) {
     val isTyping = suggestions.isNotEmpty()
 
+    @OptIn(ExperimentalAnimationApi::class)
     AnimatedContent(
         targetState = isTyping,
         transitionSpec = {
-            fadeIn() togetherWith fadeOut()
+            (fadeIn() + slideInVertically { -it }) togetherWith
+            (fadeOut() + slideOutVertically { -it })
         },
         label = "toolbar_anim"
     ) { typing ->
@@ -280,7 +285,7 @@ private fun AppsMicBar(
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(40.dp)
+                    .height(52.dp)
                     .background(colors.bg),
                 verticalAlignment = Alignment.CenterVertically
             ) {
@@ -325,37 +330,37 @@ private fun AppsMicBar(
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(40.dp)
+                    .height(52.dp)
                     .background(colors.bg)
-                    .padding(horizontal = 8.dp),
+                    .padding(horizontal = 12.dp),
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 tools.forEach { (iconRes, action) ->
                     Box(
                         modifier = Modifier
-                            .size(38.dp)
-                            .clip(RoundedCornerShape(6.dp))
+                            .size(44.dp)
+                            .clip(RoundedCornerShape(8.dp))
                             .clickable { onKey(action) },
                         contentAlignment = Alignment.Center
                     ) {
                         Icon(
                             painter = painterResource(id = iconRes),
                             contentDescription = null,
-                            modifier = Modifier.size(22.dp),
+                            modifier = Modifier.size(26.dp),
                             tint = colors.subText
                         )
                     }
                 }
                 Box(
                     modifier = Modifier
-                        .size(38.dp)
+                        .size(44.dp)
                         .clip(RoundedCornerShape(50))
                         .background(colors.specialKeyBg)
                         .clickable { onKey("TOOL_MIC") },
                     contentAlignment = Alignment.Center
                 ) {
-                    Text(text = "🎤", fontSize = 16.sp)
+                    Text(text = "🎤", fontSize = 20.sp)
                 }
             }
         }
@@ -516,7 +521,7 @@ private fun RowScope.LetterKey(
             .clickable { onTap() },
         contentAlignment = Alignment.Center
     ) {
-        Text(text = label, fontSize = 18.sp, color = colors.keyText)
+        Text(text = label, fontSize = 22.sp, color = colors.keyText)
     }
 }
 
@@ -540,7 +545,7 @@ private fun RowScope.ShiftKey(
         Icon(
             painter = painterResource(id = if (active) R.drawable.ic_shift_key_shifted else R.drawable.ic_shift_key),
             contentDescription = "Shift",
-            modifier = Modifier.size(22.dp),
+            modifier = Modifier.size(26.dp),
             tint = if (active) DeshGreen else colors.specialKeyText
         )
     }
@@ -583,7 +588,7 @@ private fun RowScope.BackspaceKey(
         Icon(
             painter = painterResource(id = R.drawable.ic_backspace),
             contentDescription = "Backspace",
-            modifier = Modifier.size(22.dp),
+            modifier = Modifier.size(26.dp),
             tint = colors.specialKeyText
         )
     }
@@ -602,7 +607,7 @@ private fun RowScope.SpecialKey(
             .clickable { onTap() },
         contentAlignment = Alignment.Center
     ) {
-        Text(text = label, fontSize = 13.sp, fontWeight = FontWeight.Medium, color = colors.specialKeyText)
+        Text(text = label, fontSize = 15.sp, fontWeight = FontWeight.Medium, color = colors.specialKeyText)
     }
 }
 
@@ -697,7 +702,7 @@ private fun RowScope.EnterKey(
         Icon(
             painter = painterResource(id = R.drawable.ic_enter_key),
             contentDescription = "Enter",
-            modifier = Modifier.size(22.dp),
+            modifier = Modifier.size(26.dp),
             tint = Color.White
         )
     }
