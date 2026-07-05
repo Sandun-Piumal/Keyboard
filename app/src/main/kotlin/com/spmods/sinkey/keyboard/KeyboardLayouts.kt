@@ -8,174 +8,203 @@ val EnglishRows: List<List<String>> = listOf(
 )
 
 /**
- * Sinhala phonetic ("Singlish") transliteration engine.
+ * Singlish → Sinhala Unicode transliterator.
  *
- * Approach: consonant + vowel sign pairing.
- * Each key press appends to a buffer. The buffer is transliterated
- * in real-time and shown as composing text. On space/enter/punctuation
- * the composing text is committed.
- *
- * Rules follow the standard Helakuru / Wijesekara phonetic mapping
- * widely understood by Sri Lankan users.
+ * Rules (user-defined):
+ *   consonant + "a"        → bare consonant (inherent vowel)   ka → ක
+ *   consonant + vowel sign → consonant + sign                  ki → කි
+ *   consonant alone        → consonant + hal kirima            k  → ක්
+ *   standalone vowel       → independent vowel                 a  → අ
+ *   n/m before a different consonant → anusvara               nk → ංක
+ *   ruu / ru / lu          → special standalone forms
  */
 object SinhalaTransliterator {
 
-    // ── Consonants (longest match first within each group) ─────────────────
-    private val consonants = listOf(
-        "ndh" to "න්ධ",
-        "nth" to "න්ථ",
-        "ndr" to "න්ද්‍ර",
-        "mba" to "ම්බ",
-
-        "kh"  to "ඛ",  "gh"  to "ඝ",
-        "ch"  to "ච",  "jh"  to "ඣ",
-        "nth" to "ඦ",  "dh"  to "ධ",
-        "th"  to "ථ",  "ph"  to "ඵ",
-        "bh"  to "භ",  "sh"  to "ශ",
-        "Sh"  to "ෂ",  "ng"  to "ඞ",
-        "ny"  to "ඤ",  "nj"  to "ඤ",
-        "nd"  to "න්ද", "nt"  to "න්ත",
-        "mb"  to "ම්බ",
-
-        "k"   to "ක",  "K"   to "ඛ",
-        "g"   to "ග",  "G"   to "ඝ",
-        "c"   to "ච",  "j"   to "ජ",
-        "J"   to "ඣ",  "T"   to "ට",
-        "D"   to "ඩ",  "N"   to "ණ",
-        "t"   to "ත",  "d"   to "ද",
-        "n"   to "න",  "p"   to "ප",
-        "P"   to "ඵ",  "b"   to "බ",
-        "B"   to "භ",  "m"   to "ම",
-        "y"   to "ය",  "r"   to "ර",
-        "R"   to "ඍ",  "l"   to "ල",
-        "L"   to "ළ",  "v"   to "ව",
-        "w"   to "ව",  "s"   to "ස",
-        "S"   to "ෂ",  "h"   to "හ",
-        "f"   to "ෆ",  "H"   to "හ",
-        "x"   to "ක්‍ෂ", "z"   to "ස්",
-        "q"   to "ක්"
+    // Special standalone forms — matched before anything else (longest first)
+    private val specials = listOf(
+        "ruu" to "ඎ",
+        "ru"  to "ඍ",
+        "lu"  to "ළු"
     )
 
-    // ── Vowel signs (follow a consonant) ────────────────────────────────
+    // Compound consonant bases (longest first)
+    private val compoundBases = listOf(
+        "ndh" to "ඳ",
+        "nd"  to "ඬ",
+        "ng"  to "ඟ",
+        "mb"  to "ඹ",
+        "gn"  to "ඥ",
+        "kn"  to "ඤ",
+        "sh"  to "ශ",
+        "Sh"  to "ෂ",
+        "th"  to "ත",
+        "dh"  to "ද",
+        "ch"  to "ච"
+    )
+
+    // Single consonant bases
+    private val singleBases = listOf(
+        "k" to "ක",  "g" to "ග",  "t" to "ට",  "d" to "ඩ",
+        "p" to "ප",  "b" to "බ",  "c" to "ච",  "j" to "ජ",
+        "m" to "ම",  "n" to "න",  "N" to "ණ",  "y" to "ය",
+        "r" to "ර",  "l" to "ල",  "L" to "ළ",  "v" to "ව",
+        "w" to "ව",  "s" to "ස",  "h" to "හ",  "f" to "ෆ"
+    )
+
+    // Vowel signs that follow a consonant base (longest first)
     private val vowelSigns = listOf(
+        "aae" to "ෑ",
         "aa"  to "ා",
         "ae"  to "ැ",
-        "aae" to "ෑ",
         "ii"  to "ී",
-        "i"   to "ි",
+        "ie"  to "ී",
         "uu"  to "ූ",
-        "u"   to "ු",
         "ee"  to "ේ",
-        "e"   to "ෙ",
-        "ai"  to "ෛ",
+        "ea"  to "ේ",
         "oo"  to "ෝ",
-        "o"   to "ො",
+        "oa"  to "ෝ",
+        "ai"  to "ෛ",
         "au"  to "ෞ",
-        "A"   to "ා"
+        "i"   to "ි",
+        "u"   to "ු",
+        "e"   to "ෙ",
+        "o"   to "ො"
+        // "a" = inherent vowel, handled separately — no sign needed
     )
 
-    // ── Independent vowels (start of word or after a space) ─────────────
+    // Independent vowels (word-initial or standalone) — longest first
     private val independentVowels = listOf(
+        "aae" to "ඈ",
         "aa"  to "ආ",
         "ae"  to "ඇ",
-        "aae" to "ඈ",
         "ii"  to "ඊ",
-        "i"   to "ඉ",
+        "ie"  to "ඊ",
         "uu"  to "ඌ",
-        "u"   to "උ",
         "ee"  to "ඒ",
-        "e"   to "එ",
-        "ai"  to "ඓ",
+        "ea"  to "ඒ",
         "oo"  to "ඕ",
-        "o"   to "ඔ",
+        "oa"  to "ඕ",
+        "ai"  to "ඓ",
         "au"  to "ඖ",
-        "a"   to "අ",
-        "A"   to "ආ"
+        "i"   to "ඉ",
+        "u"   to "උ",
+        "e"   to "එ",
+        "o"   to "ඔ",
+        "a"   to "අ"
     )
 
-    // ── Special standalone sequences ────────────────────────────────────
-    private val specials = listOf(
-        "ruu"  to "රූ",
-        "ru"   to "රු",
-        "lu"   to "ලු",
-        "luu"  to "ලූ"
+    private val halKirima = "්"
+    private val anusvara  = "ං"
+
+    // Characters that start a consonant (used for anusvara detection)
+    private val consonantStarts = setOf(
+        'k','g','t','d','p','b','c','j','m','n','N','y','r','l','L',
+        'v','w','s','h','f','K','G','T','D','P','B','C','J','M','Y',
+        'R','S','H','F'
     )
 
     /**
-     * Transliterates a full romanized word into Sinhala Unicode.
+     * Transliterates a romanized Singlish string into Sinhala Unicode.
      *
-     * Algorithm:
-     *  1. Walk through the input character by character.
-     *  2. Try to match the longest consonant at current position.
-     *  3. If a consonant is matched, then try to match a vowel sign
-     *     immediately after; if no vowel sign, append inherent "අ" vowel.
-     *  4. If no consonant matches, try an independent vowel.
-     *  5. Special two-letter consonant clusters (e.g. "kk" → "ක්ක") are
-     *     handled by detecting a repeated consonant and inserting virama.
+     * Per-position algorithm:
+     *  1. Try special standalone forms (ru, ruu, lu).
+     *  2. Anusvara check: if current char is n/m and next char is a DIFFERENT
+     *     consonant (not forming a known compound), emit anusvara (ං).
+     *  3. Try compound bases, then single bases.
+     *     After matching a base:
+     *       - bare 'a' follows (not ae/ai/au/aa) → emit base only (inherent vowel)
+     *       - vowel sign follows → emit base + sign
+     *       - nothing vowel-like → emit base + hal kirima (්)
+     *  4. Try independent vowel.
+     *  5. Fallback: emit character as-is.
      */
     fun transliterate(input: String): String {
         if (input.isEmpty()) return ""
         val out = StringBuilder()
         var i = 0
-        var lastWasConsonant = false
 
         while (i < input.length) {
-            // Try specials first
-            val special = tryMatch(input, i, specials)
-            if (special != null) {
-                out.append(special.second)
-                i += special.first.length
-                lastWasConsonant = false
-                continue
+
+            // 1. Special standalone forms
+            val sp = tryMatch(input, i, specials)
+            if (sp != null) {
+                out.append(sp.second); i += sp.first.length; continue
             }
 
-            // Try consonant
-            val cons = tryMatch(input, i, consonants)
-            if (cons != null) {
-                // Check for gemination: same consonant repeated → insert virama
-                if (lastWasConsonant && out.isNotEmpty()) {
-                    // already handled below via virama before second consonant
+            // 2. Anusvara: n/m before a different consonant (not gemination,
+            //    and not the start of a known compound like nd, ng, mb…)
+            if (input[i] == 'n' || input[i] == 'm') {
+                val comp = tryMatch(input, i, compoundBases)
+                if (comp == null) {
+                    val nextPos = i + 1
+                    if (nextPos < input.length &&
+                        input[nextPos] in consonantStarts &&
+                        input[nextPos] != input[i]          // not gemination (mm, nn)
+                    ) {
+                        out.append(anusvara); i++; continue
+                    }
                 }
-                out.append(cons.second)
-                i += cons.first.length
-                lastWasConsonant = true
+            }
 
-                // Try vowel sign after consonant
-                val vowel = tryMatch(input, i, vowelSigns)
-                if (vowel != null) {
-                    out.append(vowel.second)
-                    i += vowel.first.length
-                    lastWasConsonant = false
+            // 3. Consonant base (compound first, then single)
+            val base = tryMatch(input, i, compoundBases)
+                ?: tryMatch(input, i, singleBases)
+
+            if (base != null) {
+                val afterBase = i + base.first.length
+
+                when {
+                    // Inherent 'a': bare consonant, no vowel sign, no hal
+                    afterBase < input.length &&
+                    input[afterBase] == 'a' &&
+                    !input.startsWith("ae", afterBase) &&
+                    !input.startsWith("ai", afterBase) &&
+                    !input.startsWith("au", afterBase) &&
+                    !input.startsWith("aa", afterBase) -> {
+                        out.append(base.second)
+                        i = afterBase + 1
+                    }
+                    // Vowel sign
+                    else -> {
+                        val vowel = tryMatch(input, afterBase, vowelSigns)
+                        if (vowel != null) {
+                            out.append(base.second)
+                            out.append(vowel.second)
+                            i = afterBase + vowel.first.length
+                        } else {
+                            // Consonant alone → hal kirima
+                            out.append(base.second)
+                            out.append(halKirima)
+                            i = afterBase
+                        }
+                    }
                 }
-                // else inherent 'a' — nothing appended (Sinhala default)
                 continue
             }
 
-            // Try independent vowel
-            val indVowel = tryMatch(input, i, independentVowels)
-            if (indVowel != null) {
-                out.append(indVowel.second)
-                i += indVowel.first.length
-                lastWasConsonant = false
-                continue
+            // 4. Independent vowel
+            val vowel = tryMatch(input, i, independentVowels)
+            if (vowel != null) {
+                out.append(vowel.second); i += vowel.first.length; continue
             }
 
-            // Fallback: pass through as-is
-            out.append(input[i])
-            i++
-            lastWasConsonant = false
+            // 5. Fallback
+            out.append(input[i]); i++
         }
 
         return out.toString()
     }
 
-    private fun tryMatch(input: String, pos: Int, rules: List<Pair<String, String>>): Pair<String, String>? {
+    private fun tryMatch(
+        input: String,
+        pos: Int,
+        rules: List<Pair<String, String>>
+    ): Pair<String, String>? {
         for (rule in rules) {
             val key = rule.first
             if (pos + key.length <= input.length &&
-                input.substring(pos, pos + key.length) == key) {
-                return rule
-            }
+                input.substring(pos, pos + key.length) == key
+            ) return rule
         }
         return null
     }
