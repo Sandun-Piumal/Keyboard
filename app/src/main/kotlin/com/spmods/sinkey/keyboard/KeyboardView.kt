@@ -1,10 +1,13 @@
 package com.spmods.sinkey.keyboard
 
+import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.ExperimentalAnimationApi
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
+import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -24,7 +27,10 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
+import androidx.compose.ui.res.painterResource
+import com.spmods.sinkey.R
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -265,7 +271,8 @@ private fun AppsMicBar(
 ) {
     val isTyping = suggestions.isNotEmpty()
 
-    androidx.compose.animation.AnimatedContent(
+    @OptIn(ExperimentalAnimationApi::class)
+    AnimatedContent(
         targetState = isTyping,
         transitionSpec = {
             (fadeIn() + slideInVertically { -it }) togetherWith
@@ -313,12 +320,12 @@ private fun AppsMicBar(
         } else {
             // ── Full tools row ───────────────────────────────────────────
             val tools = listOf(
-                "⊞" to "TOOL_APPS",
-                "☺" to "TOOL_STICKER",
-                "📋" to "TOOL_CLIPBOARD",
-                "A" to "TOOL_FONT",
-                "🇦" to "TOOL_TRANSLATE",
-                "⚙" to "TOOL_SETTINGS"
+                R.drawable.ic_unified_menu  to "TOOL_APPS",
+                R.drawable.ic_sticker       to "TOOL_STICKER",
+                R.drawable.ic_emoji_for_compose to "TOOL_CLIPBOARD",
+                R.drawable.ic_custom_font   to "TOOL_FONT",
+                R.drawable.ic_translation   to "TOOL_TRANSLATE",
+                R.drawable.ic_settings      to "TOOL_SETTINGS"
             )
             Row(
                 modifier = Modifier
@@ -329,7 +336,7 @@ private fun AppsMicBar(
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                tools.forEach { (label, action) ->
+                tools.forEach { (iconRes, action) ->
                     Box(
                         modifier = Modifier
                             .size(38.dp)
@@ -337,7 +344,12 @@ private fun AppsMicBar(
                             .clickable { onKey(action) },
                         contentAlignment = Alignment.Center
                     ) {
-                        Text(text = label, fontSize = 18.sp, color = colors.subText)
+                        Icon(
+                            painter = painterResource(id = iconRes),
+                            contentDescription = null,
+                            modifier = Modifier.size(22.dp),
+                            tint = colors.subText
+                        )
                     }
                 }
                 Box(
@@ -530,7 +542,12 @@ private fun RowScope.ShiftKey(
             .clickable { onTap() },
         contentAlignment = Alignment.Center
     ) {
-        Text(text = if (active) "▲" else "△", fontSize = 18.sp, color = colors.specialKeyText)
+        Icon(
+            painter = painterResource(id = if (active) R.drawable.ic_shift_key_shifted else R.drawable.ic_shift_key),
+            contentDescription = "Shift",
+            modifier = Modifier.size(22.dp),
+            tint = if (active) DeshGreen else colors.specialKeyText
+        )
     }
 }
 
@@ -568,7 +585,12 @@ private fun RowScope.BackspaceKey(
             },
         contentAlignment = Alignment.Center
     ) {
-        Text(text = "⌫", fontSize = 18.sp, color = colors.specialKeyText)
+        Icon(
+            painter = painterResource(id = R.drawable.ic_backspace),
+            contentDescription = "Backspace",
+            modifier = Modifier.size(22.dp),
+            tint = colors.specialKeyText
+        )
     }
 }
 
@@ -677,6 +699,11 @@ private fun RowScope.EnterKey(
             .clickable { onTap() },
         contentAlignment = Alignment.Center
     ) {
-        Text(text = "←", fontSize = 22.sp, color = Color.White)
+        Icon(
+            painter = painterResource(id = R.drawable.ic_enter_key),
+            contentDescription = "Enter",
+            modifier = Modifier.size(22.dp),
+            tint = Color.White
+        )
     }
 }
