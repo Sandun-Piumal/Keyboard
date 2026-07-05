@@ -41,7 +41,8 @@ class SinKeyInputMethodService : InputMethodService() {
     private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
 
     // Buffer of the word currently being typed, used for Sinhala transliteration.
-    private var wordBuffer = StringBuilder()
+    private var wordBuffer = StringBuilder()     // Sinhala roman input
+    private var englishBuffer = StringBuilder()   // English word tracking (suggestions only)
     private var currentLanguage = mutableStateOf("si") // default per PreferencesManager
     private var suggestions = mutableStateOf<List<String>>(emptyList())
 
@@ -144,6 +145,8 @@ class SinKeyInputMethodService : InputMethodService() {
         super.onStartInputView(info, restarting)
         lifecycleOwner.handleLifecycleEvent(Lifecycle.Event.ON_RESUME)
         wordBuffer.clear()
+        englishBuffer.clear()
+        suggestions.value = emptyList()
     }
 
     override fun onFinishInputView(finishingInput: Boolean) {
@@ -189,7 +192,7 @@ class SinKeyInputMethodService : InputMethodService() {
                     // PRIORITY 3: No composing, no selection — delete character before cursor.
                     // Use codepoint-aware deletion so emoji/Sinhala chars
                     // (which can be multiple UTF-16 units) are deleted correctly.
-                    if (wordBuffer.isNotEmpty()) wordBuffer.deleteCharAt(wordBuffer.length - 1)
+                    if (englishBuffer.isNotEmpty()) englishBuffer.deleteCharAt(englishBuffer.length - 1)
                     val beforeCursor = ic.getTextBeforeCursor(4, 0)
                     if (!beforeCursor.isNullOrEmpty()) {
                         val lastCodePoint = Character.codePointBefore(beforeCursor, beforeCursor.length)
@@ -202,14 +205,14 @@ class SinKeyInputMethodService : InputMethodService() {
                 }
             }
             "SPACE" -> {
-                commitPendingWord()
+                if (currentLanguage.value == "si") commitPendingWord()
+                else { englishBuffer.clear(); suggestions.value = emptyList() }
                 ic.commitText(" ", 1)
-                suggestions.value = emptyList()
             }
             "ENTER" -> {
-                commitPendingWord()
+                if (currentLanguage.value == "si") commitPendingWord()
+                else { englishBuffer.clear(); suggestions.value = emptyList() }
                 ic.commitText("\n", 1)
-                suggestions.value = emptyList()
             }
             "SHIFT" -> {
                 // handled visually inside KeyboardView; no text action here
@@ -221,10 +224,14 @@ class SinKeyInputMethodService : InputMethodService() {
             }
             "LANG_TOGGLE" -> {
                 commitPendingWord()
+                englishBuffer.clear()
+                suggestions.value = emptyList()
                 currentLanguage.value = if (currentLanguage.value == "en") "si" else "en"
             }
             "," , "." -> {
                 commitPendingWord()
+                englishBuffer.clear()
+                suggestions.value = emptyList()
                 ic.commitText(key, 1)
             }
             else -> {
@@ -244,8 +251,8 @@ class SinKeyInputMethodService : InputMethodService() {
                     ic.setComposingText(preview, 1)
                     updateSuggestions()
                 } else {
-                    // English mode: buffer for suggestions then commit
-                    wordBuffer.append(key)
+                    // English mode: commit directly, track in englishBuffer for suggestions
+                    englishBuffer.append(key)
                     ic.commitText(key, 1)
                     updateSuggestions()
                 }
@@ -280,7 +287,9 @@ class SinKeyInputMethodService : InputMethodService() {
         if (wordBuffer.isEmpty()) return
         val ic = currentInputConnection
         val finalWord = SinhalaTransliterator.transliterate(wordBuffer.toString())
-        ic?.finishComposingText()
+        // setComposingText("") removes the composing span WITHOUT committing it,
+        // then commitText commits the final word exactly once.
+        ic?.setComposingText("", 1)
         ic?.commitText(finalWord, 1)
         wordBuffer.clear()
         suggestions.value = emptyList()
@@ -292,9 +301,18 @@ class SinKeyInputMethodService : InputMethodService() {
      */
     private fun handleSuggestion(word: String) {
         val ic = currentInputConnection ?: return
-        ic.finishComposingText()
-        ic.commitText(word, 1)
-        wordBuffer.clear()
+        if (currentLanguage.value == "si") {
+            // Replace composing Sinhala word
+            ic.finishComposingText()
+            ic.commitText(word, 1)
+            wordBuffer.clear()
+        } else {
+            // Replace the English word already committed
+            val len = englishBuffer.length
+            if (len > 0) ic.deleteSurroundingText(len, 0)
+            ic.commitText(word, 1)
+            englishBuffer.clear()
+        }
         suggestions.value = emptyList()
     }
 
@@ -308,7 +326,7 @@ class SinKeyInputMethodService : InputMethodService() {
      *                 gap on devices/emulators that lack it.
      */
     private fun updateSuggestions() {
-        val raw = wordBuffer.toString()
+        val raw = if (currentLanguage.value == "si") wordBuffer.toString() else englishBuffer.toString()
         if (raw.isEmpty()) { suggestions.value = emptyList(); return }
 
         if (currentLanguage.value == "si") {
