@@ -119,6 +119,8 @@ fun KeyboardView(
     bottomSpaceSize: Float = 0f,
     showKeyBorders: Boolean = true,
     isDark: Boolean = false,
+    suggestions: List<String> = emptyList(),
+    onSuggestionSelected: (String) -> Unit = {},
     onKey: (String) -> Unit,
     onDismiss: (() -> Unit)? = null
 ) {
@@ -159,7 +161,12 @@ fun KeyboardView(
                 .fillMaxWidth()
                 .background(colors.bg)
         ) {
-            ToolbarRow(colors = colors, onKey = onKey)
+            AppsMicBar(
+                colors = colors,
+                suggestions = suggestions,
+                onSuggestionSelected = onSuggestionSelected,
+                onKey = onKey
+            )
 
             EmojiRow(
                 emojis = recentEmojis,
@@ -247,46 +254,78 @@ fun KeyboardView(
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Toolbar
+// Toolbar — APPS | suggestion strip | MIC
 // ─────────────────────────────────────────────────────────────────────────────
 @Composable
-private fun ToolbarRow(colors: KeyboardColors, onKey: (String) -> Unit) {
-    val tools = listOf(
-        "⊞" to "TOOL_APPS",
-        "☺" to "TOOL_STICKER",
-        "📋" to "TOOL_CLIPBOARD",
-        "A" to "TOOL_FONT",
-        "🇦" to "TOOL_TRANSLATE",
-        "⚙" to "TOOL_SETTINGS"
-    )
+private fun AppsMicBar(
+    colors: KeyboardColors,
+    suggestions: List<String>,
+    onSuggestionSelected: (String) -> Unit,
+    onKey: (String) -> Unit
+) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .background(colors.bg)
-            .padding(horizontal = 8.dp, vertical = 2.dp),
-        horizontalArrangement = Arrangement.SpaceBetween,
+            .height(40.dp)
+            .background(colors.bg),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        tools.forEach { (label, action) ->
-            Box(
-                modifier = Modifier
-                    .size(38.dp)
-                    .clip(RoundedCornerShape(6.dp))
-                    .clickable { onKey(action) },
-                contentAlignment = Alignment.Center
-            ) {
-                Text(text = label, fontSize = 18.sp, color = colors.subText)
-            }
-        }
+        // ── Apps button ──────────────────────────────────────────────────
         Box(
             modifier = Modifier
-                .size(38.dp)
+                .size(44.dp)
+                .clip(RoundedCornerShape(6.dp))
+                .clickable { onKey("TOOL_APPS") },
+            contentAlignment = Alignment.Center
+        ) {
+            Text("⊞", fontSize = 20.sp, color = colors.subText)
+        }
+
+        // ── Suggestion strip (fills remaining space) ─────────────────────
+        LazyRow(
+            modifier = Modifier.weight(1f),
+            horizontalArrangement = Arrangement.spacedBy(4.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 4.dp)
+        ) {
+            items(suggestions.size) { idx ->
+                val word = suggestions[idx]
+                Box(
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(4.dp))
+                        .clickable { onSuggestionSelected(word) }
+                        .padding(horizontal = 10.dp, vertical = 4.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text(
+                        text = word,
+                        fontSize = 14.sp,
+                        color = colors.keyText,
+                        maxLines = 1
+                    )
+                }
+                // Divider between suggestions
+                if (idx < suggestions.size - 1) {
+                    Box(
+                        modifier = Modifier
+                            .height(18.dp)
+                            .width(1.dp)
+                            .background(colors.subText.copy(alpha = 0.3f))
+                    )
+                }
+            }
+        }
+
+        // ── Mic button ───────────────────────────────────────────────────
+        Box(
+            modifier = Modifier
+                .size(44.dp)
                 .clip(RoundedCornerShape(50))
                 .background(colors.specialKeyBg)
                 .clickable { onKey("TOOL_MIC") },
             contentAlignment = Alignment.Center
         ) {
-            Text(text = "🎤", fontSize = 16.sp)
+            Text("🎤", fontSize = 16.sp)
         }
     }
 }
