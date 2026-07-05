@@ -254,7 +254,7 @@ fun KeyboardView(
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Toolbar — APPS | suggestion strip | MIC
+// Toolbar — tools row OR suggestion strip depending on typing state
 // ─────────────────────────────────────────────────────────────────────────────
 @Composable
 private fun AppsMicBar(
@@ -263,69 +263,94 @@ private fun AppsMicBar(
     onSuggestionSelected: (String) -> Unit,
     onKey: (String) -> Unit
 ) {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .height(40.dp)
-            .background(colors.bg),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        // ── Apps button ──────────────────────────────────────────────────
-        Box(
-            modifier = Modifier
-                .size(44.dp)
-                .clip(RoundedCornerShape(6.dp))
-                .clickable { onKey("TOOL_APPS") },
-            contentAlignment = Alignment.Center
-        ) {
-            Text("⊞", fontSize = 20.sp, color = colors.subText)
-        }
+    val isTyping = suggestions.isNotEmpty()
 
-        // ── Suggestion strip (fills remaining space) ─────────────────────
-        LazyRow(
-            modifier = Modifier.weight(1f),
-            horizontalArrangement = Arrangement.spacedBy(4.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 4.dp)
-        ) {
-            items(suggestions.size) { idx ->
-                val word = suggestions[idx]
-                Box(
-                    modifier = Modifier
-                        .clip(RoundedCornerShape(4.dp))
-                        .clickable { onSuggestionSelected(word) }
-                        .padding(horizontal = 10.dp, vertical = 4.dp),
-                    contentAlignment = Alignment.Center
+    androidx.compose.animation.AnimatedContent(
+        targetState = isTyping,
+        transitionSpec = {
+            (fadeIn() + slideInVertically { -it }) togetherWith
+            (fadeOut() + slideOutVertically { -it })
+        },
+        label = "toolbar_anim"
+    ) { typing ->
+        if (typing) {
+            // ── Suggestion strip ─────────────────────────────────────────
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(40.dp)
+                    .background(colors.bg),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                LazyRow(
+                    modifier = Modifier.weight(1f),
+                    horizontalArrangement = Arrangement.spacedBy(4.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 8.dp)
                 ) {
-                    Text(
-                        text = word,
-                        fontSize = 14.sp,
-                        color = colors.keyText,
-                        maxLines = 1
-                    )
-                }
-                // Divider between suggestions
-                if (idx < suggestions.size - 1) {
-                    Box(
-                        modifier = Modifier
-                            .height(18.dp)
-                            .width(1.dp)
-                            .background(colors.subText.copy(alpha = 0.3f))
-                    )
+                    items(suggestions.size) { idx ->
+                        val word = suggestions[idx]
+                        Box(
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(4.dp))
+                                .clickable { onSuggestionSelected(word) }
+                                .padding(horizontal = 12.dp, vertical = 6.dp),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text(text = word, fontSize = 14.sp, color = colors.keyText, maxLines = 1)
+                        }
+                        if (idx < suggestions.size - 1) {
+                            Box(
+                                modifier = Modifier
+                                    .height(18.dp)
+                                    .width(1.dp)
+                                    .background(colors.subText.copy(alpha = 0.3f))
+                            )
+                        }
+                    }
                 }
             }
-        }
-
-        // ── Mic button ───────────────────────────────────────────────────
-        Box(
-            modifier = Modifier
-                .size(44.dp)
-                .clip(RoundedCornerShape(50))
-                .background(colors.specialKeyBg)
-                .clickable { onKey("TOOL_MIC") },
-            contentAlignment = Alignment.Center
-        ) {
-            Text("🎤", fontSize = 16.sp)
+        } else {
+            // ── Full tools row ───────────────────────────────────────────
+            val tools = listOf(
+                "⊞" to "TOOL_APPS",
+                "☺" to "TOOL_STICKER",
+                "📋" to "TOOL_CLIPBOARD",
+                "A" to "TOOL_FONT",
+                "🇦" to "TOOL_TRANSLATE",
+                "⚙" to "TOOL_SETTINGS"
+            )
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(40.dp)
+                    .background(colors.bg)
+                    .padding(horizontal = 8.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                tools.forEach { (label, action) ->
+                    Box(
+                        modifier = Modifier
+                            .size(38.dp)
+                            .clip(RoundedCornerShape(6.dp))
+                            .clickable { onKey(action) },
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(text = label, fontSize = 18.sp, color = colors.subText)
+                    }
+                }
+                Box(
+                    modifier = Modifier
+                        .size(38.dp)
+                        .clip(RoundedCornerShape(50))
+                        .background(colors.specialKeyBg)
+                        .clickable { onKey("TOOL_MIC") },
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text(text = "🎤", fontSize = 16.sp)
+                }
+            }
         }
     }
 }
