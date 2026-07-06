@@ -789,6 +789,20 @@ private fun SymbolsKeyboardView(
     onBack: () -> Unit
 ) {
     var shifted by remember { mutableStateOf(false) }
+    var showEmojiFromSymbols by remember { mutableStateOf(false) }
+
+    if (showEmojiFromSymbols) {
+        val context = LocalContext.current
+        val prefsManager = remember { PreferencesManager(context) }
+        val recentEmojis by prefsManager.recentEmojis.collectAsState(initial = emptyList())
+        EmojiPickerView(
+            recentEmojis = recentEmojis,
+            onEmojiSelected = { emoji -> onKey(emoji) },
+            onBackspace = { onKey("BACKSPACE") },
+            onDismiss = { showEmojiFromSymbols = false }
+        )
+        return
+    }
 
     val row1 = if (shifted) SymShiftRow1 else SymRow1
     val row2 = if (shifted) SymShiftRow2 else SymRow2
@@ -897,7 +911,7 @@ private fun SymbolsKeyboardView(
                     modifier = Modifier
                         .height(keyHeight).weight(0.9f)
                         .clip(keyShape).background(colors.specialKeyBg)
-                        .clickable { onKey("EMOJI") },
+                        .clickable { showEmojiFromSymbols = true },
                     contentAlignment = Alignment.Center
                 ) {
                     Icon(
@@ -915,7 +929,7 @@ private fun SymbolsKeyboardView(
                         .clickable { onKey("SPACE") },
                     contentAlignment = Alignment.Center
                 ) { }
-                // 12/34  (toNumpadKeyStyle → ic_number_layout_for_compose)
+                // 12/34  (toNumpadKeyStyle)
                 Box(
                     modifier = Modifier
                         .height(keyHeight).weight(1.0f)
@@ -923,12 +937,9 @@ private fun SymbolsKeyboardView(
                         .clickable { onKey("NUMPAD") },
                     contentAlignment = Alignment.Center
                 ) {
-                    Icon(
-                        painter = painterResource(id = R.drawable.ic_number_layout_for_compose),
-                        contentDescription = "Numpad",
-                        modifier = Modifier.size(22.dp),
-                        tint = colors.specialKeyText
-                    )
+                    Text(text = "12\n34", fontSize = 11.sp, color = colors.specialKeyText,
+                        fontWeight = FontWeight.Normal,
+                        textAlign = androidx.compose.ui.text.style.TextAlign.Center)
                 }
                 // .
                 SpecialKey(label = ".", weight = 0.8f, keyHeight = keyHeight,
