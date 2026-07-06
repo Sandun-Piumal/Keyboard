@@ -89,21 +89,22 @@ private fun keyboardColors(showKeyBorders: Boolean, isDark: Boolean): KeyboardCo
         )
     } else {
         KeyboardColors(
-            // surface = #fff8f9fa (keyboard background)
-            bg             = Color(0xFFF8F9FA),
-            // primaryContainer = #ffcbcfd6 (normal key background)
-            keyBg          = Color(0xFFCBCFD6),
-            // secondaryContainerOverlay = #ffb7c1b8 (functional/special keys)
-            specialKeyBg   = Color(0xFFB7C1B8),
-            // onPrimaryContainer = black (key text)
+            // keyboard_background_light_bordered = #E6EAED
+            bg             = Color(0xFFE6EAED),
+            // Bordered: primaryContainer = White
+            keyBg          = Color(0xFFFFFFFF),
+            // secondaryContainer (functional keys) = #335f9154 overlay on bg
+            specialKeyBg   = Color(0xFFC5CDD5),
+            // onPrimaryContainer = black
             keyText        = Color(0xFF000000),
-            // onSecondaryContainer = #ff516d4b (hint/sub text)
-            specialKeyText = Color(0xFF516D4B),
-            subText        = Color(0xFF516D4B),
-            // primaryContainer = #ffcbcfd6 (space bar background)
-            spaceKeyBg     = Color(0xFFCBCFD6),
-            // onSurface = black_70
-            spaceKeyText   = Color(0x99000000),
+            // specialKeyText - dark grey
+            specialKeyText = Color(0xFF444444),
+            // subText for number hints
+            subText        = Color(0xFF666666),
+            // space bar bg same as key bg (white/light)
+            spaceKeyBg     = Color(0xFFFFFFFF),
+            // space bar text - medium grey
+            spaceKeyText   = Color(0xFF888888),
         )
     }
 }
@@ -221,14 +222,14 @@ fun KeyboardView(
                 ) {
                     SymbolsKey(weight = 1.8f, keyHeight = keyHeight, colors = colors, keyShape = keyShape) { }
                     EmojiKey(
-                        weight = 1.3f,
+                        weight = 0.9f,
                         keyHeight = keyHeight,
                         colors = colors,
                         keyShape = keyShape,
                         onTap = { onKey(",") },
                         onLongPress = { showEmojiPicker = true }
                     )
-                    Box(modifier = Modifier.weight(1.3f)) {
+                    Box(modifier = Modifier.weight(0.9f)) {
                         LangToggleKey(
                             currentLanguage = currentLanguage,
                             keyHeight = keyHeight,
@@ -241,7 +242,7 @@ fun KeyboardView(
                         )
                     }
                     SpaceKey(
-                        weight = 4.5f,
+                        weight = 5.5f,
                         keyHeight = keyHeight,
                         colors = colors,
                         keyShape = keyShape,
@@ -363,13 +364,13 @@ private fun AppsMicBar(
                 }
                 Box(
                     modifier = Modifier
-                        .size(36.dp)
+                        .size(42.dp)
                         .clip(RoundedCornerShape(50))
-                        .background(colors.specialKeyBg)
+                        .background(Color(0xFFBBBBBB))
                         .clickable { onKey("TOOL_MIC") },
                     contentAlignment = Alignment.Center
                 ) {
-                    Text(text = "🎤", fontSize = 17.sp)
+                    Text(text = "🎤", fontSize = 19.sp)
                 }
             }
         }
@@ -662,7 +663,7 @@ private fun LangToggleKey(
             Icon(
                 painter = painterResource(id = R.drawable.ic_native_letter),
                 contentDescription = "Language",
-                modifier = Modifier.size(22.dp),
+                modifier = Modifier.size(18.dp),
                 tint = if (isSinhala) DeshGreen else colors.specialKeyText
             )
             Box(
