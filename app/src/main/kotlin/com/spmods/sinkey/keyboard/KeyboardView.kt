@@ -790,6 +790,19 @@ private fun SymbolsKeyboardView(
 ) {
     var shifted by remember { mutableStateOf(false) }
     var showEmojiFromSymbols by remember { mutableStateOf(false) }
+    var showNumpad by remember { mutableStateOf(false) }
+
+    if (showNumpad) {
+        NumberPadView(
+            colors = colors,
+            keyHeight = keyHeight,
+            keyShape = keyShape,
+            bottomPadding = bottomPadding,
+            onKey = onKey,
+            onBack = { showNumpad = false }
+        )
+        return
+    }
 
     if (showEmojiFromSymbols) {
         val context = LocalContext.current
@@ -934,7 +947,7 @@ private fun SymbolsKeyboardView(
                     modifier = Modifier
                         .height(keyHeight).weight(1.0f)
                         .clip(keyShape).background(colors.specialKeyBg)
-                        .clickable { onKey("NUMPAD") },
+                        .clickable { showNumpad = true },
                     contentAlignment = Alignment.Center
                 ) {
                     Text(text = "12\n34", fontSize = 11.sp, color = colors.specialKeyText,
@@ -949,5 +962,154 @@ private fun SymbolsKeyboardView(
                     keyShape = keyShape) { onKey("ENTER") }
             }
         }
+    }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Number Pad  (phone-style 3×3 + bottom row)
+// Layout matches screenshot: 1 2 3 / 4 5 6 / 7 8 9 / . 0 _ with ABC, , ⌫ Enter on right
+// ─────────────────────────────────────────────────────────────────────────────
+@Composable
+private fun NumberPadView(
+    colors: KeyboardColors,
+    keyHeight: Dp,
+    keyShape: RoundedCornerShape,
+    bottomPadding: Dp,
+    onKey: (String) -> Unit,
+    onBack: () -> Unit
+) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(colors.bg)
+    ) {
+        // ── Toolbar row (same height as main keyboard) ──────────────────────
+        AppsMicBar(
+            colors = colors,
+            suggestions = emptyList(),
+            onSuggestionSelected = {},
+            onKey = onKey
+        )
+
+        // ── Emoji row placeholder (keeps same total height as other views) ──
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(44.dp)
+                .background(colors.bg)
+        )
+
+        // ── Numpad grid ─────────────────────────────────────────────────────
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 4.dp, vertical = 2.dp)
+                .padding(bottom = bottomPadding)
+        ) {
+            // Row 1: 1  2  3  │ ABC
+            Row(
+                modifier = Modifier.fillMaxWidth().padding(vertical = 3.dp),
+                horizontalArrangement = Arrangement.spacedBy(6.dp)
+            ) {
+                NumpadDigitKey("1", keyHeight, colors, keyShape) { onKey("1") }
+                NumpadDigitKey("2", keyHeight, colors, keyShape) { onKey("2") }
+                NumpadDigitKey("3", keyHeight, colors, keyShape) { onKey("3") }
+                // ABC — back to symbols keyboard
+                Box(
+                    modifier = Modifier
+                        .height(keyHeight).weight(1f)
+                        .clip(keyShape).background(colors.specialKeyBg)
+                        .clickable { onBack() },
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text(
+                        text = "ABC",
+                        fontSize = 14.sp,
+                        color = colors.specialKeyText,
+                        fontWeight = FontWeight.Medium
+                    )
+                }
+            }
+
+            // Row 2: 4  5  6  │ ,
+            Row(
+                modifier = Modifier.fillMaxWidth().padding(vertical = 3.dp),
+                horizontalArrangement = Arrangement.spacedBy(6.dp)
+            ) {
+                NumpadDigitKey("4", keyHeight, colors, keyShape) { onKey("4") }
+                NumpadDigitKey("5", keyHeight, colors, keyShape) { onKey("5") }
+                NumpadDigitKey("6", keyHeight, colors, keyShape) { onKey("6") }
+                // comma
+                Box(
+                    modifier = Modifier
+                        .height(keyHeight).weight(1f)
+                        .clip(keyShape).background(colors.specialKeyBg)
+                        .clickable { onKey(",") },
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text(
+                        text = ",",
+                        fontSize = 20.sp,
+                        color = colors.specialKeyText,
+                        fontWeight = FontWeight.Normal
+                    )
+                }
+            }
+
+            // Row 3: 7  8  9  │ ⌫
+            Row(
+                modifier = Modifier.fillMaxWidth().padding(vertical = 3.dp),
+                horizontalArrangement = Arrangement.spacedBy(6.dp)
+            ) {
+                NumpadDigitKey("7", keyHeight, colors, keyShape) { onKey("7") }
+                NumpadDigitKey("8", keyHeight, colors, keyShape) { onKey("8") }
+                NumpadDigitKey("9", keyHeight, colors, keyShape) { onKey("9") }
+                // Backspace
+                BackspaceKey(weight = 1f, keyHeight = keyHeight, colors = colors, keyShape = keyShape) {
+                    onKey("BACKSPACE")
+                }
+            }
+
+            // Row 4: .  0  _  │ Enter (green)
+            Row(
+                modifier = Modifier.fillMaxWidth().padding(vertical = 3.dp),
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                // . (decimal / period)
+                NumpadDigitKey(".", keyHeight, colors, keyShape) { onKey(".") }
+                // 0
+                NumpadDigitKey("0", keyHeight, colors, keyShape) { onKey("0") }
+                // _ (underscore)
+                NumpadDigitKey("_", keyHeight, colors, keyShape) { onKey("_") }
+                // Enter — green
+                EnterKey(weight = 1f, keyHeight = keyHeight, keyShape = keyShape) { onKey("ENTER") }
+            }
+        }
+    }
+}
+
+/** A single large numpad digit/symbol key. */
+@Composable
+private fun RowScope.NumpadDigitKey(
+    label: String,
+    keyHeight: Dp,
+    colors: KeyboardColors,
+    keyShape: RoundedCornerShape,
+    onTap: () -> Unit
+) {
+    Box(
+        modifier = Modifier
+            .height(keyHeight).weight(1f)
+            .clip(keyShape).background(colors.keyBg)
+            .clickable { onTap() },
+        contentAlignment = Alignment.Center
+    ) {
+        Text(
+            text = label,
+            fontSize = 26.sp,
+            color = colors.keyText,
+            fontWeight = FontWeight.Normal
+        )
     }
 }
