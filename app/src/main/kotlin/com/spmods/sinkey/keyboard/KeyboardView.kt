@@ -770,7 +770,7 @@ private val SymbolsRow2 = listOf("@","#","₹","%","&","*","-","=","(",")")
 private val SymbolsRow3 = listOf("!","\"","'",":","+","/","?")
 
 @Composable
-fun SymbolsKeyboardView(
+internal fun SymbolsKeyboardView(
     colors: KeyboardColors,
     keyHeight: Dp,
     keyShape: RoundedCornerShape,
