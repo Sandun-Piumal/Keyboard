@@ -217,6 +217,19 @@ class SinKeyInputMethodService : InputMethodService() {
             "SHIFT" -> {
                 // handled visually inside KeyboardView; no text action here
             }
+            "SYMBOLS_SHIFT" -> {
+                // handled visually inside SymbolsKeyboardView
+            }
+            "EMOJI" -> {
+                // handled visually inside KeyboardView (opens emoji picker)
+            }
+            "NUMPAD" -> {
+                // handled visually inside SymbolsKeyboardView (opens numpad)
+            }
+            "TOOL_MIC" -> {
+                // Voice input - trigger IME action
+                sendDefaultEditorAction(true)
+            }
             "SWITCH_KEYBOARD" -> {
                 // Show system keyboard picker (InputMethodManager switcher dialog)
                 val imm = getSystemService(INPUT_METHOD_SERVICE) as android.view.inputmethod.InputMethodManager
@@ -235,6 +248,15 @@ class SinKeyInputMethodService : InputMethodService() {
                 ic.commitText(key, 1)
             }
             else -> {
+                // Single printable non-letter characters from symbols keyboard
+                // (e.g. @, #, !, 1, 2 ...) — commit directly without buffering
+                val isSinglePrintable = key.length == 1 && !key[0].isLetter()
+                if (isSinglePrintable) {
+                    commitPendingWord()
+                    englishBuffer.clear()
+                    ic.commitText(key, 1)
+                    return
+                }
                 // Check if the key is an emoji
                 if (isEmoji(key)) {
                     commitPendingWord()
