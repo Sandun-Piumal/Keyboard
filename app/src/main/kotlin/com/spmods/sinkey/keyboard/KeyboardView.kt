@@ -147,6 +147,7 @@ fun KeyboardView(
     val keyShape     = RoundedCornerShape(6.dp)
 
     var shift by remember { mutableStateOf(false) }
+    var showSymbols by remember { mutableStateOf(false) }
     var showLangTooltip by remember { mutableStateOf(false) }
     var showEmojiPicker by remember { mutableStateOf(false) }
 
@@ -159,6 +160,18 @@ fun KeyboardView(
             delay(1500)
             showLangTooltip = false
         }
+    }
+
+    if (showSymbols) {
+        SymbolsKeyboardView(
+            colors = colors,
+            keyHeight = keyHeight,
+            keyShape = keyShape,
+            bottomPadding = bottomPadding,
+            onKey = onKey,
+            onBack = { showSymbols = false }
+        )
+        return
     }
 
     if (showEmojiPicker) {
@@ -220,7 +233,7 @@ fun KeyboardView(
                     horizontalArrangement = Arrangement.spacedBy(6.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    SymbolsKey(weight = 1.8f, keyHeight = keyHeight, colors = colors, keyShape = keyShape) { }
+                    SymbolsKey(weight = 1.8f, keyHeight = keyHeight, colors = colors, keyShape = keyShape) { showSymbols = true }
                     EmojiKey(
                         weight = 0.9f,
                         keyHeight = keyHeight,
@@ -745,5 +758,134 @@ private fun RowScope.EnterKey(
             modifier = Modifier.size(26.dp),
             tint = Color.White
         )
+    }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Symbols Keyboard
+// ─────────────────────────────────────────────────────────────────────────────
+
+private val SymbolsRow1 = listOf("1","2","3","4","5","6","7","8","9","0")
+private val SymbolsRow2 = listOf("@","#","₹","%","&","*","-","=","(",")")
+private val SymbolsRow3 = listOf("!","\"","'",":","+","/","?")
+
+@Composable
+fun SymbolsKeyboardView(
+    colors: KeyboardColors,
+    keyHeight: Dp,
+    keyShape: RoundedCornerShape,
+    bottomPadding: Dp,
+    onKey: (String) -> Unit,
+    onBack: () -> Unit
+) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(colors.bg)
+    ) {
+        // Toolbar + emoji row same as main keyboard
+        Spacer(modifier = Modifier.height(8.dp))
+
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 4.dp, vertical = 2.dp)
+                .padding(bottom = bottomPadding)
+        ) {
+            // Row 1: numbers
+            Row(
+                modifier = Modifier.fillMaxWidth().padding(vertical = 3.dp),
+                horizontalArrangement = Arrangement.spacedBy(6.dp)
+            ) {
+                SymbolsRow1.forEach { ch ->
+                    LetterKey(label = ch, weight = 1f, keyHeight = keyHeight, colors = colors, keyShape = keyShape) { onKey(ch) }
+                }
+            }
+
+            // Row 2: symbols
+            Row(
+                modifier = Modifier.fillMaxWidth().padding(vertical = 3.dp),
+                horizontalArrangement = Arrangement.spacedBy(6.dp)
+            ) {
+                SymbolsRow2.forEach { ch ->
+                    LetterKey(label = ch, weight = 1f, keyHeight = keyHeight, colors = colors, keyShape = keyShape) { onKey(ch) }
+                }
+            }
+
+            // Row 3: <\> + symbols + backspace
+            Row(
+                modifier = Modifier.fillMaxWidth().padding(vertical = 3.dp),
+                horizontalArrangement = Arrangement.spacedBy(6.dp)
+            ) {
+                // <\> key
+                Box(
+                    modifier = Modifier
+                        .height(keyHeight).weight(1.4f)
+                        .clip(keyShape).background(colors.specialKeyBg)
+                        .clickable { onKey("SYMBOLS_SHIFT") },
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text(text = "<\\>", fontSize = 13.sp, color = colors.specialKeyText, fontWeight = FontWeight.Normal)
+                }
+                SymbolsRow3.forEach { ch ->
+                    LetterKey(label = ch, weight = 1f, keyHeight = keyHeight, colors = colors, keyShape = keyShape) { onKey(ch) }
+                }
+                // Backspace
+                BackspaceKey(weight = 1.4f, keyHeight = keyHeight, colors = colors, keyShape = keyShape) { onKey("BACKSPACE") }
+            }
+
+            // Bottom row: ABC + , + emoji + space + 12/34 + . + enter
+            Row(
+                modifier = Modifier.fillMaxWidth().padding(vertical = 3.dp),
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                // ABC key
+                Box(
+                    modifier = Modifier
+                        .height(keyHeight).weight(1.8f)
+                        .clip(keyShape).background(colors.specialKeyBg)
+                        .clickable { onBack() },
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text(text = "ABC", fontSize = 14.sp, color = colors.specialKeyText, fontWeight = FontWeight.Medium)
+                }
+                // Comma
+                SpecialKey(label = ",", weight = 0.8f, keyHeight = keyHeight, colors = colors, keyShape = keyShape) { onKey(",") }
+                // Emoji
+                Box(
+                    modifier = Modifier
+                        .height(keyHeight).weight(0.9f)
+                        .clip(keyShape).background(colors.specialKeyBg)
+                        .clickable { },
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text(text = "☺", fontSize = 18.sp, color = colors.specialKeyText)
+                }
+                // Space
+                Box(
+                    modifier = Modifier
+                        .height(keyHeight).weight(5.5f)
+                        .clip(keyShape).background(colors.spaceKeyBg)
+                        .clickable { onKey("SPACE") },
+                    contentAlignment = Alignment.Center
+                ) { }
+                // 12/34 key
+                Box(
+                    modifier = Modifier
+                        .height(keyHeight).weight(1.0f)
+                        .clip(keyShape).background(colors.specialKeyBg)
+                        .clickable { onKey("NUMPAD") },
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text(text = "12\n34", fontSize = 11.sp, color = colors.specialKeyText, fontWeight = FontWeight.Normal,
+                        textAlign = androidx.compose.ui.text.style.TextAlign.Center)
+                }
+                // Dot
+                SpecialKey(label = ".", weight = 0.8f, keyHeight = keyHeight, colors = colors, keyShape = keyShape) { onKey(".") }
+                // Enter
+                EnterKey(weight = 2.0f, keyHeight = keyHeight, keyShape = keyShape) { onKey("ENTER") }
+            }
+        }
     }
 }
