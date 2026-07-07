@@ -45,6 +45,7 @@ class SinKeyInputMethodService : InputMethodService() {
     private var englishBuffer = StringBuilder()   // English word tracking (suggestions only)
     private var currentLanguage = mutableStateOf("si") // default per PreferencesManager
     private var suggestions = mutableStateOf<List<String>>(emptyList())
+    private var currentInputTypeState = mutableStateOf(0)
 
     override fun onCreate() {
         super.onCreate()
@@ -122,7 +123,8 @@ class SinKeyInputMethodService : InputMethodService() {
                         isDark = isDark,
                         suggestions = suggestions.value,
                         onSuggestionSelected = ::handleSuggestion,
-                        onKey = ::handleKey
+                        onKey = ::handleKey,
+                        inputType = currentInputTypeState.value
                     )
                 }
             }
@@ -147,6 +149,7 @@ class SinKeyInputMethodService : InputMethodService() {
         wordBuffer.clear()
         englishBuffer.clear()
         suggestions.value = emptyList()
+        currentInputTypeState.value = info?.inputType ?: 0
     }
 
     override fun onFinishInputView(finishingInput: Boolean) {
