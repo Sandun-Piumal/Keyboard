@@ -54,6 +54,8 @@ import com.spmods.sinkey.data.PreferencesManager
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.withTimeoutOrNull
 import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Search
 
 // Number labels for top row keys
 private val topRowNumbers = listOf("1","2","3","4","5","6","7","8","9","0")
@@ -772,7 +774,7 @@ private fun RowScope.EnterKey(
     ) {
         if (useSearchIcon) {
             Icon(
-                imageVector = androidx.compose.material.icons.Icons.Default.Search,
+                imageVector = Icons.Filled.Search,
                 contentDescription = "Search",
                 modifier = Modifier.size(26.dp),
                 tint = Color.White
