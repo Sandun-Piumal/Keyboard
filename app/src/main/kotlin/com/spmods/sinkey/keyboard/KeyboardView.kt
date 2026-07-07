@@ -137,7 +137,8 @@ fun KeyboardView(
     suggestions: List<String> = emptyList(),
     onSuggestionSelected: (String) -> Unit = {},
     onKey: (String) -> Unit,
-    onDismiss: (() -> Unit)? = null
+    onDismiss: (() -> Unit)? = null,
+    inputType: Int = 0
 ) {
     val colors = keyboardColors(showKeyBorders, isDark)
 
@@ -150,6 +151,22 @@ fun KeyboardView(
     var showSymbols by remember { mutableStateOf(false) }
     var showLangTooltip by remember { mutableStateOf(false) }
     var showEmojiPicker by remember { mutableStateOf(false) }
+
+    // Auto-show phone dial pad when system requests TYPE_CLASS_PHONE
+    val isPhoneInput = remember(inputType) {
+        (inputType and android.view.inputmethod.EditorInfo.TYPE_CLASS_PHONE) ==
+            android.view.inputmethod.EditorInfo.TYPE_CLASS_PHONE
+    }
+    if (isPhoneInput) {
+        PhoneDialPadView(
+            colors = colors,
+            keyHeight = keyHeight,
+            keyShape = keyShape,
+            bottomPadding = bottomPadding,
+            onKey = onKey
+        )
+        return
+    }
 
     val context = LocalContext.current
     val prefsManager = remember { PreferencesManager(context) }
@@ -743,6 +760,7 @@ private fun RowScope.SpaceKey(
 private fun RowScope.EnterKey(
     weight: Float,
     keyHeight: Dp, keyShape: RoundedCornerShape,
+    useSearchIcon: Boolean = false,
     onTap: () -> Unit
 ) {
     Box(
@@ -752,12 +770,21 @@ private fun RowScope.EnterKey(
             .clickable { onTap() },
         contentAlignment = Alignment.Center
     ) {
-        Icon(
-            painter = painterResource(id = R.drawable.ic_enter_key),
-            contentDescription = "Enter",
-            modifier = Modifier.size(26.dp),
-            tint = Color.White
-        )
+        if (useSearchIcon) {
+            Icon(
+                imageVector = androidx.compose.material.icons.Icons.Default.Search,
+                contentDescription = "Search",
+                modifier = Modifier.size(26.dp),
+                tint = Color.White
+            )
+        } else {
+            Icon(
+                painter = painterResource(id = R.drawable.ic_enter_key),
+                contentDescription = "Enter",
+                modifier = Modifier.size(26.dp),
+                tint = Color.White
+            )
+        }
     }
 }
 
@@ -1111,5 +1138,170 @@ private fun RowScope.NumpadDigitKey(
             color = colors.keyText,
             fontWeight = FontWeight.Normal
         )
+    }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Phone Dial Pad  (auto-shown when system sends TYPE_CLASS_PHONE)
+// Layout: 1 / 2 ABC / 3 DEF / 4 GHI / 5 JKL / 6 MNO
+//          7 PQRS / 8 TUV / 9 WXYZ / *# / 0+ / _ / Search(green)
+// ─────────────────────────────────────────────────────────────────────────────
+@Composable
+private fun PhoneDialPadView(
+    colors: KeyboardColors,
+    keyHeight: Dp,
+    keyShape: RoundedCornerShape,
+    bottomPadding: Dp,
+    onKey: (String) -> Unit
+) {
+    val dialKeys = listOf(
+        Triple("1", "", "1"),
+        Triple("2", "ABC", "2"),
+        Triple("3", "DEF", "3"),
+        Triple("4", "GHI", "4"),
+        Triple("5", "JKL", "5"),
+        Triple("6", "MNO", "6"),
+        Triple("7", "PQRS", "7"),
+        Triple("8", "TUV", "8"),
+        Triple("9", "WXYZ", "9")
+    )
+
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(colors.bg)
+    ) {
+        // ── Toolbar ──────────────────────────────────────────────────────────
+        AppsMicBar(
+            colors = colors,
+            suggestions = emptyList(),
+            onSuggestionSelected = {},
+            onKey = onKey
+        )
+
+        // ── Emoji bar height placeholder ──────────────────────────────────
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(44.dp)
+                .background(colors.bg)
+        )
+
+        // ── Grid ──────────────────────────────────────────────────────────
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 4.dp, vertical = 2.dp)
+                .padding(bottom = bottomPadding)
+        ) {
+            // Rows 1-3: 1  2ABC  3DEF │ -   /   4GHI  5JKL  6MNO │ .   /   7PQRS  8TUV  9WXYZ │ ⌫
+            val sideKeys = listOf("-", ".", null) // right-side special keys per row
+            dialKeys.chunked(3).forEachIndexed { rowIdx, trio ->
+                Row(
+                    modifier = Modifier.fillMaxWidth().padding(vertical = 3.dp),
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    trio.forEach { (digit, sub, key) ->
+                        Box(
+                            modifier = Modifier
+                                .height(keyHeight).weight(1f)
+                                .clip(keyShape).background(colors.keyBg)
+                                .clickable { onKey(key) },
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                Text(
+                                    text = digit,
+                                    fontSize = 26.sp,
+                                    color = colors.keyText,
+                                    fontWeight = FontWeight.Normal,
+                                    lineHeight = 28.sp
+                                )
+                                if (sub.isNotEmpty()) {
+                                    Text(
+                                        text = sub,
+                                        fontSize = 9.sp,
+                                        color = colors.keyText.copy(alpha = 0.6f),
+                                        fontWeight = FontWeight.Normal,
+                                        lineHeight = 10.sp
+                                    )
+                                }
+                            }
+                        }
+                    }
+                    // Right-side key
+                    when (rowIdx) {
+                        0 -> { // -
+                            Box(
+                                modifier = Modifier
+                                    .height(keyHeight).weight(1f)
+                                    .clip(keyShape).background(colors.specialKeyBg)
+                                    .clickable { onKey("-") },
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Text("-", fontSize = 24.sp, color = colors.specialKeyText)
+                            }
+                        }
+                        1 -> { // .
+                            Box(
+                                modifier = Modifier
+                                    .height(keyHeight).weight(1f)
+                                    .clip(keyShape).background(colors.specialKeyBg)
+                                    .clickable { onKey(".") },
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Text(".", fontSize = 24.sp, color = colors.specialKeyText)
+                            }
+                        }
+                        2 -> { // ⌫
+                            BackspaceKey(weight = 1f, keyHeight = keyHeight, colors = colors, keyShape = keyShape) {
+                                onKey("BACKSPACE")
+                            }
+                        }
+                    }
+                }
+            }
+
+            // Row 4: *#  /  0+  /  _  │ Search (green)
+            Row(
+                modifier = Modifier.fillMaxWidth().padding(vertical = 3.dp),
+                horizontalArrangement = Arrangement.spacedBy(6.dp)
+            ) {
+                // *#
+                Box(
+                    modifier = Modifier
+                        .height(keyHeight).weight(1f)
+                        .clip(keyShape).background(colors.keyBg)
+                        .clickable { onKey("*") },
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text("* #", fontSize = 20.sp, color = colors.keyText, fontWeight = FontWeight.Normal)
+                }
+                // 0+
+                Box(
+                    modifier = Modifier
+                        .height(keyHeight).weight(1f)
+                        .clip(keyShape).background(colors.keyBg)
+                        .clickable { onKey("0") },
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text("0 +", fontSize = 20.sp, color = colors.keyText, fontWeight = FontWeight.Normal)
+                }
+                // _
+                Box(
+                    modifier = Modifier
+                        .height(keyHeight).weight(1f)
+                        .clip(keyShape).background(colors.keyBg)
+                        .clickable { onKey("_") },
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text("_", fontSize = 24.sp, color = colors.keyText)
+                }
+                // Search / Enter (green)
+                EnterKey(weight = 1f, keyHeight = keyHeight, keyShape = keyShape, useSearchIcon = true) {
+                    onKey("ENTER")
+                }
+            }
+        }
     }
 }
