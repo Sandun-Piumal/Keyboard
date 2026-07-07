@@ -415,7 +415,6 @@ private fun AppsMicBar(
 // Emoji row
 // ─────────────────────────────────────────────────────────────────────────────
 @Composable
-@Composable
 private fun ConditionalEmojiRow(
     colors: KeyboardColors,
     onKey: (String) -> Unit,
