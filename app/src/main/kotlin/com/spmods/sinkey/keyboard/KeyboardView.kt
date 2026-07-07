@@ -1269,32 +1269,42 @@ private fun PhoneDialPadView(
                 modifier = Modifier.fillMaxWidth().padding(vertical = 3.dp),
                 horizontalArrangement = Arrangement.spacedBy(6.dp)
             ) {
-                // *#
+                // *# — tap → *, long press → #
                 Box(
                     modifier = Modifier
                         .height(keyHeight).weight(1f)
                         .clip(keyShape).background(colors.keyBg)
-                        .clickable { onKey("*") },
+                        .pointerInput(Unit) {
+                            detectTapGestures(
+                                onTap = { onKey("*") },
+                                onLongPress = { onKey("#") }
+                            )
+                        },
                     contentAlignment = Alignment.Center
                 ) {
                     Text("* #", fontSize = 20.sp, color = colors.keyText, fontWeight = FontWeight.Normal)
                 }
-                // 0+
+                // 0+ — tap → 0, long press → +
                 Box(
                     modifier = Modifier
                         .height(keyHeight).weight(1f)
                         .clip(keyShape).background(colors.keyBg)
-                        .clickable { onKey("0") },
+                        .pointerInput(Unit) {
+                            detectTapGestures(
+                                onTap = { onKey("0") },
+                                onLongPress = { onKey("+") }
+                            )
+                        },
                     contentAlignment = Alignment.Center
                 ) {
                     Text("0 +", fontSize = 20.sp, color = colors.keyText, fontWeight = FontWeight.Normal)
                 }
-                // _
+                // _ → tap to switch keyboard
                 Box(
                     modifier = Modifier
                         .height(keyHeight).weight(1f)
                         .clip(keyShape).background(colors.keyBg)
-                        .clickable { onKey("_") },
+                        .clickable { onKey("SWITCH_KEYBOARD") },
                     contentAlignment = Alignment.Center
                 ) {
                     Text("_", fontSize = 24.sp, color = colors.keyText)
