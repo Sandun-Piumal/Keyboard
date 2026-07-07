@@ -1187,9 +1187,6 @@ private fun PhoneDialPadView(
             onKey = onKey
         )
 
-        // ── Emoji row (hidden when no recents) ────────────────────────────
-        ConditionalEmojiRow(colors = colors, onKey = onKey)
-
         // ── Grid ──────────────────────────────────────────────────────────
         Column(
             modifier = Modifier
@@ -1275,12 +1272,7 @@ private fun PhoneDialPadView(
                     modifier = Modifier
                         .height(keyHeight).weight(1f)
                         .clip(keyShape).background(colors.keyBg)
-                        .pointerInput(Unit) {
-                            detectTapGestures(
-                                onTap = { onKey("*") },
-                                onLongPress = { onKey("#") }
-                            )
-                        },
+                        .combinedClickable(onClick = { onKey("*") }, onLongClick = { onKey("#") }),
                     contentAlignment = Alignment.Center
                 ) {
                     Text("* #", fontSize = 20.sp, color = colors.keyText, fontWeight = FontWeight.Normal)
@@ -1290,12 +1282,7 @@ private fun PhoneDialPadView(
                     modifier = Modifier
                         .height(keyHeight).weight(1f)
                         .clip(keyShape).background(colors.keyBg)
-                        .pointerInput(Unit) {
-                            detectTapGestures(
-                                onTap = { onKey("0") },
-                                onLongPress = { onKey("+") }
-                            )
-                        },
+                        .combinedClickable(onClick = { onKey("0") }, onLongClick = { onKey("+") }),
                     contentAlignment = Alignment.Center
                 ) {
                     Text("0 +", fontSize = 20.sp, color = colors.keyText, fontWeight = FontWeight.Normal)
@@ -1305,12 +1292,7 @@ private fun PhoneDialPadView(
                     modifier = Modifier
                         .height(keyHeight).weight(1f)
                         .clip(keyShape).background(colors.keyBg)
-                        .pointerInput(Unit) {
-                            detectTapGestures(
-                                onTap = { onKey("_") },
-                                onLongPress = { onKey("SWITCH_KEYBOARD") }
-                            )
-                        },
+                        .combinedClickable(onClick = { onKey("_") }, onLongClick = { onKey("SWITCH_KEYBOARD") }),
                     contentAlignment = Alignment.Center
                 ) {
                     Text("_", fontSize = 24.sp, color = colors.keyText)
