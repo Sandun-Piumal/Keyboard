@@ -216,12 +216,14 @@ fun KeyboardView(
                 onKey = onKey
             )
 
-            EmojiRow(
-                emojis = recentEmojis,
-                colors = colors,
-                onKey = onKey,
-                onMoreClick = { showEmojiPicker = true }
-            )
+            if (recentEmojis.isNotEmpty()) {
+                EmojiRow(
+                    emojis = recentEmojis,
+                    colors = colors,
+                    onKey = onKey,
+                    onMoreClick = { showEmojiPicker = true }
+                )
+            }
 
             Column(
                 modifier = Modifier
@@ -412,6 +414,21 @@ private fun AppsMicBar(
 // ─────────────────────────────────────────────────────────────────────────────
 // Emoji row
 // ─────────────────────────────────────────────────────────────────────────────
+@Composable
+@Composable
+private fun ConditionalEmojiRow(
+    colors: KeyboardColors,
+    onKey: (String) -> Unit,
+    onMoreClick: () -> Unit = {}
+) {
+    val context = LocalContext.current
+    val prefsManager = remember { PreferencesManager(context) }
+    val recentEmojis by prefsManager.recentEmojis.collectAsState(initial = emptyList())
+    if (recentEmojis.isNotEmpty()) {
+        EmojiRow(emojis = recentEmojis, colors = colors, onKey = onKey, onMoreClick = onMoreClick)
+    }
+}
+
 @Composable
 private fun EmojiRow(emojis: List<String>, colors: KeyboardColors, onKey: (String) -> Unit, onMoreClick: () -> Unit) {
     LazyRow(
@@ -861,13 +878,8 @@ private fun SymbolsKeyboardView(
             onKey = onKey
         )
 
-        // ── Emoji row placeholder (same height as main keyboard emoji row) ───
-        Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(44.dp)
-                .background(colors.bg)
-        )
+        // ── Emoji row (hidden when no recents) ──────────────────────────────
+        ConditionalEmojiRow(colors = colors, onKey = onKey, onMoreClick = { showEmojiFromSymbols = true })
 
         // ── Key rows ─────────────────────────────────────────────────────────
         Column(
@@ -1020,13 +1032,8 @@ private fun NumberPadView(
             onKey = onKey
         )
 
-        // ── Emoji row placeholder (keeps same total height as other views) ──
-        Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(44.dp)
-                .background(colors.bg)
-        )
+        // ── Emoji row (hidden when no recents) ────────────────────────────
+        ConditionalEmojiRow(colors = colors, onKey = onKey)
 
         // ── Numpad grid ─────────────────────────────────────────────────────
         Column(
@@ -1181,13 +1188,8 @@ private fun PhoneDialPadView(
             onKey = onKey
         )
 
-        // ── Emoji bar height placeholder ──────────────────────────────────
-        Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(44.dp)
-                .background(colors.bg)
-        )
+        // ── Emoji row (hidden when no recents) ────────────────────────────
+        ConditionalEmojiRow(colors = colors, onKey = onKey)
 
         // ── Grid ──────────────────────────────────────────────────────────
         Column(
@@ -1299,12 +1301,17 @@ private fun PhoneDialPadView(
                 ) {
                     Text("0 +", fontSize = 20.sp, color = colors.keyText, fontWeight = FontWeight.Normal)
                 }
-                // _ → tap to switch keyboard
+                // _ — tap → _, long press → switch keyboard
                 Box(
                     modifier = Modifier
                         .height(keyHeight).weight(1f)
                         .clip(keyShape).background(colors.keyBg)
-                        .clickable { onKey("SWITCH_KEYBOARD") },
+                        .pointerInput(Unit) {
+                            detectTapGestures(
+                                onTap = { onKey("_") },
+                                onLongPress = { onKey("SWITCH_KEYBOARD") }
+                            )
+                        },
                     contentAlignment = Alignment.Center
                 ) {
                     Text("_", fontSize = 24.sp, color = colors.keyText)
