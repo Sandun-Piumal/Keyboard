@@ -47,10 +47,20 @@ class SinKeyInputMethodService : InputMethodService() {
     private var suggestions = mutableStateOf<List<String>>(emptyList())
     private var currentInputTypeState = mutableStateOf(0)
 
-    // Disable fullscreen mode — prevents the keyboard from being rendered
-    // twice (once as the IME view, once as a fullscreen overlay) which caused
-    // the keyboard to appear floating/duplicated on some apps and orientations.
+    // ── Fullscreen / Extract-view prevention ─────────────────────────────────
+    // Without these overrides, Android shows the keyboard TWICE on apps that
+    // use adjustResize (e.g. WhatsApp): once as the normal input view at the
+    // bottom, and once as an "extract view" (editable copy of the text field)
+    // that floats above it.  Both overrides must return false/null together.
+
+    /** Never enter fullscreen mode. */
     override fun onEvaluateFullscreenMode(): Boolean = false
+
+    /** Never show the extract-view overlay (the duplicated keyboard panel). */
+    override fun onCreateExtractTextView(): android.view.View? = null
+
+    /** Tell the system we never need the extract view shown. */
+    override fun onEvaluateInputViewShown(): Boolean = true
 
     override fun onCreate() {
         super.onCreate()
