@@ -1,6 +1,12 @@
 <resources>
     <style name="Theme.SinKey" parent="android:Theme.Material.Light.NoActionBar" />
 
+    <style name="Theme.SinKey.IME" parent="android:Theme.Material.Light.NoActionBar">
+        <item name="android:windowAnimationStyle">@null</item>
+        <item name="android:windowEnterAnimation">@null</item>
+        <item name="android:windowExitAnimation">@null</item>
+    </style>
+
     <style name="Theme.SinKey.Splash" parent="Theme.SplashScreen">
         <item name="windowSplashScreenBackground">@color/splash_background</item>
         <item name="windowSplashScreenAnimatedIcon">@drawable/ic_splash_icon</item>
