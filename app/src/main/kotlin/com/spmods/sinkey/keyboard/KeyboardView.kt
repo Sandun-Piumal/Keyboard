@@ -886,10 +886,6 @@ private fun SymbolsKeyboardView(
     Column(
         modifier = Modifier.fillMaxWidth().background(colors.bg)
     ) {
-        // ── Toolbar row (same as main keyboard) ──────────────────────────────
-        // ── Emoji row (hidden when no recents) ──────────────────────────────
-        ConditionalEmojiRow(colors = colors, onKey = onKey, onMoreClick = { showEmojiFromSymbols = true })
-
         // ── Key rows ─────────────────────────────────────────────────────────
         Column(
             modifier = Modifier
@@ -1033,9 +1029,6 @@ private fun NumberPadView(
             .fillMaxWidth()
             .background(colors.bg)
     ) {
-        // ── Emoji row (hidden when no recents) ────────────────────────────
-        ConditionalEmojiRow(colors = colors, onKey = onKey)
-
         // ── Numpad grid ─────────────────────────────────────────────────────
         Column(
             modifier = Modifier
