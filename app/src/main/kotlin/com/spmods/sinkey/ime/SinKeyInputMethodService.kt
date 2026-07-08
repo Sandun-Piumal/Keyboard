@@ -47,6 +47,11 @@ class SinKeyInputMethodService : InputMethodService() {
     private var suggestions = mutableStateOf<List<String>>(emptyList())
     private var currentInputTypeState = mutableStateOf(0)
 
+    // Disable fullscreen mode — prevents the keyboard from being rendered
+    // twice (once as the IME view, once as a fullscreen overlay) which caused
+    // the keyboard to appear floating/duplicated on some apps and orientations.
+    override fun onEvaluateFullscreenMode(): Boolean = false
+
     override fun onCreate() {
         super.onCreate()
         lifecycleOwner = ImeLifecycleOwner()
