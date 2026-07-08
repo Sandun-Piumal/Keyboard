@@ -47,20 +47,25 @@ class SinKeyInputMethodService : InputMethodService() {
     private var suggestions = mutableStateOf<List<String>>(emptyList())
     private var currentInputTypeState = mutableStateOf(0)
 
-    // ── Fullscreen / Extract-view prevention ─────────────────────────────────
-    // Without these overrides, Android shows the keyboard TWICE on apps that
-    // use adjustResize (e.g. WhatsApp): once as the normal input view at the
-    // bottom, and once as an "extract view" (editable copy of the text field)
-    // that floats above it.  Both overrides must return false/null together.
+    // ── Prevent double-keyboard rendering ────────────────────────────────────
 
-    /** Never enter fullscreen mode. */
+    /** Never go fullscreen — prevents an extra overlay keyboard appearing. */
     override fun onEvaluateFullscreenMode(): Boolean = false
 
-    /** Never show the extract-view overlay (the duplicated keyboard panel). */
+    /** Never show extract-view (the editable text copy above the keyboard). */
     override fun onCreateExtractTextView(): android.view.View? = null
 
-    /** Tell the system we never need the extract view shown. */
-    override fun onEvaluateInputViewShown(): Boolean = true
+    /**
+     * Report correct keyboard height to the host app (e.g. WhatsApp).
+     * Without this, apps that query IME insets don't know how tall SinKey is
+     * and position their own panels (emoji, sticker) ON TOP of the keyboard,
+     * producing the "two keyboards stacked" appearance during page transitions.
+     */
+    override fun onComputeInsets(outInsets: InputMethodService.Insets) {
+        super.onComputeInsets(outInsets)
+        outInsets.contentTopInsets = outInsets.visibleTopInsets
+    }
+
 
     override fun onCreate() {
         super.onCreate()
@@ -155,23 +160,7 @@ class SinKeyInputMethodService : InputMethodService() {
             setViewTreeViewModelStoreOwner(lifecycleOwner)
         }
 
-        // Fix: Prevent the IME window from resizing the app window behind it.
-        // Without this, some launchers/apps trigger a second layout pass that
-        // makes the keyboard appear duplicated (rendered in two positions).
-        window?.window?.setSoftInputMode(
-            android.view.WindowManager.LayoutParams.SOFT_INPUT_ADJUST_NOTHING
-        )
-
         return composeView
-    }
-
-    // Called every time the keyboard window becomes visible.
-    // Re-apply ADJUST_NOTHING so the flag survives window recreation on some ROMs.
-    override fun onWindowShown() {
-        super.onWindowShown()
-        window?.window?.setSoftInputMode(
-            android.view.WindowManager.LayoutParams.SOFT_INPUT_ADJUST_NOTHING
-        )
     }
 
     override fun onStartInputView(info: EditorInfo?, restarting: Boolean) {
