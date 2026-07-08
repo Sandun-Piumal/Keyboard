@@ -159,16 +159,6 @@ fun KeyboardView(
         (inputType and android.view.inputmethod.EditorInfo.TYPE_CLASS_PHONE) ==
             android.view.inputmethod.EditorInfo.TYPE_CLASS_PHONE
     }
-    if (isPhoneInput) {
-        PhoneDialPadView(
-            colors = colors,
-            keyHeight = keyHeight,
-            keyShape = keyShape,
-            bottomPadding = bottomPadding,
-            onKey = onKey
-        )
-        return
-    }
 
     val context = LocalContext.current
     val prefsManager = remember { PreferencesManager(context) }
@@ -181,28 +171,7 @@ fun KeyboardView(
         }
     }
 
-    if (showSymbols) {
-        SymbolsKeyboardView(
-            colors = colors,
-            keyHeight = keyHeight,
-            keyShape = keyShape,
-            bottomPadding = bottomPadding,
-            onKey = onKey,
-            onBack = { showSymbols = false }
-        )
-        return
-    }
-
-    if (showEmojiPicker) {
-        EmojiPickerView(
-            recentEmojis = recentEmojis,
-            onEmojiSelected = { emoji -> onKey(emoji) },
-            onBackspace = { onKey("BACKSPACE") },
-            onDismiss = { showEmojiPicker = false }
-        )
-        return
-    }
-
+    // Shared toolbar + emoji bar (always rendered — no flicker on pad switch)
     Box(modifier = Modifier.fillMaxWidth()) {
         Column(
             modifier = Modifier
@@ -216,7 +185,7 @@ fun KeyboardView(
                 onKey = onKey
             )
 
-            if (recentEmojis.isNotEmpty()) {
+            if (!isPhoneInput && recentEmojis.isNotEmpty()) {
                 EmojiRow(
                     emojis = recentEmojis,
                     colors = colors,
@@ -225,6 +194,33 @@ fun KeyboardView(
                 )
             }
 
+            // ── Pad content area (switches without touching toolbar) ──────────
+            if (isPhoneInput) {
+                PhoneDialPadContent(
+                    colors = colors,
+                    keyHeight = keyHeight,
+                    keyShape = keyShape,
+                    bottomPadding = bottomPadding,
+                    onKey = onKey
+                )
+            } else if (showEmojiPicker) {
+                EmojiPickerView(
+                    recentEmojis = recentEmojis,
+                    onEmojiSelected = { emoji -> onKey(emoji) },
+                    onBackspace = { onKey("BACKSPACE") },
+                    onDismiss = { showEmojiPicker = false }
+                )
+            } else if (showSymbols) {
+                SymbolsKeyboardContent(
+                    colors = colors,
+                    keyHeight = keyHeight,
+                    keyShape = keyShape,
+                    bottomPadding = bottomPadding,
+                    onKey = onKey,
+                    onBack = { showSymbols = false },
+                    onShowEmoji = { showEmojiPicker = true }
+                )
+            } else {
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -287,6 +283,7 @@ fun KeyboardView(
                     EnterKey(weight = 2.0f, keyHeight = keyHeight, keyShape = keyShape) { onKey("ENTER") }
                 }
             }
+            } // end else (main keyboard)
         }
 
         AnimatedVisibility(
@@ -825,6 +822,26 @@ private val SymShiftRow2 = listOf("^","₩","£","€","¥","$","©","®","™",
 private val SymShiftRow3 = listOf("\\","|","<",">",";","¡","¿")
 
 @Composable
+private fun SymbolsKeyboardContent(
+    colors: KeyboardColors,
+    keyHeight: Dp,
+    keyShape: RoundedCornerShape,
+    bottomPadding: Dp,
+    onKey: (String) -> Unit,
+    onBack: () -> Unit,
+    onShowEmoji: () -> Unit = {}
+) {
+    SymbolsKeyboardView(
+        colors = colors,
+        keyHeight = keyHeight,
+        keyShape = keyShape,
+        bottomPadding = bottomPadding,
+        onKey = onKey,
+        onBack = onBack
+    )
+}
+
+@Composable
 private fun SymbolsKeyboardView(
     colors: KeyboardColors,
     keyHeight: Dp,
@@ -870,13 +887,6 @@ private fun SymbolsKeyboardView(
         modifier = Modifier.fillMaxWidth().background(colors.bg)
     ) {
         // ── Toolbar row (same as main keyboard) ──────────────────────────────
-        AppsMicBar(
-            colors = colors,
-            suggestions = emptyList(),
-            onSuggestionSelected = {},
-            onKey = onKey
-        )
-
         // ── Emoji row (hidden when no recents) ──────────────────────────────
         ConditionalEmojiRow(colors = colors, onKey = onKey, onMoreClick = { showEmojiFromSymbols = true })
 
@@ -1023,14 +1033,6 @@ private fun NumberPadView(
             .fillMaxWidth()
             .background(colors.bg)
     ) {
-        // ── Toolbar row (same height as main keyboard) ──────────────────────
-        AppsMicBar(
-            colors = colors,
-            suggestions = emptyList(),
-            onSuggestionSelected = {},
-            onKey = onKey
-        )
-
         // ── Emoji row (hidden when no recents) ────────────────────────────
         ConditionalEmojiRow(colors = colors, onKey = onKey)
 
@@ -1156,6 +1158,24 @@ private fun RowScope.NumpadDigitKey(
 // ─────────────────────────────────────────────────────────────────────────────
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
+private fun PhoneDialPadContent(
+    colors: KeyboardColors,
+    keyHeight: Dp,
+    keyShape: RoundedCornerShape,
+    bottomPadding: Dp,
+    onKey: (String) -> Unit
+) {
+    PhoneDialPadView(
+        colors = colors,
+        keyHeight = keyHeight,
+        keyShape = keyShape,
+        bottomPadding = bottomPadding,
+        onKey = onKey
+    )
+}
+
+@OptIn(ExperimentalFoundationApi::class)
+@Composable
 private fun PhoneDialPadView(
     colors: KeyboardColors,
     keyHeight: Dp,
@@ -1180,14 +1200,6 @@ private fun PhoneDialPadView(
             .fillMaxWidth()
             .background(colors.bg)
     ) {
-        // ── Toolbar ──────────────────────────────────────────────────────────
-        AppsMicBar(
-            colors = colors,
-            suggestions = emptyList(),
-            onSuggestionSelected = {},
-            onKey = onKey
-        )
-
         // ── Grid ──────────────────────────────────────────────────────────
         Column(
             modifier = Modifier
