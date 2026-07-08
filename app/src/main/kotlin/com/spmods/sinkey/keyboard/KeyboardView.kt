@@ -1293,7 +1293,7 @@ private fun PhoneDialPadView(
                     modifier = Modifier
                         .height(keyHeight).weight(1f)
                         .clip(keyShape).background(colors.keyBg)
-                        .combinedClickable(onClick = { onKey("_") }, onLongClick = { onKey("SWITCH_KEYBOARD") }),
+                        .combinedClickable(onClick = { onKey(" ") }, onLongClick = { onKey("SWITCH_KEYBOARD") }),
                     contentAlignment = Alignment.Center
                 ) {
                     Text("_", fontSize = 24.sp, color = colors.keyText)
