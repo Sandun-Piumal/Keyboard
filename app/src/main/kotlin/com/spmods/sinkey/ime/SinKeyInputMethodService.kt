@@ -47,15 +47,6 @@ class SinKeyInputMethodService : InputMethodService() {
     private var suggestions = mutableStateOf<List<String>>(emptyList())
     private var currentInputTypeState = mutableStateOf(0)
 
-    // ── Prevent ghost/double keyboard rendering ──────────────────────────────
-    override fun onEvaluateFullscreenMode(): Boolean = false
-    override fun onCreateExtractTextView(): android.view.View? = null
-    override fun onComputeInsets(outInsets: InputMethodService.Insets) {
-        super.onComputeInsets(outInsets)
-        outInsets.contentTopInsets = outInsets.visibleTopInsets
-    }
-
-
     override fun onCreate() {
         super.onCreate()
         lifecycleOwner = ImeLifecycleOwner()
@@ -106,6 +97,14 @@ class SinKeyInputMethodService : InputMethodService() {
 
     override fun onCreateInputView(): View {
         val composeView = ComposeView(this).apply {
+            // Explicitly set MATCH_PARENT width and WRAP_CONTENT height.
+            // Without this, some Android versions measure the ComposeView as
+            // zero-height, causing the system to render a ghost copy of the
+            // keyboard in the remaining space — producing the double-keyboard look.
+            layoutParams = android.view.ViewGroup.LayoutParams(
+                android.view.ViewGroup.LayoutParams.MATCH_PARENT,
+                android.view.ViewGroup.LayoutParams.WRAP_CONTENT
+            )
             setViewTreeLifecycleOwner(lifecycleOwner)
             setViewTreeSavedStateRegistryOwner(lifecycleOwner)
             setViewTreeViewModelStoreOwner(lifecycleOwner)
@@ -143,23 +142,10 @@ class SinKeyInputMethodService : InputMethodService() {
         // up the ViewTreeLifecycleOwner starting from the *window's decor view*
         // (e.g. the internal "parentPanel" layout), not from composeView itself.
         // Without this, attaching crashes with "ViewTreeLifecycleOwner not found".
-        window?.window?.let { win ->
-            win.decorView.apply {
-                setViewTreeLifecycleOwner(lifecycleOwner)
-                setViewTreeSavedStateRegistryOwner(lifecycleOwner)
-                setViewTreeViewModelStoreOwner(lifecycleOwner)
-            }
-            // KEY FIX: Tell the system this IME window occupies the bottom of
-            // the screen and apps behind it must NOT resize/pan to accommodate.
-            // When adjustResize or adjustPan is active (e.g. WhatsApp), Android
-            // shrinks the app window and the leftover space shows a ghost copy
-            // of the keyboard. ADJUST_NOTHING stops that resize entirely.
-            win.setSoftInputMode(
-                android.view.WindowManager.LayoutParams.SOFT_INPUT_ADJUST_NOTHING
-            )
-            // Remove any enter/exit window animations — these cause the keyboard
-            // to be visible in two positions simultaneously during transitions.
-            win.setWindowAnimations(0)
+        window?.window?.decorView?.apply {
+            setViewTreeLifecycleOwner(lifecycleOwner)
+            setViewTreeSavedStateRegistryOwner(lifecycleOwner)
+            setViewTreeViewModelStoreOwner(lifecycleOwner)
         }
 
         return composeView
