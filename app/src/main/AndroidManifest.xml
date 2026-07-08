@@ -28,7 +28,8 @@
             android:name=".ime.SinKeyInputMethodService"
             android:permission="android.permission.BIND_INPUT_METHOD"
             android:exported="true"
-            android:label="@string/app_name">
+            android:label="@string/app_name"
+            android:theme="@style/Theme.SinKey.IME">
             <intent-filter>
                 <action android:name="android.view.InputMethod" />
             </intent-filter>
