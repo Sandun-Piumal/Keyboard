@@ -1032,6 +1032,7 @@ private fun SymbolsKeyboardView(
                 EnterKey(weight = 2.0f, keyHeight = keyHeight,
                     keyShape = keyShape) { onKey("ENTER") }
             }
+        }
     }
 }
 
