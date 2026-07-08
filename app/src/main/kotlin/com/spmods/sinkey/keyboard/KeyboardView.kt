@@ -143,18 +143,15 @@ fun KeyboardView(
     inputType: Int = 0
 ) {
     val colors = keyboardColors(showKeyBorders, isDark)
-
-    val keyHeight    = stepToKeyHeight(keyboardHeight)
+    val keyHeight = stepToKeyHeight(keyboardHeight)
     val bottomPadding = if (bottomSpaceEnabled) stepToBottomPadding(bottomSpaceSize) else 4.dp
-    // Desh exact: config_key_radius = 6.0dip
-    val keyShape     = RoundedCornerShape(6.dp)
+    val keyShape = RoundedCornerShape(6.dp)
 
     var shift by remember { mutableStateOf(false) }
     var showSymbols by remember { mutableStateOf(false) }
     var showLangTooltip by remember { mutableStateOf(false) }
     var showEmojiPicker by remember { mutableStateOf(false) }
 
-    // Auto-show phone dial pad when system requests TYPE_CLASS_PHONE
     val isPhoneInput = remember(inputType) {
         (inputType and android.view.inputmethod.EditorInfo.TYPE_CLASS_PHONE) ==
             android.view.inputmethod.EditorInfo.TYPE_CLASS_PHONE
@@ -171,20 +168,20 @@ fun KeyboardView(
         }
     }
 
-    // Shared toolbar + emoji bar (always rendered — no flicker on pad switch)
+    // ONE Column for the whole keyboard — toolbar always at top, content below
     Box(modifier = Modifier.fillMaxWidth()) {
         Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .background(colors.bg)
+            modifier = Modifier.fillMaxWidth().background(colors.bg)
         ) {
+            // ── Toolbar (always visible, never re-created on pad switch) ──────
             AppsMicBar(
                 colors = colors,
-                suggestions = suggestions,
+                suggestions = if (isPhoneInput || showSymbols) emptyList() else suggestions,
                 onSuggestionSelected = onSuggestionSelected,
                 onKey = onKey
             )
 
+            // ── Recent emoji row (not on dial pad) ───────────────────────────
             if (!isPhoneInput && recentEmojis.isNotEmpty()) {
                 EmojiRow(
                     emojis = recentEmojis,
@@ -194,96 +191,34 @@ fun KeyboardView(
                 )
             }
 
-            // ── Pad content area (switches without touching toolbar) ──────────
-            if (isPhoneInput) {
-                PhoneDialPadContent(
-                    colors = colors,
-                    keyHeight = keyHeight,
-                    keyShape = keyShape,
-                    bottomPadding = bottomPadding,
-                    onKey = onKey
+            // ── Content area — only this part switches ────────────────────────
+            when {
+                isPhoneInput -> PhoneDialPadKeys(
+                    colors = colors, keyHeight = keyHeight,
+                    keyShape = keyShape, bottomPadding = bottomPadding, onKey = onKey
                 )
-            } else if (showEmojiPicker) {
-                EmojiPickerView(
+                showEmojiPicker -> EmojiPickerView(
                     recentEmojis = recentEmojis,
                     onEmojiSelected = { emoji -> onKey(emoji) },
                     onBackspace = { onKey("BACKSPACE") },
                     onDismiss = { showEmojiPicker = false }
                 )
-            } else if (showSymbols) {
-                SymbolsKeyboardContent(
-                    colors = colors,
-                    keyHeight = keyHeight,
-                    keyShape = keyShape,
-                    bottomPadding = bottomPadding,
-                    onKey = onKey,
-                    onBack = { showSymbols = false },
-                    onShowEmoji = { showEmojiPicker = true }
+                showSymbols -> SymbolsKeyboardKeys(
+                    colors = colors, keyHeight = keyHeight,
+                    keyShape = keyShape, bottomPadding = bottomPadding,
+                    onKey = onKey, onBack = { showSymbols = false }
                 )
-            } else {
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 4.dp, vertical = 2.dp)
-                    .padding(bottom = bottomPadding)
-            ) {
-                NumberedKeyRow(EnglishRows[0], topRowNumbers, shift, keyHeight, colors, keyShape) { onKey(it) }
-                KeyRow(EnglishRows[1], shift, keyHeight, colors, keyShape) { onKey(it) }
-
-                Row(
-                    modifier = Modifier.fillMaxWidth().padding(vertical = 3.dp),
-                    horizontalArrangement = Arrangement.spacedBy(6.dp)
-                ) {
-                    ShiftKey(weight = 1.4f, active = shift, keyHeight = keyHeight, colors = colors, keyShape = keyShape) {
-                        shift = !shift
-                        onKey("SHIFT")
-                    }
-                    EnglishRows[2].forEach { k ->
-                        val display = if (shift) k.uppercase() else k
-                        LetterKey(label = display, weight = 1f, keyHeight = keyHeight, colors = colors, keyShape = keyShape) { onKey(display) }
-                    }
-                    BackspaceKey(weight = 1.4f, keyHeight = keyHeight, colors = colors, keyShape = keyShape) { onKey("BACKSPACE") }
-                }
-
-                Row(
-                    modifier = Modifier.fillMaxWidth().padding(vertical = 3.dp),
-                    horizontalArrangement = Arrangement.spacedBy(6.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    SymbolsKey(weight = 1.8f, keyHeight = keyHeight, colors = colors, keyShape = keyShape) { showSymbols = true }
-                    EmojiKey(
-                        weight = 0.9f,
-                        keyHeight = keyHeight,
-                        colors = colors,
-                        keyShape = keyShape,
-                        onTap = { onKey(",") },
-                        onLongPress = { showEmojiPicker = true }
-                    )
-                    Box(modifier = Modifier.weight(0.9f)) {
-                        LangToggleKey(
-                            currentLanguage = currentLanguage,
-                            keyHeight = keyHeight,
-                            colors = colors,
-                            keyShape = keyShape,
-                            onTap = {
-                                onKey("LANG_TOGGLE")
-                                showLangTooltip = true
-                            }
-                        )
-                    }
-                    SpaceKey(
-                        weight = 5.5f,
-                        keyHeight = keyHeight,
-                        colors = colors,
-                        keyShape = keyShape,
-                        onTap = { onKey("SPACE") },
-                        onLongPress = { onKey("SWITCH_KEYBOARD") }
-                    )
-                    SpecialKey(label = ".", weight = 0.8f, keyHeight = keyHeight, colors = colors, keyShape = keyShape) { onKey(".") }
-                    EnterKey(weight = 2.0f, keyHeight = keyHeight, keyShape = keyShape) { onKey("ENTER") }
-                }
+                else -> MainKeyboardKeys(
+                    currentLanguage = currentLanguage,
+                    shift = shift, onShiftChange = { shift = it },
+                    keyHeight = keyHeight, keyShape = keyShape,
+                    bottomPadding = bottomPadding, colors = colors,
+                    onKey = onKey,
+                    onSymbols = { showSymbols = true },
+                    onEmojiPicker = { showEmojiPicker = true },
+                    onLangTooltip = { showLangTooltip = true }
+                )
             }
-            } // end else (main keyboard)
         }
 
         AnimatedVisibility(
@@ -298,6 +233,96 @@ fun KeyboardView(
             LangTooltip(currentLanguage = currentLanguage)
         }
     }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ─────────────────────────────────────────────────────────────────────────────
+// Content-only composables (no toolbar — toolbar is in KeyboardView)
+// ─────────────────────────────────────────────────────────────────────────────
+
+@Composable
+private fun MainKeyboardKeys(
+    currentLanguage: String,
+    shift: Boolean,
+    onShiftChange: (Boolean) -> Unit,
+    keyHeight: Dp,
+    keyShape: RoundedCornerShape,
+    bottomPadding: Dp,
+    colors: KeyboardColors,
+    onKey: (String) -> Unit,
+    onSymbols: () -> Unit,
+    onEmojiPicker: () -> Unit,
+    onLangTooltip: () -> Unit
+) {
+    Column(
+        modifier = Modifier.fillMaxWidth()
+            .padding(horizontal = 4.dp, vertical = 2.dp)
+            .padding(bottom = bottomPadding)
+    ) {
+        NumberedKeyRow(EnglishRows[0], topRowNumbers, shift, keyHeight, colors, keyShape) { onKey(it) }
+        KeyRow(EnglishRows[1], shift, keyHeight, colors, keyShape) { onKey(it) }
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(vertical = 3.dp),
+            horizontalArrangement = Arrangement.spacedBy(6.dp)
+        ) {
+            ShiftKey(weight = 1.4f, active = shift, keyHeight = keyHeight, colors = colors, keyShape = keyShape) {
+                onShiftChange(!shift); onKey("SHIFT")
+            }
+            EnglishRows[2].forEach { k ->
+                val display = if (shift) k.uppercase() else k
+                LetterKey(label = display, weight = 1f, keyHeight = keyHeight, colors = colors, keyShape = keyShape) { onKey(display) }
+            }
+            BackspaceKey(weight = 1.4f, keyHeight = keyHeight, colors = colors, keyShape = keyShape) { onKey("BACKSPACE") }
+        }
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(vertical = 3.dp),
+            horizontalArrangement = Arrangement.spacedBy(6.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            SymbolsKey(weight = 1.8f, keyHeight = keyHeight, colors = colors, keyShape = keyShape) { onSymbols() }
+            EmojiKey(weight = 0.9f, keyHeight = keyHeight, colors = colors, keyShape = keyShape,
+                onTap = { onKey(",") }, onLongPress = { onEmojiPicker() })
+            Box(modifier = Modifier.weight(0.9f)) {
+                LangToggleKey(currentLanguage = currentLanguage, keyHeight = keyHeight,
+                    colors = colors, keyShape = keyShape,
+                    onTap = { onKey("LANG_TOGGLE"); onLangTooltip() })
+            }
+            SpaceKey(weight = 5.5f, keyHeight = keyHeight, colors = colors, keyShape = keyShape,
+                onTap = { onKey("SPACE") }, onLongPress = { onKey("SWITCH_KEYBOARD") })
+            SpecialKey(label = ".", weight = 0.8f, keyHeight = keyHeight, colors = colors, keyShape = keyShape) { onKey(".") }
+            EnterKey(weight = 2.0f, keyHeight = keyHeight, keyShape = keyShape) { onKey("ENTER") }
+        }
+    }
+}
+
+@Composable
+private fun SymbolsKeyboardKeys(
+    colors: KeyboardColors,
+    keyHeight: Dp,
+    keyShape: RoundedCornerShape,
+    bottomPadding: Dp,
+    onKey: (String) -> Unit,
+    onBack: () -> Unit
+) {
+    SymbolsKeyboardView(
+        colors = colors, keyHeight = keyHeight, keyShape = keyShape,
+        bottomPadding = bottomPadding, onKey = onKey, onBack = onBack
+    )
+}
+
+@OptIn(ExperimentalFoundationApi::class)
+@Composable
+private fun PhoneDialPadKeys(
+    colors: KeyboardColors,
+    keyHeight: Dp,
+    keyShape: RoundedCornerShape,
+    bottomPadding: Dp,
+    onKey: (String) -> Unit
+) {
+    PhoneDialPadView(
+        colors = colors, keyHeight = keyHeight, keyShape = keyShape,
+        bottomPadding = bottomPadding, onKey = onKey
+    )
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -1007,7 +1032,6 @@ private fun SymbolsKeyboardView(
                 EnterKey(weight = 2.0f, keyHeight = keyHeight,
                     keyShape = keyShape) { onKey("ENTER") }
             }
-        }
     }
 }
 
@@ -1024,19 +1048,14 @@ private fun NumberPadView(
     onKey: (String) -> Unit,
     onBack: () -> Unit
 ) {
+    // ── Numpad grid ─────────────────────────────────────────────────────
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .background(colors.bg)
+            .padding(horizontal = 4.dp, vertical = 2.dp)
+            .padding(bottom = bottomPadding)
     ) {
-        // ── Numpad grid ─────────────────────────────────────────────────────
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 4.dp, vertical = 2.dp)
-                .padding(bottom = bottomPadding)
-        ) {
-            // Row 1: 1  2  3  │ ABC
+        // Row 1: 1  2  3  │ ABC
             Row(
                 modifier = Modifier.fillMaxWidth().padding(vertical = 3.dp),
                 horizontalArrangement = Arrangement.spacedBy(6.dp)
@@ -1116,7 +1135,6 @@ private fun NumberPadView(
                 EnterKey(weight = 1f, keyHeight = keyHeight, keyShape = keyShape) { onKey("ENTER") }
             }
         }
-    }
 }
 
 /** A single large numpad digit/symbol key. */
@@ -1188,19 +1206,14 @@ private fun PhoneDialPadView(
         Triple("9", "WXYZ", "9")
     )
 
+    // ── Grid ──────────────────────────────────────────────────────────
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .background(colors.bg)
+            .padding(horizontal = 4.dp, vertical = 2.dp)
+            .padding(bottom = bottomPadding)
     ) {
-        // ── Grid ──────────────────────────────────────────────────────────
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 4.dp, vertical = 2.dp)
-                .padding(bottom = bottomPadding)
-        ) {
-            // Rows 1-3: 1  2ABC  3DEF │ -   /   4GHI  5JKL  6MNO │ .   /   7PQRS  8TUV  9WXYZ │ ⌫
+        // Rows 1-3: 1  2ABC  3DEF │ -   /   4GHI  5JKL  6MNO │ .   /   7PQRS  8TUV  9WXYZ │ ⌫
             val sideKeys = listOf("-", ".", null) // right-side special keys per row
             dialKeys.chunked(3).forEachIndexed { rowIdx, trio ->
                 Row(
