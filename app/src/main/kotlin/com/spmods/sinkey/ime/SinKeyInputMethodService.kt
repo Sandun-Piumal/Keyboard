@@ -145,7 +145,23 @@ class SinKeyInputMethodService : InputMethodService() {
             setViewTreeViewModelStoreOwner(lifecycleOwner)
         }
 
+        // Fix: Prevent the IME window from resizing the app window behind it.
+        // Without this, some launchers/apps trigger a second layout pass that
+        // makes the keyboard appear duplicated (rendered in two positions).
+        window?.window?.setSoftInputMode(
+            android.view.WindowManager.LayoutParams.SOFT_INPUT_ADJUST_NOTHING
+        )
+
         return composeView
+    }
+
+    // Called every time the keyboard window becomes visible.
+    // Re-apply ADJUST_NOTHING so the flag survives window recreation on some ROMs.
+    override fun onWindowShown() {
+        super.onWindowShown()
+        window?.window?.setSoftInputMode(
+            android.view.WindowManager.LayoutParams.SOFT_INPUT_ADJUST_NOTHING
+        )
     }
 
     override fun onStartInputView(info: EditorInfo?, restarting: Boolean) {
