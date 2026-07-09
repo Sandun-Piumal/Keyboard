@@ -1,10 +1,10 @@
-<resources>
+<resources xmlns:tools="http://schemas.android.com/tools">
     <style name="Theme.SinKey" parent="android:Theme.Material.Light.NoActionBar" />
 
-    <style name="Theme.SinKey.IME" parent="android:Theme.Material.Light.NoActionBar">
-        <item name="android:windowAnimationStyle">@null</item>
-        <item name="android:windowEnterAnimation">@null</item>
-        <item name="android:windowExitAnimation">@null</item>
+    <!-- IME window theme - must use InputMethod parent to prevent duplicate keyboard rendering -->
+    <style name="Theme.SinKey.IME" parent="android:Theme.Material.InputMethod">
+        <item name="android:forceDarkAllowed" tools:targetApi="q">false</item>
+        <item name="android:navigationBarColor">@android:color/transparent</item>
     </style>
 
     <style name="Theme.SinKey.Splash" parent="Theme.SplashScreen">
