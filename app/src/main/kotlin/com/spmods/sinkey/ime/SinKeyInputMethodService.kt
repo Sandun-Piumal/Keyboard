@@ -5,7 +5,6 @@ import android.os.VibrationEffect
 import android.os.Vibrator
 import android.view.View
 import android.view.ViewGroup
-import android.widget.FrameLayout
 import android.view.inputmethod.EditorInfo
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -97,25 +96,12 @@ class SinKeyInputMethodService : InputMethodService() {
         }
     }
 
+    // Never go fullscreen — prevents a second overlay keyboard appearing.
     override fun onEvaluateFullscreenMode(): Boolean = false
 
     override fun onCreateInputView(): View {
-        // Wrap ComposeView in a FrameLayout so the IME system measures it correctly.
-        // Setting ViewTree owners on the wrapper (not the decorView) prevents
-        // the internal IME decorView children from being treated as a second
-        // keyboard view — which was causing the duplicate keyboard bug.
-        val wrapper = FrameLayout(this).apply {
-            layoutParams = ViewGroup.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT,
-                ViewGroup.LayoutParams.WRAP_CONTENT
-            )
-            setViewTreeLifecycleOwner(lifecycleOwner)
-            setViewTreeSavedStateRegistryOwner(lifecycleOwner)
-            setViewTreeViewModelStoreOwner(lifecycleOwner)
-        }
-
         val composeView = ComposeView(this).apply {
-            layoutParams = FrameLayout.LayoutParams(
+            layoutParams = ViewGroup.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT,
                 ViewGroup.LayoutParams.WRAP_CONTENT
             )
@@ -152,8 +138,19 @@ class SinKeyInputMethodService : InputMethodService() {
             }
         }
 
-        wrapper.addView(composeView)
-        return wrapper
+        // decorView must have ViewTree owners set — Compose's WindowRecomposer
+        // walks UP the tree from parentPanel to find them. Without this it crashes.
+        // We set them here AND on composeView so both paths are covered.
+        window?.window?.decorView?.let { decor ->
+            decor.setViewTreeLifecycleOwner(lifecycleOwner)
+            decor.setViewTreeSavedStateRegistryOwner(lifecycleOwner)
+            decor.setViewTreeViewModelStoreOwner(lifecycleOwner)
+            // Remove the decorView background so the internal system views
+            // (parentPanel, etc.) are transparent and don't render a ghost keyboard.
+            decor.background = null
+        }
+
+        return composeView
     }
 
     override fun onStartInputView(info: EditorInfo?, restarting: Boolean) {
