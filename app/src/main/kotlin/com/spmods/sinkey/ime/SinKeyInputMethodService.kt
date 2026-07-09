@@ -48,6 +48,12 @@ class SinKeyInputMethodService : InputMethodService() {
     private lateinit var prefs: PreferencesManager
     private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
 
+    // Cache the keyboard view so it is NOT re-created every time the system
+    // calls onCreateInputView (which happens on every focus change / app switch).
+    // Re-creating a ComposeView each time causes a duplicate ghost keyboard to
+    // appear on WhatsApp and other apps that use windowSoftInputMode=adjustResize.
+    private var cachedInputView: View? = null
+
     // Buffer of the word currently being typed, used for Sinhala transliteration.
     private var wordBuffer = StringBuilder()     // Sinhala roman input
     private var englishBuffer = StringBuilder()   // English word tracking (suggestions only)
@@ -106,6 +112,13 @@ class SinKeyInputMethodService : InputMethodService() {
     }
 
     override fun onCreateInputView(): View {
+        // Return the cached view if it already exists.
+        // Android calls onCreateInputView on every input field focus change;
+        // creating a new ComposeView each time causes the old one to remain
+        // attached to the IME window while the new one is added on top — this
+        // is the "ghost / double keyboard" bug visible in WhatsApp etc.
+        cachedInputView?.let { return it }
+
         val composeView = ComposeView(this).apply {
             setViewTreeLifecycleOwner(lifecycleOwner)
             setViewTreeSavedStateRegistryOwner(lifecycleOwner)
@@ -150,6 +163,7 @@ class SinKeyInputMethodService : InputMethodService() {
             setViewTreeViewModelStoreOwner(lifecycleOwner)
         }
 
+        cachedInputView = composeView
         return composeView
     }
 
@@ -171,6 +185,7 @@ class SinKeyInputMethodService : InputMethodService() {
     override fun onDestroy() {
         lifecycleOwner.handleLifecycleEvent(Lifecycle.Event.ON_DESTROY)
         serviceScope.cancel()
+        cachedInputView = null
         super.onDestroy()
     }
 
