@@ -170,10 +170,6 @@ fun KeyboardView(
     }
 
     // ONE Column for the whole keyboard — toolbar always at top, content below
-    // wrapContentHeight() is critical: it constrains the root Box to exactly
-    // the height of its content. Without it the IME window gives us the full
-    // remaining screen height and Android renders a ghost copy of the keyboard
-    // in the empty space above — producing the "double keyboard" appearance.
     Box(modifier = Modifier.fillMaxWidth().wrapContentHeight()) {
         Column(
             modifier = Modifier.fillMaxWidth().wrapContentHeight().background(colors.bg)
