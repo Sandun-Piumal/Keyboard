@@ -4,7 +4,6 @@ import android.inputmethodservice.InputMethodService
 import android.os.VibrationEffect
 import android.os.Vibrator
 import android.view.View
-import android.view.ViewGroup
 import android.view.inputmethod.EditorInfo
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -37,6 +36,13 @@ import kotlinx.coroutines.runBlocking
  */
 class SinKeyInputMethodService : InputMethodService() {
 
+    init {
+        // Apply IME-specific theme — parent is android:Theme.Material.InputMethod
+        // which sets windowIsFloating=false, preventing the duplicate keyboard
+        // rendering bug seen on WhatsApp and other apps using adjustResize.
+        setTheme(R.style.Theme_SinKey_IME)
+    }
+
     private lateinit var lifecycleOwner: ImeLifecycleOwner
     private lateinit var prefs: PreferencesManager
     private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
@@ -47,6 +53,8 @@ class SinKeyInputMethodService : InputMethodService() {
     private var currentLanguage = mutableStateOf("si") // default per PreferencesManager
     private var suggestions = mutableStateOf<List<String>>(emptyList())
     private var currentInputTypeState = mutableStateOf(0)
+
+    override fun onEvaluateFullscreenMode(): Boolean = false
 
     override fun onCreate() {
         super.onCreate()
@@ -96,21 +104,7 @@ class SinKeyInputMethodService : InputMethodService() {
         }
     }
 
-    override fun onEvaluateFullscreenMode(): Boolean = false
-
-    // FlorisBoard pattern: instead of returning a View from onCreateInputView()
-    // (which causes duplicate rendering on app navigation), we add the ComposeView
-    // directly to the IME window's content area and return null.
-    // This prevents Android from placing the view in the standard input view slot
-    // which is what causes the ghost/duplicate keyboard on WhatsApp transitions.
-    override fun onCreateInputView(): View? {
-        // Set ViewTree owners on decorView so Compose can find them
-        window?.window?.decorView?.apply {
-            setViewTreeLifecycleOwner(lifecycleOwner)
-            setViewTreeSavedStateRegistryOwner(lifecycleOwner)
-            setViewTreeViewModelStoreOwner(lifecycleOwner)
-        }
-
+    override fun onCreateInputView(): View {
         val composeView = ComposeView(this).apply {
             setViewTreeLifecycleOwner(lifecycleOwner)
             setViewTreeSavedStateRegistryOwner(lifecycleOwner)
@@ -145,10 +139,17 @@ class SinKeyInputMethodService : InputMethodService() {
             }
         }
 
-        // Add directly to window content — FlorisBoard proven pattern
-        window?.window?.findViewById<ViewGroup>(android.R.id.content)?.addView(composeView)
+        // InputMethodService's window is a Dialog; Compose's WindowRecomposer looks
+        // up the ViewTreeLifecycleOwner starting from the *window's decor view*
+        // (e.g. the internal "parentPanel" layout), not from composeView itself.
+        // Without this, attaching crashes with "ViewTreeLifecycleOwner not found".
+        window?.window?.decorView?.apply {
+            setViewTreeLifecycleOwner(lifecycleOwner)
+            setViewTreeSavedStateRegistryOwner(lifecycleOwner)
+            setViewTreeViewModelStoreOwner(lifecycleOwner)
+        }
 
-        return null
+        return composeView
     }
 
     override fun onStartInputView(info: EditorInfo?, restarting: Boolean) {
