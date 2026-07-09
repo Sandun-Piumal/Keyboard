@@ -96,27 +96,22 @@ class SinKeyInputMethodService : InputMethodService() {
         }
     }
 
-    // Prevent the extract-view / fullscreen overlay that causes
-    // the keyboard to appear twice during app navigation.
     override fun onEvaluateFullscreenMode(): Boolean = false
 
-    override fun onCreateInputView(): View {
-        // Set ViewTree owners on the decorView so Compose WindowRecomposer
-        // can walk up the tree and find them (needed to avoid crash).
-        window?.window?.decorView?.let { decor ->
-            decor.setViewTreeLifecycleOwner(lifecycleOwner)
-            decor.setViewTreeSavedStateRegistryOwner(lifecycleOwner)
-            decor.setViewTreeViewModelStoreOwner(lifecycleOwner)
+    // FlorisBoard pattern: instead of returning a View from onCreateInputView()
+    // (which causes duplicate rendering on app navigation), we add the ComposeView
+    // directly to the IME window's content area and return null.
+    // This prevents Android from placing the view in the standard input view slot
+    // which is what causes the ghost/duplicate keyboard on WhatsApp transitions.
+    override fun onCreateInputView(): View? {
+        // Set ViewTree owners on decorView so Compose can find them
+        window?.window?.decorView?.apply {
+            setViewTreeLifecycleOwner(lifecycleOwner)
+            setViewTreeSavedStateRegistryOwner(lifecycleOwner)
+            setViewTreeViewModelStoreOwner(lifecycleOwner)
         }
 
         val composeView = ComposeView(this).apply {
-            // MATCH_PARENT width, WRAP_CONTENT height — critical so the IME
-            // window knows exactly how tall the keyboard is and does not leave
-            // blank space that Android fills with a ghost keyboard render.
-            layoutParams = ViewGroup.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT,
-                ViewGroup.LayoutParams.WRAP_CONTENT
-            )
             setViewTreeLifecycleOwner(lifecycleOwner)
             setViewTreeSavedStateRegistryOwner(lifecycleOwner)
             setViewTreeViewModelStoreOwner(lifecycleOwner)
@@ -150,18 +145,10 @@ class SinKeyInputMethodService : InputMethodService() {
             }
         }
 
-        return composeView
-    }
+        // Add directly to window content — FlorisBoard proven pattern
+        window?.window?.findViewById<ViewGroup>(android.R.id.content)?.addView(composeView)
 
-    override fun onWindowShown() {
-        super.onWindowShown()
-        // Re-apply every time the keyboard window becomes visible.
-        // Some ROMs reset window flags between shows.
-        window?.window?.let { win ->
-            win.setSoftInputMode(
-                android.view.WindowManager.LayoutParams.SOFT_INPUT_ADJUST_NOTHING
-            )
-        }
+        return null
     }
 
     override fun onStartInputView(info: EditorInfo?, restarting: Boolean) {
