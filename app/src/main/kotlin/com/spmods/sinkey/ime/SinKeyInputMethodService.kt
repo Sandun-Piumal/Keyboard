@@ -4,6 +4,8 @@ import android.inputmethodservice.InputMethodService
 import android.os.VibrationEffect
 import android.os.Vibrator
 import android.view.View
+import android.view.ViewGroup
+import android.widget.FrameLayout
 import android.view.inputmethod.EditorInfo
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -95,15 +97,27 @@ class SinKeyInputMethodService : InputMethodService() {
         }
     }
 
+    override fun onEvaluateFullscreenMode(): Boolean = false
+
     override fun onCreateInputView(): View {
+        // Wrap ComposeView in a FrameLayout so the IME system measures it correctly.
+        // Setting ViewTree owners on the wrapper (not the decorView) prevents
+        // the internal IME decorView children from being treated as a second
+        // keyboard view — which was causing the duplicate keyboard bug.
+        val wrapper = FrameLayout(this).apply {
+            layoutParams = ViewGroup.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT
+            )
+            setViewTreeLifecycleOwner(lifecycleOwner)
+            setViewTreeSavedStateRegistryOwner(lifecycleOwner)
+            setViewTreeViewModelStoreOwner(lifecycleOwner)
+        }
+
         val composeView = ComposeView(this).apply {
-            // Explicitly set MATCH_PARENT width and WRAP_CONTENT height.
-            // Without this, some Android versions measure the ComposeView as
-            // zero-height, causing the system to render a ghost copy of the
-            // keyboard in the remaining space — producing the double-keyboard look.
-            layoutParams = android.view.ViewGroup.LayoutParams(
-                android.view.ViewGroup.LayoutParams.MATCH_PARENT,
-                android.view.ViewGroup.LayoutParams.WRAP_CONTENT
+            layoutParams = FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT
             )
             setViewTreeLifecycleOwner(lifecycleOwner)
             setViewTreeSavedStateRegistryOwner(lifecycleOwner)
@@ -138,17 +152,8 @@ class SinKeyInputMethodService : InputMethodService() {
             }
         }
 
-        // InputMethodService's window is a Dialog; Compose's WindowRecomposer looks
-        // up the ViewTreeLifecycleOwner starting from the *window's decor view*
-        // (e.g. the internal "parentPanel" layout), not from composeView itself.
-        // Without this, attaching crashes with "ViewTreeLifecycleOwner not found".
-        window?.window?.decorView?.apply {
-            setViewTreeLifecycleOwner(lifecycleOwner)
-            setViewTreeSavedStateRegistryOwner(lifecycleOwner)
-            setViewTreeViewModelStoreOwner(lifecycleOwner)
-        }
-
-        return composeView
+        wrapper.addView(composeView)
+        return wrapper
     }
 
     override fun onStartInputView(info: EditorInfo?, restarting: Boolean) {
