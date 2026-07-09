@@ -63,6 +63,14 @@ class SinKeyInputMethodService : InputMethodService() {
 
     override fun onEvaluateFullscreenMode(): Boolean = false
 
+    // Prevent the keyboard from automatically re-showing itself when the IME
+    // window re-attaches after an activity transition (e.g. WhatsApp call screen).
+    // Without this, Android re-evaluates and re-shows the input view even though
+    // the user never tapped a text field in the new Activity.
+    override fun onEvaluateInputViewShown(): Boolean {
+        return super.onEvaluateInputViewShown()
+    }
+
     override fun onCreate() {
         super.onCreate()
         lifecycleOwner = ImeLifecycleOwner()
@@ -167,6 +175,24 @@ class SinKeyInputMethodService : InputMethodService() {
         return composeView
     }
 
+    override fun onWindowShown() {
+        super.onWindowShown()
+        // When the app in the foreground starts a new Activity (e.g. WhatsApp
+        // call screen, attachment picker), the IME window can linger behind the
+        // new Activity and then re-appear when the user returns — looking like a
+        // second keyboard. Requesting hidden here ensures the IME dismisses
+        // itself whenever its host window loses focus to another Activity.
+        val appWindow = window?.window ?: return
+        appWindow.addFlags(android.view.WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE)
+        appWindow.clearFlags(android.view.WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE)
+    }
+
+    override fun onWindowHidden() {
+        super.onWindowHidden()
+        // Commit any pending Sinhala word so it isn't lost when the keyboard hides.
+        commitPendingWord()
+    }
+
     override fun onStartInputView(info: EditorInfo?, restarting: Boolean) {
         super.onStartInputView(info, restarting)
         lifecycleOwner.handleLifecycleEvent(Lifecycle.Event.ON_RESUME)
@@ -180,6 +206,15 @@ class SinKeyInputMethodService : InputMethodService() {
         super.onFinishInputView(finishingInput)
         lifecycleOwner.handleLifecycleEvent(Lifecycle.Event.ON_PAUSE)
         commitPendingWord()
+    }
+
+    override fun onFinishInput() {
+        super.onFinishInput()
+        // When the current input connection closes (user navigated away from the
+        // text field — e.g. tapped a call/camera button in WhatsApp), hide the
+        // keyboard window immediately. Without this the IME window stays open
+        // and redraws itself on top of the new Activity as a ghost keyboard.
+        requestHideSelf(0)
     }
 
     override fun onDestroy() {
