@@ -4,6 +4,7 @@ import android.inputmethodservice.InputMethodService
 import android.os.VibrationEffect
 import android.os.Vibrator
 import android.view.View
+import android.view.ViewGroup
 import android.view.inputmethod.EditorInfo
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -35,11 +36,6 @@ import kotlinx.coroutines.runBlocking
  * the system displays above the app currently being typed into.
  */
 class SinKeyInputMethodService : InputMethodService() {
-
-    // Never enter fullscreen mode — this is the PRIMARY cause of the double-
-    // keyboard bug. When fullscreen is allowed, Android renders an "extract
-    // view" (a copy of the editor) that looks like a second keyboard.
-    override fun onEvaluateFullscreenMode(): Boolean = false
 
     private lateinit var lifecycleOwner: ImeLifecycleOwner
     private lateinit var prefs: PreferencesManager
@@ -100,8 +96,27 @@ class SinKeyInputMethodService : InputMethodService() {
         }
     }
 
+    // Prevent the extract-view / fullscreen overlay that causes
+    // the keyboard to appear twice during app navigation.
+    override fun onEvaluateFullscreenMode(): Boolean = false
+
     override fun onCreateInputView(): View {
+        // Set ViewTree owners on the decorView so Compose WindowRecomposer
+        // can walk up the tree and find them (needed to avoid crash).
+        window?.window?.decorView?.let { decor ->
+            decor.setViewTreeLifecycleOwner(lifecycleOwner)
+            decor.setViewTreeSavedStateRegistryOwner(lifecycleOwner)
+            decor.setViewTreeViewModelStoreOwner(lifecycleOwner)
+        }
+
         val composeView = ComposeView(this).apply {
+            // MATCH_PARENT width, WRAP_CONTENT height — critical so the IME
+            // window knows exactly how tall the keyboard is and does not leave
+            // blank space that Android fills with a ghost keyboard render.
+            layoutParams = ViewGroup.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT
+            )
             setViewTreeLifecycleOwner(lifecycleOwner)
             setViewTreeSavedStateRegistryOwner(lifecycleOwner)
             setViewTreeViewModelStoreOwner(lifecycleOwner)
@@ -135,17 +150,18 @@ class SinKeyInputMethodService : InputMethodService() {
             }
         }
 
-        // InputMethodService's window is a Dialog; Compose's WindowRecomposer looks
-        // up the ViewTreeLifecycleOwner starting from the *window's decor view*
-        // (e.g. the internal "parentPanel" layout), not from composeView itself.
-        // Without this, attaching crashes with "ViewTreeLifecycleOwner not found".
-        window?.window?.decorView?.apply {
-            setViewTreeLifecycleOwner(lifecycleOwner)
-            setViewTreeSavedStateRegistryOwner(lifecycleOwner)
-            setViewTreeViewModelStoreOwner(lifecycleOwner)
-        }
-
         return composeView
+    }
+
+    override fun onWindowShown() {
+        super.onWindowShown()
+        // Re-apply every time the keyboard window becomes visible.
+        // Some ROMs reset window flags between shows.
+        window?.window?.let { win ->
+            win.setSoftInputMode(
+                android.view.WindowManager.LayoutParams.SOFT_INPUT_ADJUST_NOTHING
+            )
+        }
     }
 
     override fun onStartInputView(info: EditorInfo?, restarting: Boolean) {
