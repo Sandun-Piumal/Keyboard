@@ -21,6 +21,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.wrapContentHeight
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -169,9 +170,13 @@ fun KeyboardView(
     }
 
     // ONE Column for the whole keyboard — toolbar always at top, content below
-    Box(modifier = Modifier.fillMaxWidth()) {
+    // wrapContentHeight() is critical: it constrains the root Box to exactly
+    // the height of its content. Without it the IME window gives us the full
+    // remaining screen height and Android renders a ghost copy of the keyboard
+    // in the empty space above — producing the "double keyboard" appearance.
+    Box(modifier = Modifier.fillMaxWidth().wrapContentHeight()) {
         Column(
-            modifier = Modifier.fillMaxWidth().background(colors.bg)
+            modifier = Modifier.fillMaxWidth().wrapContentHeight().background(colors.bg)
         ) {
             // ── Toolbar (always visible, never re-created on pad switch) ──────
             AppsMicBar(
@@ -1324,3 +1329,4 @@ private fun PhoneDialPadView(
             }
         }
     }
+}
