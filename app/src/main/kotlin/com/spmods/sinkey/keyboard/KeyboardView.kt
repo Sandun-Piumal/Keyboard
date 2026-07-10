@@ -1,8 +1,6 @@
 package com.spmods.sinkey.keyboard
 
-import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.ExperimentalAnimationApi
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInVertically
@@ -338,16 +336,10 @@ private fun AppsMicBar(
 ) {
     val isTyping = suggestions.isNotEmpty()
 
-    @OptIn(ExperimentalAnimationApi::class)
-    AnimatedContent(
-        targetState = isTyping,
-        transitionSpec = {
-            (fadeIn() + slideInVertically { -it }) togetherWith
-            (fadeOut() + slideOutVertically { -it })
-        },
-        label = "toolbar_anim"
-    ) { typing ->
-        if (typing) {
+    // AnimatedContent was removed here — the slide/fade transition caused the
+    // toolbar to render twice during WhatsApp emoji panel open/close because
+    // the IME window resizes mid-animation, leaving ghost frames visible.
+    if (isTyping) {
             // ── Suggestion strip ─────────────────────────────────────────
             Row(
                 modifier = Modifier
@@ -431,7 +423,6 @@ private fun AppsMicBar(
                 }
             }
         }
-    }
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
