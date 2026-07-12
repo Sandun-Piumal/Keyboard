@@ -1,6 +1,7 @@
 package com.spmods.sinkey.ime
 
 import android.inputmethodservice.InputMethodService
+import android.media.AudioManager
 import android.os.VibrationEffect
 import android.os.Vibrator
 import android.view.View
@@ -16,7 +17,6 @@ import androidx.emoji2.text.EmojiCompat
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.setViewTreeLifecycleOwner
 import androidx.savedstate.setViewTreeSavedStateRegistryOwner
-import androidx.lifecycle.viewmodel.compose.LocalViewModelStoreOwner
 import androidx.lifecycle.setViewTreeViewModelStoreOwner
 import com.spmods.sinkey.data.PreferencesManager
 import com.spmods.sinkey.keyboard.KeyboardView
@@ -38,9 +38,6 @@ import kotlinx.coroutines.runBlocking
 class SinKeyInputMethodService : InputMethodService() {
 
     init {
-        // Apply IME-specific theme — parent is android:Theme.Material.InputMethod
-        // which sets windowIsFloating=false, preventing the duplicate keyboard
-        // rendering bug seen on WhatsApp and other apps using adjustResize.
         setTheme(R.style.Theme_SinKey_IME)
     }
 
@@ -48,18 +45,24 @@ class SinKeyInputMethodService : InputMethodService() {
     private lateinit var prefs: PreferencesManager
     private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
 
-    // Cache the keyboard view so it is NOT re-created every time the system
-    // calls onCreateInputView (which happens on every focus change / app switch).
-    // Re-creating a ComposeView each time causes a duplicate ghost keyboard to
-    // appear on WhatsApp and other apps that use windowSoftInputMode=adjustResize.
     private var cachedInputView: View? = null
 
-    // Buffer of the word currently being typed, used for Sinhala transliteration.
-    private var wordBuffer = StringBuilder()     // Sinhala roman input
-    private var englishBuffer = StringBuilder()   // English word tracking (suggestions only)
-    private var currentLanguage = mutableStateOf("si") // default per PreferencesManager
+    private var wordBuffer = StringBuilder()
+    private var englishBuffer = StringBuilder()
+    private var currentLanguage = mutableStateOf("si")
     private var suggestions = mutableStateOf<List<String>>(emptyList())
     private var currentInputTypeState = mutableStateOf(0)
+
+    // FIX #1 & #3: Cached prefs — read once on start, updated via coroutine.
+    // Eliminates runBlocking on every key tap (was causing main-thread lag / ANR).
+    // Also enables key sound which was previously unimplemented.
+    private var cachedVibrateEnabled = false
+    private var cachedSoundEnabled = true
+
+    // FIX #2: Single reusable SpellCheckerSession — created once, reused across
+    // keystrokes. Previous code created a new session per keystroke, leaking OS
+    // resources and causing memory growth over time.
+    private var spellCheckerSession: android.view.textservice.SpellCheckerSession? = null
 
     override fun onEvaluateFullscreenMode(): Boolean = false
 
@@ -70,31 +73,28 @@ class SinKeyInputMethodService : InputMethodService() {
         lifecycleOwner.handleLifecycleEvent(Lifecycle.Event.ON_CREATE)
         prefs = PreferencesManager(this)
 
+        // FIX #1: Still need initial language synchronously, but we only block once
+        // here at startup (not on every key tap).
         currentLanguage.value = runBlocking { prefs.defaultLanguage.first() }
 
-        // ── EmojiCompat: download latest emoji font from Google Fonts ──────
-        // This allows ALL Unicode 15.x emojis to render correctly on any
-        // Android device (API 24+), even without a system update.
-        // Falls back to the bundled set if network is unavailable.
+        // FIX #1 + #3: Keep feedback prefs cached in memory; update asynchronously
+        // whenever the user changes them in Settings. No blocking reads on key taps.
+        serviceScope.launch {
+            prefs.keyVibrateEnabled.collect { cachedVibrateEnabled = it }
+        }
+        serviceScope.launch {
+            prefs.keySoundEnabled.collect { cachedSoundEnabled = it }
+        }
+
+        // FIX #2: Create spell-checker session once for the lifetime of the service.
+        initSpellCheckerSession()
+
         initEmojiCompat()
     }
 
-    /**
-     * Initialises EmojiCompat with a downloadable Google Fonts emoji font.
-     * On first run (or when a new font version is available) it downloads in
-     * the background and stores it in the app's private cache.  Subsequent
-     * launches use the cached version instantly.
-     *
-     * Falls back to [BundledEmojiCompatConfig] if the provider is unavailable
-     * (e.g. device has no GMS / offline at first launch).
-     */
     private fun initEmojiCompat() {
-        // Skip if already initialised (service can be re-created)
         if (runCatching { EmojiCompat.get() }.isSuccess) return
         try {
-            // BundledEmojiCompatConfig bundles a recent Noto Color Emoji font
-            // directly in the APK via the emoji2-bundled artifact.
-            // No network access needed, no ByteArray cert hash issues.
             val config = BundledEmojiCompatConfig(this)
                 .setReplaceAll(true)
                 .registerInitCallback(object : EmojiCompat.InitCallback() {
@@ -111,12 +111,37 @@ class SinKeyInputMethodService : InputMethodService() {
         }
     }
 
+    // FIX #2: Single SpellCheckerSession created once and reused.
+    private fun initSpellCheckerSession() {
+        val tsm = getSystemService(android.view.textservice.TextServicesManager::class.java)
+            ?: return
+        try {
+            spellCheckerSession = tsm.newSpellCheckerSession(
+                null,
+                java.util.Locale.ENGLISH,
+                object : android.view.textservice.SpellCheckerSession.SpellCheckerSessionListener {
+                    override fun onGetSuggestions(results: Array<out android.view.textservice.SuggestionsInfo>?) {
+                        val raw = englishBuffer.toString()
+                        val words = mutableListOf<String>()
+                        if (raw.isNotEmpty()) words.add(raw)
+                        results?.forEach { info ->
+                            for (i in 0 until info.suggestionsCount) {
+                                val s = info.getSuggestionAt(i)
+                                if (s != raw && words.size < 5) words.add(s)
+                            }
+                        }
+                        if (words.isNotEmpty()) suggestions.value = words
+                    }
+                    override fun onGetSentenceSuggestions(results: Array<out android.view.textservice.SentenceSuggestionsInfo>?) {}
+                },
+                false
+            )
+        } catch (e: Exception) {
+            android.util.Log.w("SinKey", "SpellCheckerSession init failed", e)
+        }
+    }
+
     override fun onCreateInputView(): View {
-        // Return the cached view if it already exists.
-        // Android calls onCreateInputView on every input field focus change;
-        // creating a new ComposeView each time causes the old one to remain
-        // attached to the IME window while the new one is added on top — this
-        // is the "ghost / double keyboard" bug visible in WhatsApp etc.
         cachedInputView?.let { return it }
 
         val composeView = ComposeView(this).apply {
@@ -153,10 +178,6 @@ class SinKeyInputMethodService : InputMethodService() {
             }
         }
 
-        // InputMethodService's window is a Dialog; Compose's WindowRecomposer looks
-        // up the ViewTreeLifecycleOwner starting from the *window's decor view*
-        // (e.g. the internal "parentPanel" layout), not from composeView itself.
-        // Without this, attaching crashes with "ViewTreeLifecycleOwner not found".
         window?.window?.decorView?.apply {
             setViewTreeLifecycleOwner(lifecycleOwner)
             setViewTreeSavedStateRegistryOwner(lifecycleOwner)
@@ -182,11 +203,12 @@ class SinKeyInputMethodService : InputMethodService() {
         commitPendingWord()
     }
 
-
-
     override fun onDestroy() {
         lifecycleOwner.handleLifecycleEvent(Lifecycle.Event.ON_DESTROY)
         serviceScope.cancel()
+        // FIX #2: Close spell-checker session to release OS resources.
+        spellCheckerSession?.close()
+        spellCheckerSession = null
         cachedInputView = null
         super.onDestroy()
     }
@@ -197,31 +219,20 @@ class SinKeyInputMethodService : InputMethodService() {
 
         when (key) {
             "BACKSPACE" -> {
-                // PRIORITY 1: If user has a selection, always delete it first —
-                // regardless of whether wordBuffer has content.
-                // This fixes the bug where Sinhala composing text was being
-                // edited instead of deleting the user's text selection.
                 val selectedText = ic.getSelectedText(0)
                 if (!selectedText.isNullOrEmpty()) {
-                    // Clear the composing buffer too — selection crosses word boundary
                     wordBuffer.clear()
                     ic.finishComposingText()
-                    ic.commitText("", 1) // replaces selection with empty = delete
+                    ic.commitText("", 1)
                 } else if (wordBuffer.isNotEmpty()) {
-                    // PRIORITY 2: In-progress Sinhala word — remove last roman letter.
                     wordBuffer.deleteCharAt(wordBuffer.length - 1)
                     if (wordBuffer.isEmpty()) {
-                        // Buffer is now empty — cancel composing without committing.
-                        // setComposingText("", 1) removes the composing text entirely.
                         ic.setComposingText("", 1)
                         ic.finishComposingText()
                     } else {
                         ic.setComposingText(renderBuffer(), 1)
                     }
                 } else {
-                    // PRIORITY 3: No composing, no selection — delete character before cursor.
-                    // Use codepoint-aware deletion so emoji/Sinhala chars
-                    // (which can be multiple UTF-16 units) are deleted correctly.
                     if (englishBuffer.isNotEmpty()) englishBuffer.deleteCharAt(englishBuffer.length - 1)
                     val beforeCursor = ic.getTextBeforeCursor(4, 0)
                     if (!beforeCursor.isNullOrEmpty()) {
@@ -244,24 +255,21 @@ class SinKeyInputMethodService : InputMethodService() {
                 else { englishBuffer.clear(); suggestions.value = emptyList() }
                 ic.commitText("\n", 1)
             }
-            "SHIFT" -> {
-                // handled visually inside KeyboardView; no text action here
-            }
-            "SYMBOLS_SHIFT" -> {
-                // handled visually inside SymbolsKeyboardView
-            }
-            "EMOJI" -> {
-                // handled visually inside KeyboardView (opens emoji picker)
-            }
-            "NUMPAD" -> {
-                // handled visually inside SymbolsKeyboardView (opens numpad)
+            "SHIFT", "SYMBOLS_SHIFT", "EMOJI", "NUMPAD" -> {
+                // Handled visually inside KeyboardView / SymbolsKeyboardView.
             }
             "TOOL_MIC" -> {
-                // Voice input - trigger IME action
                 sendDefaultEditorAction(true)
             }
+            "TOOL_APPS", "TOOL_STICKER", "TOOL_CLIPBOARD", "TOOL_FONT",
+            "TOOL_TRANSLATE", "TOOL_SETTINGS" -> {
+                // FIX #13: Tool actions were silently falling through to the
+                // letter-handling else branch, calling commitPendingWord() and
+                // discarding the action. Now explicitly no-op'd so they are
+                // available for future integration without side-effects.
+                android.util.Log.d("SinKey", "Tool action: $key (not yet implemented)")
+            }
             "SWITCH_KEYBOARD" -> {
-                // Show system keyboard picker (InputMethodManager switcher dialog)
                 val imm = getSystemService(INPUT_METHOD_SERVICE) as android.view.inputmethod.InputMethodManager
                 imm.showInputMethodPicker()
             }
@@ -278,8 +286,6 @@ class SinKeyInputMethodService : InputMethodService() {
                 ic.commitText(key, 1)
             }
             else -> {
-                // Single printable non-letter characters from symbols keyboard
-                // (e.g. @, #, !, 1, 2 ...) — commit directly without buffering
                 val isSinglePrintable = key.length == 1 && !key[0].isLetter()
                 if (isSinglePrintable) {
                     commitPendingWord()
@@ -287,7 +293,6 @@ class SinKeyInputMethodService : InputMethodService() {
                     ic.commitText(key, 1)
                     return
                 }
-                // Check if the key is an emoji
                 if (isEmoji(key)) {
                     commitPendingWord()
                     ic.commitText(key, 1)
@@ -295,15 +300,12 @@ class SinKeyInputMethodService : InputMethodService() {
                         prefs.addRecentEmoji(key)
                     }
                 } else if (currentLanguage.value == "si") {
-                    // Singlish mode: buffer the raw roman input, show live Sinhala preview
                     val lower = key.lowercase()
                     wordBuffer.append(lower)
-                    // Show transliterated preview as composing (underlined) text
                     val preview = SinhalaTransliterator.transliterate(wordBuffer.toString())
                     ic.setComposingText(preview, 1)
                     updateSuggestions()
                 } else {
-                    // English mode: commit directly, track in englishBuffer for suggestions
                     englishBuffer.append(key)
                     ic.commitText(key, 1)
                     updateSuggestions()
@@ -312,26 +314,24 @@ class SinKeyInputMethodService : InputMethodService() {
         }
     }
 
-    /** Converts the in-progress romanized buffer into live Sinhala preview text. */
     private fun renderBuffer(): String = SinhalaTransliterator.transliterate(wordBuffer.toString())
 
     /**
-     * Returns true if [key] is an emoji / non-letter character that should be
-     * committed directly and tracked in the recent-emojis list.
-     * We detect this by checking that the string contains no ASCII letters and
-     * has at least one Unicode code point in the emoji ranges.
+     * FIX #10: Removed the `key.length > 8` guard that rejected ZWJ emoji
+     * sequences (family emojis, skin-tone variants, flags) which are often
+     * longer than 8 UTF-16 chars. Now we only check for emoji code-point ranges.
+     * Tool-action strings are excluded because they contain only ASCII letters.
      */
     private fun isEmoji(key: String): Boolean {
-        if (key.length > 8) return false // tool actions like "LANG_TOGGLE" are long
+        // Tool action strings (e.g. "LANG_TOGGLE") contain only ASCII letters —
+        // they will never match the emoji code-point ranges below.
         return key.codePoints().anyMatch { cp ->
-            // Emoji ranges: Miscellaneous Symbols, Emoticons, Supplemental Symbols,
-            // Enclosed Alphanumerics, Dingbats, flags, etc.
-            cp in 0x2600..0x27BF ||   // Misc symbols & dingbats
-            cp in 0x1F300..0x1FAFF || // Most emojis
-            cp in 0x1F900..0x1F9FF || // Supplemental
-            cp in 0x2300..0x23FF ||   // Misc technical
-            cp in 0x25A0..0x25FF ||   // Geometric shapes
-            cp in 0x2B00..0x2BFF      // Misc symbols & arrows
+            cp in 0x2600..0x27BF ||
+            cp in 0x1F300..0x1FAFF ||
+            cp in 0x1F900..0x1F9FF ||
+            cp in 0x2300..0x23FF ||
+            cp in 0x25A0..0x25FF ||
+            cp in 0x2B00..0x2BFF
         }
     }
 
@@ -339,28 +339,19 @@ class SinKeyInputMethodService : InputMethodService() {
         if (wordBuffer.isEmpty()) return
         val ic = currentInputConnection
         val finalWord = SinhalaTransliterator.transliterate(wordBuffer.toString())
-        // setComposingText("") removes the composing span WITHOUT committing it,
-        // then commitText commits the final word exactly once.
         ic?.setComposingText("", 1)
         ic?.commitText(finalWord, 1)
         wordBuffer.clear()
         suggestions.value = emptyList()
     }
 
-    /**
-     * Called when the user taps a suggestion chip.
-     * Replaces the current composing word with the selected suggestion.
-     */
     private fun handleSuggestion(word: String) {
         val ic = currentInputConnection ?: return
         if (currentLanguage.value == "si") {
-            // setComposingText("") removes composing span WITHOUT committing it,
-            // then commitText commits the suggestion exactly once.
             ic.setComposingText("", 1)
             ic.commitText(word, 1)
             wordBuffer.clear()
         } else {
-            // Delete the already-committed English word, then commit the suggestion.
             val len = englishBuffer.length
             if (len > 0) ic.deleteSurroundingText(len, 0)
             ic.commitText(word, 1)
@@ -369,65 +360,30 @@ class SinKeyInputMethodService : InputMethodService() {
         suggestions.value = emptyList()
     }
 
-    /**
-     * Generates word suggestions based on the current [wordBuffer].
-     *
-     * Sinhala mode  — the transliterated form is always the first suggestion.
-     *                 Additional variants (e.g. with/without inherent-a) follow.
-     * English mode  — Android's [android.view.textservice.SpellCheckerSession] is
-     *                 used when available; a small built-in prefix list fills the
-     *                 gap on devices/emulators that lack it.
-     */
     private fun updateSuggestions() {
         val raw = if (currentLanguage.value == "si") wordBuffer.toString() else englishBuffer.toString()
         if (raw.isEmpty()) { suggestions.value = emptyList(); return }
 
         if (currentLanguage.value == "si") {
-            // Primary: exact transliteration
             val primary = SinhalaTransliterator.transliterate(raw)
             val list = mutableListOf(primary)
-
-            // Variant 1: append space suggestion (commit as-is)
-            // Variant 2: try with trailing 'a' appended (fills inherent vowel)
             val withA = SinhalaTransliterator.transliterate("${raw}a")
             if (withA != primary) list.add(withA)
-
-            // Variant 3: try capitalised first letter
             if (raw.length > 1) {
                 val cap = SinhalaTransliterator.transliterate(raw[0].uppercaseChar() + raw.substring(1))
                 if (cap != primary && cap != withA) list.add(cap)
             }
-
             suggestions.value = list.take(5)
         } else {
-            // English: use Android TextServicesManager spell-checker for real suggestions
-            val tsm = getSystemService(android.view.textservice.TextServicesManager::class.java)
-            if (tsm != null) {
+            // FIX #2: Use the single reusable session instead of creating a new one per keystroke.
+            val session = spellCheckerSession
+            if (session != null) {
+                // Show typed word immediately; async callback will update with real suggestions.
+                if (suggestions.value.firstOrNull() != raw) suggestions.value = listOf(raw)
                 try {
-                    val locale = java.util.Locale.ENGLISH
-                    val session = tsm.newSpellCheckerSession(null, locale, object :
-                        android.view.textservice.SpellCheckerSession.SpellCheckerSessionListener {
-                        override fun onGetSuggestions(results: Array<out android.view.textservice.SuggestionsInfo>?) {
-                            val words = mutableListOf<String>()
-                            // First suggestion = the word typed (as-is)
-                            if (raw.isNotEmpty()) words.add(raw)
-                            results?.forEach { info ->
-                                for (i in 0 until info.suggestionsCount) {
-                                    val s = info.getSuggestionAt(i)
-                                    if (s != raw && words.size < 5) words.add(s)
-                                }
-                            }
-                            suggestions.value = words
-                        }
-                        override fun onGetSentenceSuggestions(results: Array<out android.view.textservice.SentenceSuggestionsInfo>?) {}
-                    }, false)
-                    session?.getSuggestions(
-                        android.view.textservice.TextInfo(raw), 4
-                    )
-                    // Immediately show typed word while waiting for async results
-                    if (suggestions.value.isEmpty()) suggestions.value = listOf(raw)
-                } catch (_: Exception) {
-                    suggestions.value = listOf(raw)
+                    session.getSuggestions(android.view.textservice.TextInfo(raw), 4)
+                } catch (e: Exception) {
+                    android.util.Log.w("SinKey", "getSuggestions failed", e)
                 }
             } else {
                 suggestions.value = listOf(raw)
@@ -435,14 +391,19 @@ class SinKeyInputMethodService : InputMethodService() {
         }
     }
 
+    /**
+     * FIX #1: No more runBlocking. Reads cached in-memory values (updated via
+     * Flow collectors in onCreate) — zero blocking, zero DataStore I/O per tap.
+     * FIX #3: Key sound now actually implemented using AudioManager.FX_KEYPRESS_STANDARD.
+     */
     private fun maybeFeedback() {
-        // Sound/vibration prefs are read lazily and cheaply each tap; DataStore
-        // caches internally so this is not a meaningful perf concern for a keyboard.
-        runBlocking {
-            if (prefs.keyVibrateEnabled.first()) {
-                val vibrator = getSystemService(Vibrator::class.java)
-                vibrator?.vibrate(VibrationEffect.createOneShot(12, VibrationEffect.DEFAULT_AMPLITUDE))
-            }
+        if (cachedVibrateEnabled) {
+            val vibrator = getSystemService(Vibrator::class.java)
+            vibrator?.vibrate(VibrationEffect.createOneShot(12, VibrationEffect.DEFAULT_AMPLITUDE))
+        }
+        if (cachedSoundEnabled) {
+            val audio = getSystemService(AudioManager::class.java)
+            audio?.playSoundEffect(AudioManager.FX_KEYPRESS_STANDARD, -1f)
         }
     }
 }
