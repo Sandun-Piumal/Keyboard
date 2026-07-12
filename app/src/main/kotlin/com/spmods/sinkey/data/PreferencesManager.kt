@@ -124,6 +124,6 @@ class PreferencesManager(private val context: Context) {
     }
 
     companion object {
-        const val MAX_RECENT = 20 // LazyRow allows unlimited scroll — keep up to 30 recent emojis
+        const val MAX_RECENT = 20 // LazyRow allows unlimited scroll — keep up to 20 recent emojis
     }
 }
