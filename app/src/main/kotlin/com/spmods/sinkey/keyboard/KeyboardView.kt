@@ -78,14 +78,18 @@ private data class KeyboardColors(
 @Composable
 private fun keyboardColors(showKeyBorders: Boolean, isDark: Boolean): KeyboardColors {
     return if (isDark) {
+        // FIX #12: Dark theme previously had almost no visible difference between
+        // bordered (0xFF2E2E2E) and borderless (0xFF262626) key backgrounds.
+        // Now borderless uses the same bg colour as the keyboard background so
+        // keys appear "flat/floating", while bordered uses a clearly lighter slab.
         KeyboardColors(
             bg             = Color(0xFF1E1E1E),
-            keyBg          = if (showKeyBorders) Color(0xFF2E2E2E) else Color(0xFF262626),
-            specialKeyBg   = Color(0xFF3A3A3A),
+            keyBg          = if (showKeyBorders) Color(0xFF3A3A3A) else Color(0xFF1E1E1E),
+            specialKeyBg   = Color(0xFF2C2C2C),
             keyText        = Color(0xFFE8E8E8),
             specialKeyText = Color(0xFFCCCCCC),
             subText        = Color(0xFF888888),
-            spaceKeyBg     = Color(0xFF2E2E2E),
+            spaceKeyBg     = if (showKeyBorders) Color(0xFF3A3A3A) else Color(0xFF2A2A2A),
             spaceKeyText   = Color(0xFF777777),
         )
     } else {
@@ -215,18 +219,24 @@ fun KeyboardView(
                     onKey = onKey,
                     onSymbols = { showSymbols = true },
                     onEmojiPicker = { showEmojiPicker = true },
-                    onLangTooltip = { showLangTooltip = true }
+                    onLangTooltip = { showLangTooltip = true },
+                    imeAction = inputType
                 )
             }
         }
 
+        // FIX #11: Replaced hardcoded padding(start=96.dp, bottom=62.dp) which was
+        // wrong on different keyboard heights / bottom-space settings. Now the tooltip
+        // is centered horizontally and floats just above the bottom row by using
+        // Alignment.BottomCenter + a single fixed vertical nudge that works at every
+        // keyboard height step (the bottom row is always keyHeight + 6dp padding).
         AnimatedVisibility(
             visible = showLangTooltip,
             enter = fadeIn() + slideInVertically { it },
             exit = fadeOut() + slideOutVertically { it },
             modifier = Modifier
-                .align(Alignment.BottomStart)
-                .padding(start = 96.dp, bottom = 62.dp)
+                .align(Alignment.BottomCenter)
+                .padding(bottom = keyHeight + 10.dp)
                 .zIndex(10f)
         ) {
             LangTooltip(currentLanguage = currentLanguage)
@@ -251,15 +261,19 @@ private fun MainKeyboardKeys(
     onKey: (String) -> Unit,
     onSymbols: () -> Unit,
     onEmojiPicker: () -> Unit,
-    onLangTooltip: () -> Unit
+    onLangTooltip: () -> Unit,
+    imeAction: Int = android.view.inputmethod.EditorInfo.IME_ACTION_NONE
 ) {
     Column(
         modifier = Modifier.fillMaxWidth()
             .padding(horizontal = 4.dp, vertical = 2.dp)
             .padding(bottom = bottomPadding)
     ) {
-        NumberedKeyRow(EnglishRows[0], topRowNumbers, shift, keyHeight, colors, keyShape) { onKey(it) }
-        KeyRow(EnglishRows[1], shift, keyHeight, colors, keyShape) { onKey(it) }
+        // FIX #5: Pass onShiftChange so letter rows can reset one-shot shift.
+        NumberedKeyRow(EnglishRows[0], topRowNumbers, shift, keyHeight, colors, keyShape,
+            onKey = { onKey(it); if (shift) onShiftChange(false) })
+        KeyRow(EnglishRows[1], shift, keyHeight, colors, keyShape,
+            onKey = { onKey(it); if (shift) onShiftChange(false) })
         Row(
             modifier = Modifier.fillMaxWidth().padding(vertical = 3.dp),
             horizontalArrangement = Arrangement.spacedBy(6.dp)
@@ -269,7 +283,11 @@ private fun MainKeyboardKeys(
             }
             EnglishRows[2].forEach { k ->
                 val display = if (shift) k.uppercase() else k
-                LetterKey(label = display, weight = 1f, keyHeight = keyHeight, colors = colors, keyShape = keyShape) { onKey(display) }
+                // FIX #5: Reset shift after each letter (one-shot shift behaviour).
+                LetterKey(label = display, weight = 1f, keyHeight = keyHeight, colors = colors, keyShape = keyShape) {
+                    onKey(display)
+                    if (shift) onShiftChange(false)
+                }
             }
             BackspaceKey(weight = 1.4f, keyHeight = keyHeight, colors = colors, keyShape = keyShape) { onKey("BACKSPACE") }
         }
@@ -289,7 +307,8 @@ private fun MainKeyboardKeys(
             SpaceKey(weight = 5.5f, keyHeight = keyHeight, colors = colors, keyShape = keyShape,
                 onTap = { onKey("SPACE") }, onLongPress = { onKey("SWITCH_KEYBOARD") })
             SpecialKey(label = ".", weight = 0.8f, keyHeight = keyHeight, colors = colors, keyShape = keyShape) { onKey(".") }
-            EnterKey(weight = 2.0f, keyHeight = keyHeight, keyShape = keyShape) { onKey("ENTER") }
+            // FIX #8: Pass imeAction so the Enter key label reflects the current field action.
+            EnterKey(weight = 2.0f, keyHeight = keyHeight, keyShape = keyShape, imeAction = imeAction) { onKey("ENTER") }
         }
     }
 }
@@ -428,19 +447,9 @@ private fun AppsMicBar(
 // ─────────────────────────────────────────────────────────────────────────────
 // Emoji row
 // ─────────────────────────────────────────────────────────────────────────────
-@Composable
-private fun ConditionalEmojiRow(
-    colors: KeyboardColors,
-    onKey: (String) -> Unit,
-    onMoreClick: () -> Unit = {}
-) {
-    val context = LocalContext.current
-    val prefsManager = remember { PreferencesManager(context) }
-    val recentEmojis by prefsManager.recentEmojis.collectAsState(initial = emptyList())
-    if (recentEmojis.isNotEmpty()) {
-        EmojiRow(emojis = recentEmojis, colors = colors, onKey = onKey, onMoreClick = onMoreClick)
-    }
-}
+// FIX #4: Removed dead ConditionalEmojiRow composable. It was never called —
+// KeyboardView already reads recentEmojis directly and calls EmojiRow itself.
+// ConditionalEmojiRow also created a redundant second PreferencesManager instance.
 
 @Composable
 private fun EmojiRow(emojis: List<String>, colors: KeyboardColors, onKey: (String) -> Unit, onMoreClick: () -> Unit) {
@@ -788,11 +797,21 @@ private fun RowScope.SpaceKey(
     }
 }
 
+/**
+ * FIX #8: EnterKey previously had a [useSearchIcon] flag that was only set
+ * for the dial-pad, while the main keyboard always showed the generic enter
+ * icon regardless of the current IME action (Search, Send, Go, Next, Done…).
+ *
+ * Now accepts [imeAction] derived from [EditorInfo.imeOptions] so the icon/
+ * label correctly reflects what the action will do in the focused field.
+ * Callers that don't pass imeAction fall back to the generic enter icon.
+ */
 @Composable
 private fun RowScope.EnterKey(
     weight: Float,
-    keyHeight: Dp, keyShape: RoundedCornerShape,
-    useSearchIcon: Boolean = false,
+    keyHeight: Dp,
+    keyShape: RoundedCornerShape,
+    imeAction: Int = android.view.inputmethod.EditorInfo.IME_ACTION_NONE,
     onTap: () -> Unit
 ) {
     Box(
@@ -802,15 +821,30 @@ private fun RowScope.EnterKey(
             .clickable { onTap() },
         contentAlignment = Alignment.Center
     ) {
-        if (useSearchIcon) {
-            Icon(
+        when (imeAction and android.view.inputmethod.EditorInfo.IME_MASK_ACTION) {
+            android.view.inputmethod.EditorInfo.IME_ACTION_SEARCH -> Icon(
                 imageVector = Icons.Filled.Search,
                 contentDescription = "Search",
                 modifier = Modifier.size(26.dp),
                 tint = Color.White
             )
-        } else {
-            Icon(
+            android.view.inputmethod.EditorInfo.IME_ACTION_SEND -> Text(
+                "Send", fontSize = 12.sp, color = Color.White,
+                fontWeight = androidx.compose.ui.text.font.FontWeight.SemiBold
+            )
+            android.view.inputmethod.EditorInfo.IME_ACTION_GO -> Text(
+                "Go", fontSize = 12.sp, color = Color.White,
+                fontWeight = androidx.compose.ui.text.font.FontWeight.SemiBold
+            )
+            android.view.inputmethod.EditorInfo.IME_ACTION_NEXT -> Text(
+                "Next", fontSize = 12.sp, color = Color.White,
+                fontWeight = androidx.compose.ui.text.font.FontWeight.SemiBold
+            )
+            android.view.inputmethod.EditorInfo.IME_ACTION_DONE -> Text(
+                "Done", fontSize = 12.sp, color = Color.White,
+                fontWeight = androidx.compose.ui.text.font.FontWeight.SemiBold
+            )
+            else -> Icon(
                 painter = painterResource(id = R.drawable.ic_enter_key),
                 contentDescription = "Enter",
                 modifier = Modifier.size(26.dp),
@@ -838,25 +872,10 @@ private val SymShiftRow2 = listOf("^","₩","£","€","¥","$","©","®","™",
 // rowkeys_symbols_shift3.xml  → \ | < > ; ¡ ¿
 private val SymShiftRow3 = listOf("\\","|","<",">",";","¡","¿")
 
-@Composable
-private fun SymbolsKeyboardContent(
-    colors: KeyboardColors,
-    keyHeight: Dp,
-    keyShape: RoundedCornerShape,
-    bottomPadding: Dp,
-    onKey: (String) -> Unit,
-    onBack: () -> Unit,
-    onShowEmoji: () -> Unit = {}
-) {
-    SymbolsKeyboardView(
-        colors = colors,
-        keyHeight = keyHeight,
-        keyShape = keyShape,
-        bottomPadding = bottomPadding,
-        onKey = onKey,
-        onBack = onBack
-    )
-}
+// FIX #7: Removed dead SymbolsKeyboardContent wrapper. It accepted an
+// onShowEmoji parameter but never forwarded it to SymbolsKeyboardView,
+// silently discarding the callback. SymbolsKeyboardView is called directly
+// everywhere, so this wrapper had no callers and no purpose.
 
 @Composable
 private fun SymbolsKeyboardView(
@@ -1299,18 +1318,20 @@ private fun PhoneDialPadView(
                 ) {
                     Text("0 +", fontSize = 20.sp, color = colors.keyText, fontWeight = FontWeight.Normal)
                 }
-                // _ — tap → _, long press → switch keyboard
+                // FIX #6: Was sending " " (space) on tap despite showing "_" label.
+                // Now correctly sends "_" on tap; long press still switches keyboard.
                 Box(
                     modifier = Modifier
                         .height(keyHeight).weight(1f)
                         .clip(keyShape).background(colors.keyBg)
-                        .combinedClickable(onClick = { onKey(" ") }, onLongClick = { onKey("SWITCH_KEYBOARD") }),
+                        .combinedClickable(onClick = { onKey("_") }, onLongClick = { onKey("SWITCH_KEYBOARD") }),
                     contentAlignment = Alignment.Center
                 ) {
                     Text("_", fontSize = 24.sp, color = colors.keyText)
                 }
-                // Search / Enter (green)
-                EnterKey(weight = 1f, keyHeight = keyHeight, keyShape = keyShape, useSearchIcon = true) {
+                // Search / Enter (green) — dial pad always shows Search icon.
+                EnterKey(weight = 1f, keyHeight = keyHeight, keyShape = keyShape,
+                    imeAction = android.view.inputmethod.EditorInfo.IME_ACTION_SEARCH) {
                     onKey("ENTER")
                 }
             }
