@@ -621,20 +621,18 @@ private fun keyNumberFontSize(keyHeight: Dp): androidx.compose.ui.unit.TextUnit 
 
 @Composable
 private fun KeyPreviewPopup(label: String, keyHeight: Dp, colors: KeyboardColors) {
-    // The bubble that floats above a key while it is pressed.
-    // Sized to be clearly readable — 2× key height tall, min 48dp wide.
-    val popupSize = (keyHeight.value * 1.6f).dp
+    val size = (keyHeight.value * 1.1f).dp
     Box(
         modifier = Modifier
-            .defaultMinSize(minWidth = popupSize, minHeight = popupSize)
-            .clip(RoundedCornerShape(topStart = 10.dp, topEnd = 10.dp, bottomEnd = 10.dp, bottomStart = 2.dp))
+            .defaultMinSize(minWidth = size, minHeight = size)
+            .clip(RoundedCornerShape(topStart = 8.dp, topEnd = 8.dp, bottomEnd = 8.dp, bottomStart = 2.dp))
             .background(colors.keyBg)
-            .padding(horizontal = 10.dp, vertical = 4.dp),
+            .padding(horizontal = 8.dp, vertical = 2.dp),
         contentAlignment = Alignment.Center
     ) {
         Text(
             text = label,
-            fontSize = (keyHeight.value * 0.80f).sp,
+            fontSize = (keyHeight.value * 0.60f).sp,
             color = colors.keyText,
             fontWeight = FontWeight.Normal
         )
@@ -673,12 +671,9 @@ private fun RowScope.NumberedLetterKey(
         Text(text = label, fontSize = keyLabelFontSize(keyHeight), color = colors.keyText,
             fontWeight = FontWeight.Normal,
             modifier = Modifier.align(Alignment.Center))
-
         if (pressed) {
-            Popup(
-                alignment = Alignment.TopCenter,
-                offset = IntOffset(0, -((keyHeight.value * 1.7f).toInt()))
-            ) {
+            Popup(alignment = Alignment.TopCenter,
+                offset = IntOffset(0, -((keyHeight.value * 1.4f).toInt()))) {
                 KeyPreviewPopup(label = label, keyHeight = keyHeight, colors = colors)
             }
         }
@@ -697,13 +692,16 @@ private fun RowScope.LetterKey(
             .height(keyHeight).weight(weight)
             .clip(keyShape)
             .background(if (pressed) colors.keyBg.copy(alpha = 0.6f) else colors.keyBg)
-            .clickable { onTap() }
-            .pointerInput(Unit) {
+            // Single pointerInput handles both the visual press state AND the tap.
+            // Using clickable + pointerInput together caused tap events to be
+            // consumed by pointerInput before clickable could fire onTap().
+            .pointerInput(onTap) {
                 detectTapGestures(
                     onPress = {
                         pressed = true
-                        tryAwaitRelease()
+                        val released = tryAwaitRelease()
                         pressed = false
+                        if (released) onTap()
                     }
                 )
             },
@@ -711,12 +709,9 @@ private fun RowScope.LetterKey(
     ) {
         Text(text = label, fontSize = keyLabelFontSize(keyHeight), color = colors.keyText,
             fontWeight = FontWeight.Normal)
-
         if (pressed) {
-            Popup(
-                alignment = Alignment.TopCenter,
-                offset = IntOffset(0, -((keyHeight.value * 1.7f).toInt()))
-            ) {
+            Popup(alignment = Alignment.TopCenter,
+                offset = IntOffset(0, -((keyHeight.value * 1.4f).toInt()))) {
                 KeyPreviewPopup(label = label, keyHeight = keyHeight, colors = colors)
             }
         }
@@ -810,25 +805,22 @@ private fun RowScope.SpecialKey(
             .height(keyHeight).weight(weight)
             .clip(keyShape)
             .background(if (pressed) colors.specialKeyBg.copy(alpha = 0.6f) else colors.specialKeyBg)
-            .clickable { onTap() }
-            .pointerInput(Unit) {
+            .pointerInput(onTap) {
                 detectTapGestures(
                     onPress = {
                         pressed = true
-                        tryAwaitRelease()
+                        val released = tryAwaitRelease()
                         pressed = false
+                        if (released) onTap()
                     }
                 )
             },
         contentAlignment = Alignment.Center
     ) {
         Text(text = label, fontSize = keyLabelFontSize(keyHeight), fontWeight = FontWeight.Medium, color = colors.specialKeyText)
-
         if (pressed) {
-            Popup(
-                alignment = Alignment.TopCenter,
-                offset = IntOffset(0, -((keyHeight.value * 1.7f).toInt()))
-            ) {
+            Popup(alignment = Alignment.TopCenter,
+                offset = IntOffset(0, -((keyHeight.value * 1.4f).toInt()))) {
                 KeyPreviewPopup(label = label, keyHeight = keyHeight, colors = colors)
             }
         }
