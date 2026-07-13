@@ -14,9 +14,17 @@
         android:supportsRtl="true"
         android:theme="@style/Theme.SinKey">
 
+        <!--
+            Bug O2 Fix: adjustResize tells Android to shrink the activity
+            window when the IME appears, so the keyboard preview FAB and
+            Scaffold content are never hidden behind the keyboard.
+            Without this the system picks adjustUnspecified which can overlap
+            content on many devices and launchers.
+        -->
         <activity
             android:name=".MainActivity"
             android:exported="true"
+            android:windowSoftInputMode="adjustResize"
             android:theme="@style/Theme.SinKey.Splash">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
@@ -24,13 +32,18 @@
             </intent-filter>
         </activity>
 
+        <!--
+            Bug O5 Fix: Removed android:windowSoftInputMode="stateUnchanged"
+            from the <service> tag. That attribute is only valid on <activity>
+            elements — on a <service> it is silently ignored by Android, so it
+            had no effect and was misleading dead markup.
+        -->
         <service
             android:name=".ime.SinKeyInputMethodService"
             android:permission="android.permission.BIND_INPUT_METHOD"
             android:exported="true"
             android:label="@string/app_name"
-            android:theme="@style/Theme.SinKey.IME"
-            android:windowSoftInputMode="stateUnchanged">
+            android:theme="@style/Theme.SinKey.IME">
             <intent-filter>
                 <action android:name="android.view.InputMethod" />
             </intent-filter>
