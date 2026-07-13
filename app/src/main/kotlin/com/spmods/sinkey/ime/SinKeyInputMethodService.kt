@@ -148,7 +148,14 @@ class SinKeyInputMethodService : InputMethodService() {
             setViewTreeLifecycleOwner(lifecycleOwner)
             setViewTreeSavedStateRegistryOwner(lifecycleOwner)
             setViewTreeViewModelStoreOwner(lifecycleOwner)
-            setViewCompositionStrategy(ViewCompositionStrategy.DisposeOnViewTreeLifecycleDestroyed)
+            // Bug O3 Fix: DisposeOnViewTreeLifecycleDestroyed disposes the
+            // Composition on every IME window detach/re-attach cycle (hide → show),
+            // producing a blank flash or ghost keyboard layer visible between
+            // WhatsApp / Instagram input field switches.
+            // DisposeOnDetachedFromWindowOrReleasedFromPool keeps the Composition
+            // alive across hide/show cycles and only disposes when the view is
+            // genuinely removed — which is the correct behaviour for a cached IME view.
+            setViewCompositionStrategy(ViewCompositionStrategy.DisposeOnDetachedFromWindowOrReleasedFromPool)
 
             setContent {
                 val themeMode by prefs.themeMode.collectAsState(initial = com.spmods.sinkey.data.ThemeMode.SYSTEM)
@@ -191,6 +198,14 @@ class SinKeyInputMethodService : InputMethodService() {
     override fun onStartInputView(info: EditorInfo?, restarting: Boolean) {
         super.onStartInputView(info, restarting)
         lifecycleOwner.handleLifecycleEvent(Lifecycle.Event.ON_RESUME)
+
+        // Bug O4 Fix: Cancel any active composing span on the previous
+        // InputConnection before switching fields. Without this, the underlined
+        // Sinhala preview text stays visible in the old field after focus moves
+        // to a new one, and the new field starts with a stale composing state —
+        // creating the appearance of keyboard text appearing in two places at once.
+        currentInputConnection?.finishComposingText()
+
         wordBuffer.clear()
         englishBuffer.clear()
         suggestions.value = emptyList()
