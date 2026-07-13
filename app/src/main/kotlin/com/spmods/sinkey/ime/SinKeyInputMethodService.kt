@@ -213,7 +213,9 @@ class SinKeyInputMethodService : InputMethodService() {
 
     override fun onStartInputView(info: EditorInfo?, restarting: Boolean) {
         super.onStartInputView(info, restarting)
-        lifecycleOwner.handleLifecycleEvent(Lifecycle.Event.ON_RESUME)
+        // ON_RESUME is now driven by onWindowShown() to stay in sync with the
+        // actual IME window visibility. Calling it here again would cause a
+        // double-resume that confuses the Compose recomposition scope.
 
         // Bug O4 Fix: Cancel any active composing span on the previous
         // InputConnection before switching fields. Without this, the underlined
@@ -240,6 +242,25 @@ class SinKeyInputMethodService : InputMethodService() {
         super.onFinishInputView(finishingInput)
         lifecycleOwner.handleLifecycleEvent(Lifecycle.Event.ON_PAUSE)
         commitPendingWord()
+    }
+
+    // FIX Ghost-Keyboard: onWindowShown / onWindowHidden are called by the
+    // system when the IME window becomes visible/invisible WITHOUT necessarily
+    // calling onStartInputView (e.g. WhatsApp opens its emoji panel → system
+    // hides the keyboard window but keeps the InputConnection alive → then
+    // restores the keyboard without a fresh onStartInputView call).
+    // Without these hooks the lifecycle stays ON_RESUME while the window is
+    // hidden, so the Compose tree keeps recomposing against a detached window.
+    // Driving ON_PAUSE / ON_RESUME here keeps the lifecycle in sync with the
+    // actual window visibility and prevents the ghost toolbar layer.
+    override fun onWindowShown() {
+        super.onWindowShown()
+        lifecycleOwner.handleLifecycleEvent(Lifecycle.Event.ON_RESUME)
+    }
+
+    override fun onWindowHidden() {
+        super.onWindowHidden()
+        lifecycleOwner.handleLifecycleEvent(Lifecycle.Event.ON_PAUSE)
     }
 
     override fun onDestroy() {
