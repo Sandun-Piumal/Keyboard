@@ -131,6 +131,12 @@ private fun stepToBottomPadding(step: Float): Dp = when (Math.round(step)) {
     else -> 28.dp
 }
 
+// Board state enum — tracks which keyboard panel is currently visible.
+// Replaces the previous ad-hoc boolean flags (showSymbols, showEmojiPicker)
+// which had no memory of which board opened them, so back always went to MAIN.
+// Must be internal (not private) so SinKeyInputMethodService can reference it.
+internal enum class Board { MAIN, SYMBOLS, NUMPAD, EMOJI }
+
 @Composable
 fun KeyboardView(
     currentLanguage: String,
@@ -143,7 +149,11 @@ fun KeyboardView(
     onSuggestionSelected: (String) -> Unit = {},
     onKey: (String) -> Unit,
     onDismiss: (() -> Unit)? = null,
-    inputType: Int = 0
+    inputType: Int = 0,
+    // Board stack owned by the IME service so it survives keyboard hide/show cycles.
+    // Preview callers (MainActivity) omit these and get default MAIN behaviour.
+    boardStack: List<Board> = listOf(Board.MAIN),
+    onBoardStackChange: (List<Board>) -> Unit = {}
 ) {
     val colors = keyboardColors(showKeyBorders, isDark)
     val keyHeight = stepToKeyHeight(keyboardHeight)
@@ -151,9 +161,11 @@ fun KeyboardView(
     val keyShape = RoundedCornerShape(6.dp)
 
     var shift by remember { mutableStateOf(false) }
-    var showSymbols by remember { mutableStateOf(false) }
     var showLangTooltip by remember { mutableStateOf(false) }
-    var showEmojiPicker by remember { mutableStateOf(false) }
+
+    val currentBoard = boardStack.last()
+    fun pushBoard(b: Board) { onBoardStackChange(boardStack + b) }
+    fun popBoard()          { if (boardStack.size > 1) onBoardStackChange(boardStack.dropLast(1)) }
 
     val isPhoneInput = remember(inputType) {
         (inputType and android.view.inputmethod.EditorInfo.TYPE_CLASS_PHONE) ==
@@ -200,16 +212,27 @@ fun KeyboardView(
                     colors = colors, keyHeight = keyHeight,
                     keyShape = keyShape, bottomPadding = bottomPadding, onKey = onKey
                 )
-                showEmojiPicker -> EmojiPickerView(
+                currentBoard == Board.EMOJI -> EmojiPickerView(
                     recentEmojis = recentEmojis,
                     onEmojiSelected = { emoji -> onKey(emoji) },
                     onBackspace = { onKey("BACKSPACE") },
-                    onDismiss = { showEmojiPicker = false }
+                    onDismiss = { popBoard() }          // back to whichever board opened emoji
                 )
-                showSymbols -> SymbolsKeyboardKeys(
+                currentBoard == Board.SYMBOLS -> SymbolsKeyboardKeys(
                     colors = colors, keyHeight = keyHeight,
                     keyShape = keyShape, bottomPadding = bottomPadding,
-                    onKey = onKey, onBack = { showSymbols = false }
+                    onKey = onKey,
+                    onBack = { popBoard() },            // back to MAIN
+                    onNumpad = { pushBoard(Board.NUMPAD) },
+                    onEmoji  = { pushBoard(Board.EMOJI) }
+                )
+                currentBoard == Board.NUMPAD -> NumberPadView(
+                    colors = colors, keyHeight = keyHeight,
+                    keyShape = keyShape, bottomPadding = bottomPadding,
+                    onKey = onKey,
+                    // Bug fix: numpad ABC → back to whatever opened numpad (SYMBOLS),
+                    // not always MAIN. popBoard() handles this correctly.
+                    onBack = { popBoard() }
                 )
                 else -> MainKeyboardKeys(
                     currentLanguage = currentLanguage,
@@ -217,8 +240,8 @@ fun KeyboardView(
                     keyHeight = keyHeight, keyShape = keyShape,
                     bottomPadding = bottomPadding, colors = colors,
                     onKey = onKey,
-                    onSymbols = { showSymbols = true },
-                    onEmojiPicker = { showEmojiPicker = true },
+                    onSymbols = { pushBoard(Board.SYMBOLS) },
+                    onEmojiPicker = { pushBoard(Board.EMOJI) },
                     onLangTooltip = { showLangTooltip = true },
                     imeAction = inputType
                 )
@@ -320,11 +343,14 @@ private fun SymbolsKeyboardKeys(
     keyShape: RoundedCornerShape,
     bottomPadding: Dp,
     onKey: (String) -> Unit,
-    onBack: () -> Unit
+    onBack: () -> Unit,
+    onNumpad: () -> Unit,
+    onEmoji: () -> Unit
 ) {
     SymbolsKeyboardView(
         colors = colors, keyHeight = keyHeight, keyShape = keyShape,
-        bottomPadding = bottomPadding, onKey = onKey, onBack = onBack
+        bottomPadding = bottomPadding, onKey = onKey, onBack = onBack,
+        onNumpad = onNumpad, onEmoji = onEmoji
     )
 }
 
@@ -569,6 +595,16 @@ private fun KeyRow(
 // ─────────────────────────────────────────────────────────────────────────────
 // Individual keys
 // ─────────────────────────────────────────────────────────────────────────────
+
+// Bug 3 Fix: Key label font sizes were hardcoded to 22sp regardless of the
+// keyboard height setting. Small keys (42dp) look cramped at 22sp and large
+// keys (62dp) have too much empty space. Scale font proportionally to keyHeight.
+private fun keyLabelFontSize(keyHeight: Dp): androidx.compose.ui.unit.TextUnit =
+    (keyHeight.value * 0.40f).sp   // ~17sp @ 42dp, ~19sp @ 48dp, ~22sp @ 54dp, ~25sp @ 62dp
+
+private fun keyNumberFontSize(keyHeight: Dp): androidx.compose.ui.unit.TextUnit =
+    (keyHeight.value * 0.22f).sp   // ~9sp @ 42dp, ~11sp @ 48dp, ~14sp @ 62dp
+
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun RowScope.NumberedLetterKey(
@@ -582,11 +618,10 @@ private fun RowScope.NumberedLetterKey(
             .clip(keyShape).background(colors.keyBg)
             .combinedClickable(onClick = { onTap() }, onLongClick = { onLongPress() })
     ) {
-        // Desh exact: hint_letter_ratio_lxx = 25% of 48dp = 12dp ≈ 11sp
-        Text(text = number, fontSize = 11.sp, color = colors.subText,
+        Text(text = number, fontSize = keyNumberFontSize(keyHeight), color = colors.subText,
             modifier = Modifier.align(Alignment.TopEnd).padding(top = 3.dp, end = 4.dp))
-        // Desh exact: config_key_font_size = 24dp, letter_ratio_lxx = 55% of key height
-        Text(text = label, fontSize = 22.sp, color = colors.keyText, fontWeight = FontWeight.Normal,
+        Text(text = label, fontSize = keyLabelFontSize(keyHeight), color = colors.keyText,
+            fontWeight = FontWeight.Normal,
             modifier = Modifier.align(Alignment.Center))
     }
 }
@@ -604,7 +639,8 @@ private fun RowScope.LetterKey(
             .clickable { onTap() },
         contentAlignment = Alignment.Center
     ) {
-        Text(text = label, fontSize = 22.sp, color = colors.keyText, fontWeight = FontWeight.Normal)
+        Text(text = label, fontSize = keyLabelFontSize(keyHeight), color = colors.keyText,
+            fontWeight = FontWeight.Normal)
     }
 }
 
@@ -690,7 +726,7 @@ private fun RowScope.SpecialKey(
             .clickable { onTap() },
         contentAlignment = Alignment.Center
     ) {
-        Text(text = label, fontSize = 15.sp, fontWeight = FontWeight.Medium, color = colors.specialKeyText)
+        Text(text = label, fontSize = keyLabelFontSize(keyHeight), fontWeight = FontWeight.Medium, color = colors.specialKeyText)
     }
 }
 
@@ -884,36 +920,14 @@ private fun SymbolsKeyboardView(
     keyShape: RoundedCornerShape,
     bottomPadding: Dp,
     onKey: (String) -> Unit,
-    onBack: () -> Unit
+    onBack: () -> Unit,
+    onNumpad: () -> Unit,  // parent pushes NUMPAD onto back-stack
+    onEmoji: () -> Unit    // parent pushes EMOJI onto back-stack
 ) {
     var shifted by remember { mutableStateOf(false) }
-    var showEmojiFromSymbols by remember { mutableStateOf(false) }
-    var showNumpad by remember { mutableStateOf(false) }
-
-    if (showNumpad) {
-        NumberPadView(
-            colors = colors,
-            keyHeight = keyHeight,
-            keyShape = keyShape,
-            bottomPadding = bottomPadding,
-            onKey = onKey,
-            onBack = { showNumpad = false }
-        )
-        return
-    }
-
-    if (showEmojiFromSymbols) {
-        val context = LocalContext.current
-        val prefsManager = remember { PreferencesManager(context) }
-        val recentEmojis by prefsManager.recentEmojis.collectAsState(initial = emptyList())
-        EmojiPickerView(
-            recentEmojis = recentEmojis,
-            onEmojiSelected = { emoji -> onKey(emoji) },
-            onBackspace = { onKey("BACKSPACE") },
-            onDismiss = { showEmojiFromSymbols = false }
-        )
-        return
-    }
+    // Bug fix: removed local showNumpad / showEmojiFromSymbols booleans.
+    // Navigation is now delegated to the parent back-stack so that back()
+    // from Numpad or Emoji returns to SYMBOLS, not MAIN.
 
     val row1 = if (shifted) SymShiftRow1 else SymRow1
     val row2 = if (shifted) SymShiftRow2 else SymRow2
@@ -1006,7 +1020,7 @@ private fun SymbolsKeyboardView(
                     modifier = Modifier
                         .height(keyHeight).weight(0.9f)
                         .clip(keyShape).background(colors.specialKeyBg)
-                        .clickable { showEmojiFromSymbols = true },
+                        .clickable { onEmoji() },
                     contentAlignment = Alignment.Center
                 ) {
                     Icon(
@@ -1029,7 +1043,7 @@ private fun SymbolsKeyboardView(
                     modifier = Modifier
                         .height(keyHeight).weight(1.0f)
                         .clip(keyShape).background(colors.specialKeyBg)
-                        .clickable { showNumpad = true },
+                        .clickable { onNumpad() },
                     contentAlignment = Alignment.Center
                 ) {
                     Text(text = "12\n34", fontSize = 11.sp, color = colors.specialKeyText,
@@ -1110,7 +1124,7 @@ private fun NumberPadView(
                 ) {
                     Text(
                         text = ",",
-                        fontSize = 20.sp,
+                        fontSize = keyLabelFontSize(keyHeight),
                         color = colors.specialKeyText,
                         fontWeight = FontWeight.Normal
                     )
@@ -1167,7 +1181,7 @@ private fun RowScope.NumpadDigitKey(
     ) {
         Text(
             text = label,
-            fontSize = 26.sp,
+            fontSize = keyLabelFontSize(keyHeight),
             color = colors.keyText,
             fontWeight = FontWeight.Normal
         )
@@ -1243,7 +1257,7 @@ private fun PhoneDialPadView(
                             Column(horizontalAlignment = Alignment.CenterHorizontally) {
                                 Text(
                                     text = digit,
-                                    fontSize = 26.sp,
+                                    fontSize = keyLabelFontSize(keyHeight),
                                     color = colors.keyText,
                                     fontWeight = FontWeight.Normal,
                                     lineHeight = 28.sp
@@ -1270,7 +1284,7 @@ private fun PhoneDialPadView(
                                     .clickable { onKey("-") },
                                 contentAlignment = Alignment.Center
                             ) {
-                                Text("-", fontSize = 24.sp, color = colors.specialKeyText)
+                                Text("-", fontSize = keyLabelFontSize(keyHeight), color = colors.specialKeyText)
                             }
                         }
                         1 -> { // .
@@ -1281,7 +1295,7 @@ private fun PhoneDialPadView(
                                     .clickable { onKey(".") },
                                 contentAlignment = Alignment.Center
                             ) {
-                                Text(".", fontSize = 24.sp, color = colors.specialKeyText)
+                                Text(".", fontSize = keyLabelFontSize(keyHeight), color = colors.specialKeyText)
                             }
                         }
                         2 -> { // ⌫
@@ -1306,7 +1320,7 @@ private fun PhoneDialPadView(
                         .combinedClickable(onClick = { onKey("*") }, onLongClick = { onKey("#") }),
                     contentAlignment = Alignment.Center
                 ) {
-                    Text("* #", fontSize = 20.sp, color = colors.keyText, fontWeight = FontWeight.Normal)
+                    Text("* #", fontSize = keyLabelFontSize(keyHeight), color = colors.keyText, fontWeight = FontWeight.Normal)
                 }
                 // 0+ — tap → 0, long press → +
                 Box(
@@ -1316,7 +1330,7 @@ private fun PhoneDialPadView(
                         .combinedClickable(onClick = { onKey("0") }, onLongClick = { onKey("+") }),
                     contentAlignment = Alignment.Center
                 ) {
-                    Text("0 +", fontSize = 20.sp, color = colors.keyText, fontWeight = FontWeight.Normal)
+                    Text("0 +", fontSize = keyLabelFontSize(keyHeight), color = colors.keyText, fontWeight = FontWeight.Normal)
                 }
                 // FIX #6: Was sending " " (space) on tap despite showing "_" label.
                 // Now correctly sends "_" on tap; long press still switches keyboard.
@@ -1327,7 +1341,7 @@ private fun PhoneDialPadView(
                         .combinedClickable(onClick = { onKey("_") }, onLongClick = { onKey("SWITCH_KEYBOARD") }),
                     contentAlignment = Alignment.Center
                 ) {
-                    Text("_", fontSize = 24.sp, color = colors.keyText)
+                    Text("_", fontSize = keyLabelFontSize(keyHeight), color = colors.keyText)
                 }
                 // Search / Enter (green) — dial pad always shows Search icon.
                 EnterKey(weight = 1f, keyHeight = keyHeight, keyShape = keyShape,
