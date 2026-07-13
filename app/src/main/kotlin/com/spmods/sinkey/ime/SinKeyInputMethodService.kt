@@ -59,6 +59,12 @@ class SinKeyInputMethodService : InputMethodService() {
     // MAIN every time the user dismisses and reopens the keyboard.
     private var boardStack = mutableStateOf(listOf(Board.MAIN))
 
+    // Shift has 3 states: OFF, ONE_SHOT (next letter only), LOCKED (caps lock).
+    // Stored at service level so it survives hide/show cycles.
+    // AUTO-SHIFT: enabled at sentence start (after . ! ? or at field open).
+    enum class ShiftState { OFF, ONE_SHOT, LOCKED }
+    private var shiftState = mutableStateOf(ShiftState.ONE_SHOT) // default: first letter capital
+
     // FIX #1 & #3: Cached prefs — read once on start, updated via coroutine.
     // Eliminates runBlocking on every key tap (was causing main-thread lag / ANR).
     // Also enables key sound which was previously unimplemented.
@@ -187,7 +193,9 @@ class SinKeyInputMethodService : InputMethodService() {
                         onKey = ::handleKey,
                         inputType = currentInputTypeState.value,
                         boardStack = boardStack.value,
-                        onBoardStackChange = { boardStack.value = it }
+                        onBoardStackChange = { boardStack.value = it },
+                        shiftState = shiftState.value,
+                        onShiftStateChange = { shiftState.value = it }
                     )
                 }
             }
@@ -224,6 +232,7 @@ class SinKeyInputMethodService : InputMethodService() {
         // the same field re-focused, so we keep the current board in that case.
         if (!restarting) {
             boardStack.value = listOf(Board.MAIN)
+            shiftState.value = ShiftState.ONE_SHOT // auto-shift: capitalize first letter of new field
         }
     }
 
@@ -274,29 +283,39 @@ class SinKeyInputMethodService : InputMethodService() {
                     }
                     updateSuggestions()
                 }
+                // After backspace, check if we're now at a sentence start
+                updateAutoShift(ic)
             }
             "SPACE" -> {
                 if (currentLanguage.value == "si") commitPendingWord()
                 else { englishBuffer.clear(); suggestions.value = emptyList() }
                 ic.commitText(" ", 1)
+                // After space, check if previous char was sentence-ending punctuation
+                updateAutoShift(ic)
             }
             "ENTER" -> {
                 if (currentLanguage.value == "si") commitPendingWord()
                 else { englishBuffer.clear(); suggestions.value = emptyList() }
                 ic.commitText("\n", 1)
+                // New line = sentence start → auto-shift
+                if (shiftState.value == ShiftState.OFF) shiftState.value = ShiftState.ONE_SHOT
             }
-            "SHIFT", "SYMBOLS_SHIFT", "EMOJI", "NUMPAD" -> {
-                // Handled visually inside KeyboardView / SymbolsKeyboardView.
+            "SHIFT" -> {
+                // Single tap cycles: OFF → ONE_SHOT → OFF
+                // Double tap (handled via SHIFT_LOCK from KeyboardView) → LOCKED
+                shiftState.value = when (shiftState.value) {
+                    ShiftState.OFF      -> ShiftState.ONE_SHOT
+                    ShiftState.ONE_SHOT -> ShiftState.OFF
+                    ShiftState.LOCKED   -> ShiftState.OFF
+                }
             }
-            "TOOL_MIC" -> {
-                sendDefaultEditorAction(true)
+            "SHIFT_LOCK" -> {
+                shiftState.value = if (shiftState.value == ShiftState.LOCKED) ShiftState.OFF else ShiftState.LOCKED
             }
+            "SYMBOLS_SHIFT", "EMOJI", "NUMPAD" -> { /* handled in KeyboardView */ }
+            "TOOL_MIC" -> { sendDefaultEditorAction(true) }
             "TOOL_APPS", "TOOL_STICKER", "TOOL_CLIPBOARD", "TOOL_FONT",
             "TOOL_TRANSLATE", "TOOL_SETTINGS" -> {
-                // FIX #13: Tool actions were silently falling through to the
-                // letter-handling else branch, calling commitPendingWord() and
-                // discarding the action. Now explicitly no-op'd so they are
-                // available for future integration without side-effects.
                 android.util.Log.d("SinKey", "Tool action: $key (not yet implemented)")
             }
             "SWITCH_KEYBOARD" -> {
@@ -314,6 +333,10 @@ class SinKeyInputMethodService : InputMethodService() {
                 englishBuffer.clear()
                 suggestions.value = emptyList()
                 ic.commitText(key, 1)
+                // Period → next word should be capitalized
+                if (key == ".") {
+                    if (shiftState.value == ShiftState.OFF) shiftState.value = ShiftState.ONE_SHOT
+                }
             }
             else -> {
                 val isSinglePrintable = key.length == 1 && !key[0].isLetter()
@@ -321,29 +344,47 @@ class SinKeyInputMethodService : InputMethodService() {
                     commitPendingWord()
                     englishBuffer.clear()
                     ic.commitText(key, 1)
+                    // Check sentence-ending punctuation (! ?)
+                    if (key == "!" || key == "?") {
+                        if (shiftState.value == ShiftState.OFF) shiftState.value = ShiftState.ONE_SHOT
+                    }
                     return
                 }
                 if (isEmoji(key)) {
                     commitPendingWord()
                     ic.commitText(key, 1)
-                    serviceScope.launch {
-                        prefs.addRecentEmoji(key)
-                    }
+                    serviceScope.launch { prefs.addRecentEmoji(key) }
                 } else if (currentLanguage.value == "si") {
                     val lower = key.lowercase()
                     wordBuffer.append(lower)
                     val preview = SinhalaTransliterator.transliterate(wordBuffer.toString())
                     ic.setComposingText(preview, 1)
                     updateSuggestions()
+                    // Consume one-shot shift after first Sinhala letter
+                    if (shiftState.value == ShiftState.ONE_SHOT) shiftState.value = ShiftState.OFF
                 } else {
-                    englishBuffer.append(key)
-                    ic.commitText(key, 1)
+                    // Apply shift to English letter
+                    val typed = if (shiftState.value != ShiftState.OFF) key.uppercase() else key.lowercase()
+                    englishBuffer.append(typed)
+                    ic.commitText(typed, 1)
                     updateSuggestions()
+                    // Consume one-shot shift after letter
+                    if (shiftState.value == ShiftState.ONE_SHOT) shiftState.value = ShiftState.OFF
                 }
             }
         }
     }
 
+    /** Auto-shift: if the text before cursor ends with ". ", "! ", "? " or is empty → ONE_SHOT */
+    private fun updateAutoShift(ic: android.view.inputmethod.InputConnection) {
+        if (shiftState.value == ShiftState.LOCKED) return
+        val before = ic.getTextBeforeCursor(3, 0)?.toString() ?: ""
+        val shouldShift = before.isEmpty() ||
+            before.endsWith(". ") || before.endsWith("! ") || before.endsWith("? ") ||
+            before.endsWith(".\n") || before.endsWith("!\n") || before.endsWith("?\n")
+        shiftState.value = if (shouldShift) ShiftState.ONE_SHOT else ShiftState.OFF
+    }
+                val selectedText = ic.getSelectedText(0)
     private fun renderBuffer(): String = SinhalaTransliterator.transliterate(wordBuffer.toString())
 
     /**
