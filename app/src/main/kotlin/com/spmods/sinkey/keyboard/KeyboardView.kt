@@ -135,7 +135,7 @@ private fun stepToBottomPadding(step: Float): Dp = when (Math.round(step)) {
 // Replaces the previous ad-hoc boolean flags (showSymbols, showEmojiPicker)
 // which had no memory of which board opened them, so back always went to MAIN.
 // Must be internal (not private) so SinKeyInputMethodService can reference it.
-internal enum class Board { MAIN, SYMBOLS, NUMPAD, EMOJI }
+enum class Board { MAIN, SYMBOLS, NUMPAD, EMOJI }
 
 @Composable
 fun KeyboardView(
@@ -191,7 +191,7 @@ fun KeyboardView(
             // ── Toolbar (always visible, never re-created on pad switch) ──────
             AppsMicBar(
                 colors = colors,
-                suggestions = if (isPhoneInput || showSymbols) emptyList() else suggestions,
+                suggestions = if (isPhoneInput || currentBoard == Board.SYMBOLS || currentBoard == Board.NUMPAD) emptyList() else suggestions,
                 onSuggestionSelected = onSuggestionSelected,
                 onKey = onKey
             )
@@ -202,7 +202,7 @@ fun KeyboardView(
                     emojis = recentEmojis,
                     colors = colors,
                     onKey = onKey,
-                    onMoreClick = { showEmojiPicker = true }
+                    onMoreClick = { pushBoard(Board.EMOJI) }
                 )
             }
 
