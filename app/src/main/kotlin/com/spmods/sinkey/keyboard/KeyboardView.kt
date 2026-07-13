@@ -401,12 +401,18 @@ private fun AppsMicBar(
     // AnimatedContent was removed here — the slide/fade transition caused the
     // toolbar to render twice during WhatsApp emoji panel open/close because
     // the IME window resizes mid-animation, leaving ghost frames visible.
+    //
+    // FIX Ghost-Toolbar: Both branches MUST use the same fixed height (48.dp).
+    // The previous code used 52.dp for suggestion strip and 44.dp for tool row.
+    // That 8dp height difference caused the IME window to resize every time
+    // typing started/stopped, which triggered WhatsApp's emoji panel to overlap
+    // the keyboard producing the visible ghost/duplicate toolbar layer.
     if (isTyping) {
             // ── Suggestion strip ─────────────────────────────────────────
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(52.dp)
+                    .height(48.dp)
                     .background(colors.bg),
                 verticalAlignment = Alignment.CenterVertically
             ) {
@@ -451,7 +457,7 @@ private fun AppsMicBar(
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(44.dp)
+                    .height(48.dp)
                     .background(colors.bg)
                     .padding(horizontal = 8.dp),
                 horizontalArrangement = Arrangement.SpaceBetween,
