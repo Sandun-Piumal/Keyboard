@@ -21,6 +21,9 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.wrapContentHeight
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.defaultMinSize
+import androidx.compose.ui.unit.IntOffset
+import androidx.compose.ui.window.Popup
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyRow
@@ -616,6 +619,28 @@ private fun keyLabelFontSize(keyHeight: Dp): androidx.compose.ui.unit.TextUnit =
 private fun keyNumberFontSize(keyHeight: Dp): androidx.compose.ui.unit.TextUnit =
     (keyHeight.value * 0.25f).sp   // ~10sp @ 42dp, ~12sp @ 48dp, ~15sp @ 62dp
 
+@Composable
+private fun KeyPreviewPopup(label: String, keyHeight: Dp, colors: KeyboardColors) {
+    // The bubble that floats above a key while it is pressed.
+    // Sized to be clearly readable — 2× key height tall, min 48dp wide.
+    val popupSize = (keyHeight.value * 1.6f).dp
+    Box(
+        modifier = Modifier
+            .defaultMinSize(minWidth = popupSize, minHeight = popupSize)
+            .clip(RoundedCornerShape(topStart = 10.dp, topEnd = 10.dp, bottomEnd = 10.dp, bottomStart = 2.dp))
+            .background(colors.keyBg)
+            .padding(horizontal = 10.dp, vertical = 4.dp),
+        contentAlignment = Alignment.Center
+    ) {
+        Text(
+            text = label,
+            fontSize = (keyHeight.value * 0.80f).sp,
+            color = colors.keyText,
+            fontWeight = FontWeight.Normal
+        )
+    }
+}
+
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun RowScope.NumberedLetterKey(
@@ -623,17 +648,40 @@ private fun RowScope.NumberedLetterKey(
     keyHeight: Dp, colors: KeyboardColors, keyShape: RoundedCornerShape,
     onTap: () -> Unit, onLongPress: () -> Unit
 ) {
+    var pressed by remember { mutableStateOf(false) }
     Box(
         modifier = Modifier
             .height(keyHeight).weight(weight)
-            .clip(keyShape).background(colors.keyBg)
-            .combinedClickable(onClick = { onTap() }, onLongClick = { onLongPress() })
+            .clip(keyShape)
+            .background(if (pressed) colors.keyBg.copy(alpha = 0.6f) else colors.keyBg)
+            .combinedClickable(
+                onClick = { onTap() },
+                onLongClick = { onLongPress() }
+            )
+            .pointerInput(Unit) {
+                detectTapGestures(
+                    onPress = {
+                        pressed = true
+                        tryAwaitRelease()
+                        pressed = false
+                    }
+                )
+            }
     ) {
         Text(text = number, fontSize = keyNumberFontSize(keyHeight), color = colors.subText,
             modifier = Modifier.align(Alignment.TopEnd).padding(top = 3.dp, end = 4.dp))
         Text(text = label, fontSize = keyLabelFontSize(keyHeight), color = colors.keyText,
             fontWeight = FontWeight.Normal,
             modifier = Modifier.align(Alignment.Center))
+
+        if (pressed) {
+            Popup(
+                alignment = Alignment.TopCenter,
+                offset = IntOffset(0, -((keyHeight.value * 1.7f).toInt()))
+            ) {
+                KeyPreviewPopup(label = label, keyHeight = keyHeight, colors = colors)
+            }
+        }
     }
 }
 
@@ -643,15 +691,35 @@ private fun RowScope.LetterKey(
     keyHeight: Dp, colors: KeyboardColors, keyShape: RoundedCornerShape,
     onTap: () -> Unit
 ) {
+    var pressed by remember { mutableStateOf(false) }
     Box(
         modifier = Modifier
             .height(keyHeight).weight(weight)
-            .clip(keyShape).background(colors.keyBg)
-            .clickable { onTap() },
+            .clip(keyShape)
+            .background(if (pressed) colors.keyBg.copy(alpha = 0.6f) else colors.keyBg)
+            .clickable { onTap() }
+            .pointerInput(Unit) {
+                detectTapGestures(
+                    onPress = {
+                        pressed = true
+                        tryAwaitRelease()
+                        pressed = false
+                    }
+                )
+            },
         contentAlignment = Alignment.Center
     ) {
         Text(text = label, fontSize = keyLabelFontSize(keyHeight), color = colors.keyText,
             fontWeight = FontWeight.Normal)
+
+        if (pressed) {
+            Popup(
+                alignment = Alignment.TopCenter,
+                offset = IntOffset(0, -((keyHeight.value * 1.7f).toInt()))
+            ) {
+                KeyPreviewPopup(label = label, keyHeight = keyHeight, colors = colors)
+            }
+        }
     }
 }
 
@@ -736,14 +804,34 @@ private fun RowScope.SpecialKey(
     keyHeight: Dp, colors: KeyboardColors, keyShape: RoundedCornerShape,
     onTap: () -> Unit
 ) {
+    var pressed by remember { mutableStateOf(false) }
     Box(
         modifier = Modifier
             .height(keyHeight).weight(weight)
-            .clip(keyShape).background(colors.specialKeyBg)
-            .clickable { onTap() },
+            .clip(keyShape)
+            .background(if (pressed) colors.specialKeyBg.copy(alpha = 0.6f) else colors.specialKeyBg)
+            .clickable { onTap() }
+            .pointerInput(Unit) {
+                detectTapGestures(
+                    onPress = {
+                        pressed = true
+                        tryAwaitRelease()
+                        pressed = false
+                    }
+                )
+            },
         contentAlignment = Alignment.Center
     ) {
         Text(text = label, fontSize = keyLabelFontSize(keyHeight), fontWeight = FontWeight.Medium, color = colors.specialKeyText)
+
+        if (pressed) {
+            Popup(
+                alignment = Alignment.TopCenter,
+                offset = IntOffset(0, -((keyHeight.value * 1.7f).toInt()))
+            ) {
+                KeyPreviewPopup(label = label, keyHeight = keyHeight, colors = colors)
+            }
+        }
     }
 }
 
