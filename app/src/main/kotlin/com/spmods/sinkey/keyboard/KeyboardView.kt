@@ -56,6 +56,9 @@ import com.spmods.sinkey.data.PreferencesManager
 import com.spmods.sinkey.ime.SinKeyInputMethodService
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.withTimeoutOrNull
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.foundation.gestures.waitForUpOrCancellation
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Search
@@ -652,18 +655,14 @@ private fun RowScope.NumberedLetterKey(
             .height(keyHeight).weight(weight)
             .clip(keyShape)
             .background(if (pressed) colors.keyBg.copy(alpha = 0.6f) else colors.keyBg)
-            .combinedClickable(
-                onClick = { onTap() },
-                onLongClick = { onLongPress() }
-            )
+            .combinedClickable(onClick = { onTap() }, onLongClick = { onLongPress() })
             .pointerInput(Unit) {
-                detectTapGestures(
-                    onPress = {
-                        pressed = true
-                        tryAwaitRelease()
-                        pressed = false
-                    }
-                )
+                awaitEachGesture {
+                    awaitFirstDown(requireUnconsumed = false)
+                    pressed = true
+                    waitForUpOrCancellation()
+                    pressed = false
+                }
             }
     ) {
         Text(text = number, fontSize = keyNumberFontSize(keyHeight), color = colors.subText,
@@ -692,18 +691,16 @@ private fun RowScope.LetterKey(
             .height(keyHeight).weight(weight)
             .clip(keyShape)
             .background(if (pressed) colors.keyBg.copy(alpha = 0.6f) else colors.keyBg)
-            // Single pointerInput handles both the visual press state AND the tap.
-            // Using clickable + pointerInput together caused tap events to be
-            // consumed by pointerInput before clickable could fire onTap().
-            .pointerInput(onTap) {
-                detectTapGestures(
-                    onPress = {
-                        pressed = true
-                        val released = tryAwaitRelease()
-                        pressed = false
-                        if (released) onTap()
-                    }
-                )
+            // clickable handles the actual tap/long-press logic reliably.
+            // pointerInput only tracks down/up for the visual pressed state.
+            .clickable { onTap() }
+            .pointerInput(Unit) {
+                awaitEachGesture {
+                    awaitFirstDown(requireUnconsumed = false)
+                    pressed = true
+                    waitForUpOrCancellation()
+                    pressed = false
+                }
             },
         contentAlignment = Alignment.Center
     ) {
@@ -805,15 +802,14 @@ private fun RowScope.SpecialKey(
             .height(keyHeight).weight(weight)
             .clip(keyShape)
             .background(if (pressed) colors.specialKeyBg.copy(alpha = 0.6f) else colors.specialKeyBg)
-            .pointerInput(onTap) {
-                detectTapGestures(
-                    onPress = {
-                        pressed = true
-                        val released = tryAwaitRelease()
-                        pressed = false
-                        if (released) onTap()
-                    }
-                )
+            .clickable { onTap() }
+            .pointerInput(Unit) {
+                awaitEachGesture {
+                    awaitFirstDown(requireUnconsumed = false)
+                    pressed = true
+                    waitForUpOrCancellation()
+                    pressed = false
+                }
             },
         contentAlignment = Alignment.Center
     ) {
