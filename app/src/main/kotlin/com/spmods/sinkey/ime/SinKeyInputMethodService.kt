@@ -384,7 +384,7 @@ class SinKeyInputMethodService : InputMethodService() {
             before.endsWith(".\n") || before.endsWith("!\n") || before.endsWith("?\n")
         shiftState.value = if (shouldShift) ShiftState.ONE_SHOT else ShiftState.OFF
     }
-                val selectedText = ic.getSelectedText(0)
+
     private fun renderBuffer(): String = SinhalaTransliterator.transliterate(wordBuffer.toString())
 
     /**
