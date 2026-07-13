@@ -219,6 +219,17 @@ private fun SinKeyApp(prefs: PreferencesManager) {
                 exit = slideOutVertically { it },
                 modifier = Modifier.align(Alignment.BottomCenter)
             ) {
+                // Bug O6 Fix: Preview keyboard is display-only — no real
+                // InputConnection exists here. Previously onKey was a no-op
+                // lambda but the emoji picker inside KeyboardView could still
+                // open, and selecting an emoji called prefs.addRecentEmoji()
+                // via a PreferencesManager created with LocalContext (the
+                // Activity context, not the IME context) which is fine, but
+                // onSuggestionSelected was missing entirely, risking a NPE on
+                // some Compose versions. Both callbacks are now explicit no-ops.
+                // onDismiss is wired to close the preview — previously it was
+                // passed but KeyboardView never called it (Bug N7); the FAB
+                // BackHandler still handles dismiss for now.
                 KeyboardView(
                     currentLanguage = defaultLanguage,
                     keyboardHeight = keyboardHeight,
@@ -226,7 +237,9 @@ private fun SinKeyApp(prefs: PreferencesManager) {
                     bottomSpaceSize = bottomSpaceSize,
                     showKeyBorders = showKeyBorders,
                     isDark = isDark,
-                    onKey = { /* preview — no real input dispatch */ },
+                    suggestions = emptyList(),
+                    onSuggestionSelected = { /* preview — no input dispatch */ },
+                    onKey = { /* preview — no input dispatch */ },
                     onDismiss = { showKeyboardPreview = false }
                 )
             }
