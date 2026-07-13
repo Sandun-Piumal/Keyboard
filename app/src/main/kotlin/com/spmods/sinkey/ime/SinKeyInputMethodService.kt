@@ -53,6 +53,11 @@ class SinKeyInputMethodService : InputMethodService() {
     private var suggestions = mutableStateOf<List<String>>(emptyList())
     private var currentInputTypeState = mutableStateOf(0)
 
+    // Board state lives at service level — NOT inside the Composable — so it
+    // survives keyboard hide/show cycles. If held in remember{} it resets to
+    // MAIN every time the user dismisses and reopens the keyboard.
+    private var boardStack = mutableStateOf(listOf(com.spmods.sinkey.keyboard.Board.MAIN))
+
     // FIX #1 & #3: Cached prefs — read once on start, updated via coroutine.
     // Eliminates runBlocking on every key tap (was causing main-thread lag / ANR).
     // Also enables key sound which was previously unimplemented.
@@ -179,7 +184,9 @@ class SinKeyInputMethodService : InputMethodService() {
                         suggestions = suggestions.value,
                         onSuggestionSelected = ::handleSuggestion,
                         onKey = ::handleKey,
-                        inputType = currentInputTypeState.value
+                        inputType = currentInputTypeState.value,
+                        boardStack = boardStack.value,
+                        onBoardStackChange = { boardStack.value = it }
                     )
                 }
             }
@@ -210,6 +217,13 @@ class SinKeyInputMethodService : InputMethodService() {
         englishBuffer.clear()
         suggestions.value = emptyList()
         currentInputTypeState.value = info?.inputType ?: 0
+
+        // Reset board to MAIN when the user moves to a different input field
+        // (not on simple hide/show of the same field). restarting=true means
+        // the same field re-focused, so we keep the current board in that case.
+        if (!restarting) {
+            boardStack.value = listOf(com.spmods.sinkey.keyboard.Board.MAIN)
+        }
     }
 
     override fun onFinishInputView(finishingInput: Boolean) {
