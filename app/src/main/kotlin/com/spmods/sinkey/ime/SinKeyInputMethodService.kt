@@ -19,6 +19,7 @@ import androidx.lifecycle.setViewTreeLifecycleOwner
 import androidx.savedstate.setViewTreeSavedStateRegistryOwner
 import androidx.lifecycle.setViewTreeViewModelStoreOwner
 import com.spmods.sinkey.data.PreferencesManager
+import com.spmods.sinkey.keyboard.Board
 import com.spmods.sinkey.keyboard.KeyboardView
 import com.spmods.sinkey.keyboard.SinhalaTransliterator
 import com.spmods.sinkey.ui.theme.SinKeyTheme
@@ -56,7 +57,7 @@ class SinKeyInputMethodService : InputMethodService() {
     // Board state lives at service level — NOT inside the Composable — so it
     // survives keyboard hide/show cycles. If held in remember{} it resets to
     // MAIN every time the user dismisses and reopens the keyboard.
-    private var boardStack = mutableStateOf(listOf(com.spmods.sinkey.keyboard.Board.MAIN))
+    private var boardStack = mutableStateOf(listOf(Board.MAIN))
 
     // FIX #1 & #3: Cached prefs — read once on start, updated via coroutine.
     // Eliminates runBlocking on every key tap (was causing main-thread lag / ANR).
@@ -222,7 +223,7 @@ class SinKeyInputMethodService : InputMethodService() {
         // (not on simple hide/show of the same field). restarting=true means
         // the same field re-focused, so we keep the current board in that case.
         if (!restarting) {
-            boardStack.value = listOf(com.spmods.sinkey.keyboard.Board.MAIN)
+            boardStack.value = listOf(Board.MAIN)
         }
     }
 
