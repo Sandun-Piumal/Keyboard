@@ -50,6 +50,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.zIndex
 import com.spmods.sinkey.data.PreferencesManager
+import com.spmods.sinkey.ime.SinKeyInputMethodService
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.withTimeoutOrNull
 import androidx.compose.foundation.gestures.detectTapGestures
@@ -153,14 +154,20 @@ fun KeyboardView(
     // Board stack owned by the IME service so it survives keyboard hide/show cycles.
     // Preview callers (MainActivity) omit these and get default MAIN behaviour.
     boardStack: List<Board> = listOf(Board.MAIN),
-    onBoardStackChange: (List<Board>) -> Unit = {}
+    onBoardStackChange: (List<Board>) -> Unit = {},
+    // ShiftState owned by the IME service (survives hide/show). Preview callers omit.
+    shiftState: SinKeyInputMethodService.ShiftState = SinKeyInputMethodService.ShiftState.OFF,
+    onShiftStateChange: (SinKeyInputMethodService.ShiftState) -> Unit = {}
 ) {
     val colors = keyboardColors(showKeyBorders, isDark)
     val keyHeight = stepToKeyHeight(keyboardHeight)
     val bottomPadding = if (bottomSpaceEnabled) stepToBottomPadding(bottomSpaceSize) else 4.dp
     val keyShape = RoundedCornerShape(6.dp)
 
-    var shift by remember { mutableStateOf(false) }
+    // shift = true whenever shiftState is ONE_SHOT or LOCKED
+    val shift = shiftState != SinKeyInputMethodService.ShiftState.OFF
+    val shiftLocked = shiftState == SinKeyInputMethodService.ShiftState.LOCKED
+
     var showLangTooltip by remember { mutableStateOf(false) }
 
     val currentBoard = boardStack.last()
@@ -230,13 +237,13 @@ fun KeyboardView(
                     colors = colors, keyHeight = keyHeight,
                     keyShape = keyShape, bottomPadding = bottomPadding,
                     onKey = onKey,
-                    // Bug fix: numpad ABC → back to whatever opened numpad (SYMBOLS),
-                    // not always MAIN. popBoard() handles this correctly.
-                    onBack = { popBoard() }
+                    onBack = { popBoard() },
+                    onBoardStackChange = onBoardStackChange
                 )
                 else -> MainKeyboardKeys(
                     currentLanguage = currentLanguage,
-                    shift = shift, onShiftChange = { shift = it },
+                    shift = shift, shiftLocked = shiftLocked,
+                    onShiftStateChange = onShiftStateChange,
                     keyHeight = keyHeight, keyShape = keyShape,
                     bottomPadding = bottomPadding, colors = colors,
                     onKey = onKey,
@@ -276,7 +283,8 @@ fun KeyboardView(
 private fun MainKeyboardKeys(
     currentLanguage: String,
     shift: Boolean,
-    onShiftChange: (Boolean) -> Unit,
+    shiftLocked: Boolean,
+    onShiftStateChange: (SinKeyInputMethodService.ShiftState) -> Unit,
     keyHeight: Dp,
     keyShape: RoundedCornerShape,
     bottomPadding: Dp,
@@ -294,22 +302,25 @@ private fun MainKeyboardKeys(
     ) {
         // FIX #5: Pass onShiftChange so letter rows can reset one-shot shift.
         NumberedKeyRow(EnglishRows[0], topRowNumbers, shift, keyHeight, colors, keyShape,
-            onKey = { onKey(it); if (shift) onShiftChange(false) })
+            onKey = { onKey(it); if (shift && !shiftLocked) onShiftStateChange(SinKeyInputMethodService.ShiftState.OFF) })
         KeyRow(EnglishRows[1], shift, keyHeight, colors, keyShape,
-            onKey = { onKey(it); if (shift) onShiftChange(false) })
+            onKey = { onKey(it); if (shift && !shiftLocked) onShiftStateChange(SinKeyInputMethodService.ShiftState.OFF) })
         Row(
             modifier = Modifier.fillMaxWidth().padding(vertical = 3.dp),
             horizontalArrangement = Arrangement.spacedBy(6.dp)
         ) {
-            ShiftKey(weight = 1.4f, active = shift, keyHeight = keyHeight, colors = colors, keyShape = keyShape) {
-                onShiftChange(!shift); onKey("SHIFT")
-            }
+            // Double-tap = LOCKED, single tap = toggle ONE_SHOT
+            ShiftKey(weight = 1.4f, active = shift, locked = shiftLocked,
+                keyHeight = keyHeight, colors = colors, keyShape = keyShape,
+                onTap = { onKey("SHIFT") },
+                onDoubleTap = { onKey("SHIFT_LOCK") }
+            )
             EnglishRows[2].forEach { k ->
                 val display = if (shift) k.uppercase() else k
                 // FIX #5: Reset shift after each letter (one-shot shift behaviour).
                 LetterKey(label = display, weight = 1f, keyHeight = keyHeight, colors = colors, keyShape = keyShape) {
                     onKey(display)
-                    if (shift) onShiftChange(false)
+                    if (shift && !shiftLocked) onShiftStateChange(SinKeyInputMethodService.ShiftState.OFF)
                 }
             }
             BackspaceKey(weight = 1.4f, keyHeight = keyHeight, colors = colors, keyShape = keyShape) { onKey("BACKSPACE") }
@@ -600,10 +611,10 @@ private fun KeyRow(
 // keyboard height setting. Small keys (42dp) look cramped at 22sp and large
 // keys (62dp) have too much empty space. Scale font proportionally to keyHeight.
 private fun keyLabelFontSize(keyHeight: Dp): androidx.compose.ui.unit.TextUnit =
-    (keyHeight.value * 0.40f).sp   // ~17sp @ 42dp, ~19sp @ 48dp, ~22sp @ 54dp, ~25sp @ 62dp
+    (keyHeight.value * 0.50f).sp   // ~21sp @ 42dp, ~24sp @ 48dp, ~27sp @ 54dp, ~31sp @ 62dp
 
 private fun keyNumberFontSize(keyHeight: Dp): androidx.compose.ui.unit.TextUnit =
-    (keyHeight.value * 0.22f).sp   // ~9sp @ 42dp, ~11sp @ 48dp, ~14sp @ 62dp
+    (keyHeight.value * 0.25f).sp   // ~10sp @ 42dp, ~12sp @ 48dp, ~15sp @ 62dp
 
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
@@ -644,28 +655,34 @@ private fun RowScope.LetterKey(
     }
 }
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun RowScope.ShiftKey(
-    weight: Float, active: Boolean,
+    weight: Float, active: Boolean, locked: Boolean,
     keyHeight: Dp, colors: KeyboardColors, keyShape: RoundedCornerShape,
-    onTap: () -> Unit
+    onTap: () -> Unit,
+    onDoubleTap: () -> Unit
 ) {
-    val bg = if (active)
-        colors.specialKeyBg.copy(alpha = 0.7f)
-    else
-        colors.specialKeyBg
+    val bg = when {
+        locked -> DeshGreen.copy(alpha = 0.85f)
+        active -> colors.specialKeyBg.copy(alpha = 0.7f)
+        else   -> colors.specialKeyBg
+    }
     Box(
         modifier = Modifier
             .height(keyHeight).weight(weight)
             .clip(keyShape).background(bg)
-            .clickable { onTap() },
+            .combinedClickable(
+                onClick = onTap,
+                onDoubleClick = onDoubleTap
+            ),
         contentAlignment = Alignment.Center
     ) {
         Icon(
             painter = painterResource(id = if (active) R.drawable.ic_shift_key_shifted else R.drawable.ic_shift_key),
-            contentDescription = "Shift",
+            contentDescription = if (locked) "Caps Lock" else "Shift",
             modifier = Modifier.size(26.dp),
-            tint = if (active) DeshGreen else colors.specialKeyText
+            tint = if (active || locked) Color.White else colors.specialKeyText
         )
     }
 }
@@ -1072,7 +1089,8 @@ private fun NumberPadView(
     keyShape: RoundedCornerShape,
     bottomPadding: Dp,
     onKey: (String) -> Unit,
-    onBack: () -> Unit
+    onBack: () -> Unit,
+    onBoardStackChange: (List<Board>) -> Unit = {}
 ) {
     // ── Numpad grid ─────────────────────────────────────────────────────
     Column(
@@ -1089,12 +1107,12 @@ private fun NumberPadView(
                 NumpadDigitKey("1", keyHeight, colors, keyShape) { onKey("1") }
                 NumpadDigitKey("2", keyHeight, colors, keyShape) { onKey("2") }
                 NumpadDigitKey("3", keyHeight, colors, keyShape) { onKey("3") }
-                // ABC — back to symbols keyboard
+                // ABC — go directly to MAIN board (not just pop to SYMBOLS)
                 Box(
                     modifier = Modifier
                         .height(keyHeight).weight(1f)
                         .clip(keyShape).background(colors.specialKeyBg)
-                        .clickable { onBack() },
+                        .clickable { onBoardStackChange(listOf(Board.MAIN)) },
                     contentAlignment = Alignment.Center
                 ) {
                     Text(
