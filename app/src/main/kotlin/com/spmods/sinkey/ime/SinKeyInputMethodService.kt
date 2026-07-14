@@ -153,22 +153,8 @@ class SinKeyInputMethodService : InputMethodService() {
     }
 
     override fun onCreateInputView(): View {
-        // Wrap ComposeView in a FrameLayout that already has lifecycle owners.
-        // When Android's setInputView() calls parentPanel.addView(our view),
-        // Compose walks up from our FrameLayout → parentPanel looking for a
-        // ViewTreeLifecycleOwner. Our FrameLayout has it, so the walk stops
-        // there and never reaches the ownerless parentPanel → no crash.
-        val wrapper = android.widget.FrameLayout(this).apply {
-            setViewTreeLifecycleOwner(lifecycleOwner)
-            setViewTreeSavedStateRegistryOwner(lifecycleOwner)
-            setViewTreeViewModelStoreOwner(lifecycleOwner)
-        }
-
         val composeView = ComposeView(this).apply {
             setViewCompositionStrategy(ViewCompositionStrategy.DisposeOnDetachedFromWindowOrReleasedFromPool)
-            setViewTreeLifecycleOwner(lifecycleOwner)
-            setViewTreeSavedStateRegistryOwner(lifecycleOwner)
-            setViewTreeViewModelStoreOwner(lifecycleOwner)
 
             setContent {
                 val themeMode by prefs.themeMode.collectAsState(initial = com.spmods.sinkey.data.ThemeMode.SYSTEM)
@@ -202,13 +188,33 @@ class SinKeyInputMethodService : InputMethodService() {
             }
         }
 
-        wrapper.addView(composeView)
-        return wrapper
+        return composeView
+    }
+
+    // AbstractComposeView.onAttachedToWindow() looks for ViewTreeLifecycleOwner
+    // on the Window, not by walking up the view tree. The window is only
+    // accessible via getWindow() on InputMethodService, which corresponds to
+    // the IME's own Dialog window — so we must set owners there.
+    // We override onWindowShown() because at that point the IME window is fully
+    // initialized and window.decorView is non-null and attached.
+    override fun onWindowShown() {
+        super.onWindowShown()
+        window?.window?.decorView?.let { decor ->
+            decor.setViewTreeLifecycleOwner(lifecycleOwner)
+            decor.setViewTreeSavedStateRegistryOwner(lifecycleOwner)
+            decor.setViewTreeViewModelStoreOwner(lifecycleOwner)
+        }
+        lifecycleOwner.handleLifecycleEvent(Lifecycle.Event.ON_RESUME)
+    }
+
+    override fun onWindowHidden() {
+        super.onWindowHidden()
+        lifecycleOwner.handleLifecycleEvent(Lifecycle.Event.ON_PAUSE)
     }
 
     override fun onStartInputView(info: EditorInfo?, restarting: Boolean) {
         super.onStartInputView(info, restarting)
-        lifecycleOwner.handleLifecycleEvent(Lifecycle.Event.ON_RESUME)
+        // lifecycle ON_RESUME is driven by onWindowShown()
 
         // Bug O4 Fix: Cancel any active composing span on the previous
         // InputConnection before switching fields. Without this, the underlined
@@ -233,7 +239,7 @@ class SinKeyInputMethodService : InputMethodService() {
 
     override fun onFinishInputView(finishingInput: Boolean) {
         super.onFinishInputView(finishingInput)
-        lifecycleOwner.handleLifecycleEvent(Lifecycle.Event.ON_PAUSE)
+        // lifecycle ON_PAUSE is driven by onWindowHidden()
         commitPendingWord()
     }
 
