@@ -160,6 +160,10 @@ class SinKeyInputMethodService : InputMethodService() {
     }
 
     override fun onCreateInputView(): View {
+        // Return a fresh ImeComposeView every time. Android's setInputView()
+        // will place it inside parentPanel. We override setInputView() below
+        // to remove any previously attached view first, preventing the ghost
+        // duplicate keyboard that appears when the IME window is re-shown.
         val composeView = ImeComposeView(this) {
                 val themeMode by prefs.themeMode.collectAsState(initial = com.spmods.sinkey.data.ThemeMode.SYSTEM)
                 val isDark = when (themeMode) {
@@ -192,6 +196,20 @@ class SinKeyInputMethodService : InputMethodService() {
         }
 
         return composeView
+    }
+
+    private var currentInputView: View? = null
+
+    override fun setInputView(view: View) {
+        // Before calling super (which does parentPanel.addView(view)), remove
+        // the previously attached view from its parent. Without this step,
+        // Android stacks the old and new views inside parentPanel producing
+        // the ghost/duplicate keyboard visible on screen.
+        currentInputView?.let { old ->
+            (old.parent as? ViewGroup)?.removeView(old)
+        }
+        currentInputView = view
+        super.setInputView(view)
     }
 
     override fun onWindowShown() {
