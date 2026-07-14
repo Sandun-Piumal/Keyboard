@@ -5,7 +5,9 @@ import android.media.AudioManager
 import android.os.VibrationEffect
 import android.os.Vibrator
 import android.view.View
+import android.view.ViewGroup
 import android.view.inputmethod.EditorInfo
+import androidx.core.view.doOnAttach
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -152,27 +154,30 @@ class SinKeyInputMethodService : InputMethodService() {
     }
 
     override fun onCreateInputView(): View {
-        // GHOST KEYBOARD FIX:
-        // Do NOT cache the view. Caching causes Android to show two keyboard
-        // instances simultaneously — the old cached view stays attached to the
-        // previous window while the new call returns the same object to a second
-        // window, resulting in the duplicate keyboard visible in the screenshot.
-        //
-        // Android calls onCreateInputView() every time it needs to (re)attach
-        // the IME view to a window. Returning a fresh ComposeView each time is
-        // the correct, safe approach. The Compose state (boardStack, shiftState,
-        // suggestions, etc.) is held at service level — NOT inside the composable
-        // — so it survives across view recreation with no data loss.
-        //
-        // DisposeOnDetachedFromWindowOrReleasedFromPool is still correct here:
-        // it keeps the Composition alive while the view is attached and disposes
-        // cleanly when the view is detached (i.e. when Android discards this view
-        // and creates a new one via the next onCreateInputView call).
         val composeView = ComposeView(this).apply {
+            setViewCompositionStrategy(ViewCompositionStrategy.DisposeOnDetachedFromWindowOrReleasedFromPool)
+
+            // The error "ViewTreeLifecycleOwner not found from LinearLayout" happens
+            // because Android wraps our ComposeView inside a LinearLayout (parentPanel)
+            // before attaching it to the window. We must set lifecycle owners on the
+            // ComposeView itself AND walk up to every ancestor once attached.
+            // doOnAttach fires after the system has inserted the parentPanel wrapper,
+            // so at that point parent is non-null and we can set owners up the tree.
             setViewTreeLifecycleOwner(lifecycleOwner)
             setViewTreeSavedStateRegistryOwner(lifecycleOwner)
             setViewTreeViewModelStoreOwner(lifecycleOwner)
-            setViewCompositionStrategy(ViewCompositionStrategy.DisposeOnDetachedFromWindowOrReleasedFromPool)
+
+            doOnAttach {
+                var p = parent
+                while (p != null) {
+                    if (p is ViewGroup) {
+                        p.setViewTreeLifecycleOwner(lifecycleOwner)
+                        p.setViewTreeSavedStateRegistryOwner(lifecycleOwner)
+                        p.setViewTreeViewModelStoreOwner(lifecycleOwner)
+                    }
+                    p = (p as? View)?.parent
+                }
+            }
 
             setContent {
                 val themeMode by prefs.themeMode.collectAsState(initial = com.spmods.sinkey.data.ThemeMode.SYSTEM)
