@@ -46,8 +46,6 @@ class SinKeyInputMethodService : InputMethodService() {
     private lateinit var prefs: PreferencesManager
     private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
 
-    private var cachedInputView: View? = null
-
     private var wordBuffer = StringBuilder()
     private var englishBuffer = StringBuilder()
     private var currentLanguage = mutableStateOf("si")
@@ -154,38 +152,26 @@ class SinKeyInputMethodService : InputMethodService() {
     }
 
     override fun onCreateInputView(): View {
-        // FIX Ghost Keyboard: decorView lifecycle MUST be re-attached every time
-        // onCreateInputView is called — even when returning the cached view.
+        // GHOST KEYBOARD FIX:
+        // Do NOT cache the view. Caching causes Android to show two keyboard
+        // instances simultaneously — the old cached view stays attached to the
+        // previous window while the new call returns the same object to a second
+        // window, resulting in the duplicate keyboard visible in the screenshot.
         //
-        // Root cause: When the user presses Call / contact-info while the keyboard
-        // is visible, the host app replaces its Activity window. Android then calls
-        // onCreateInputView again so the IME can re-attach its view to the new
-        // window. If we skip the decorView setup on the cached-view early-return
-        // path, the new window's decorView has no LifecycleOwner and Compose
-        // crashes with "ViewTreeLifecycleOwner not found" — or silently re-renders
-        // the keyboard into the orphaned window producing the ghost/duplicate layer.
+        // Android calls onCreateInputView() every time it needs to (re)attach
+        // the IME view to a window. Returning a fresh ComposeView each time is
+        // the correct, safe approach. The Compose state (boardStack, shiftState,
+        // suggestions, etc.) is held at service level — NOT inside the composable
+        // — so it survives across view recreation with no data loss.
         //
-        // Solution: attach lifecycle owners to the current window BEFORE the cache
-        // check, so they are always set regardless of whether the view is new or cached.
-        window?.window?.decorView?.apply {
-            setViewTreeLifecycleOwner(lifecycleOwner)
-            setViewTreeSavedStateRegistryOwner(lifecycleOwner)
-            setViewTreeViewModelStoreOwner(lifecycleOwner)
-        }
-
-        cachedInputView?.let { return it }
-
+        // DisposeOnDetachedFromWindowOrReleasedFromPool is still correct here:
+        // it keeps the Composition alive while the view is attached and disposes
+        // cleanly when the view is detached (i.e. when Android discards this view
+        // and creates a new one via the next onCreateInputView call).
         val composeView = ComposeView(this).apply {
             setViewTreeLifecycleOwner(lifecycleOwner)
             setViewTreeSavedStateRegistryOwner(lifecycleOwner)
             setViewTreeViewModelStoreOwner(lifecycleOwner)
-            // Bug O3 Fix: DisposeOnViewTreeLifecycleDestroyed disposes the
-            // Composition on every IME window detach/re-attach cycle (hide → show),
-            // producing a blank flash or ghost keyboard layer visible between
-            // WhatsApp / Instagram input field switches.
-            // DisposeOnDetachedFromWindowOrReleasedFromPool keeps the Composition
-            // alive across hide/show cycles and only disposes when the view is
-            // genuinely removed — which is the correct behaviour for a cached IME view.
             setViewCompositionStrategy(ViewCompositionStrategy.DisposeOnDetachedFromWindowOrReleasedFromPool)
 
             setContent {
@@ -220,7 +206,6 @@ class SinKeyInputMethodService : InputMethodService() {
             }
         }
 
-        cachedInputView = composeView
         return composeView
     }
 
@@ -261,7 +246,6 @@ class SinKeyInputMethodService : InputMethodService() {
         // FIX #2: Close spell-checker session to release OS resources.
         spellCheckerSession?.close()
         spellCheckerSession = null
-        cachedInputView = null
         super.onDestroy()
     }
 
