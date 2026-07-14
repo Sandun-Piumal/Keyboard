@@ -152,37 +152,18 @@ class SinKeyInputMethodService : InputMethodService() {
         }
     }
 
-    // Android's InputMethodService.setInputView() wraps our ComposeView inside
-    // a LinearLayout called "parentPanel" BEFORE calling addView/attach. Compose
-    // walks UP the view tree looking for ViewTreeLifecycleOwner when the view is
-    // attached to the window — so the crash happens on parentPanel, not on our
-    // ComposeView. We must set the owners on parentPanel BEFORE addView is called.
-    // The only hook available before addView is overriding setInputView() itself.
-    override fun setInputView(view: View) {
-        // view here is our ComposeView — not yet inside parentPanel.
-        // super.setInputView() will wrap it in parentPanel and call addView.
-        // We set owners on the view first; then after super() we walk up to
-        // parentPanel (now view.parent) and set it there too.
-        (view as? ViewGroup)?.apply {
+    override fun onCreateInputView(): View {
+        // Wrap ComposeView in a FrameLayout that already has lifecycle owners.
+        // When Android's setInputView() calls parentPanel.addView(our view),
+        // Compose walks up from our FrameLayout → parentPanel looking for a
+        // ViewTreeLifecycleOwner. Our FrameLayout has it, so the walk stops
+        // there and never reaches the ownerless parentPanel → no crash.
+        val wrapper = android.widget.FrameLayout(this).apply {
             setViewTreeLifecycleOwner(lifecycleOwner)
             setViewTreeSavedStateRegistryOwner(lifecycleOwner)
             setViewTreeViewModelStoreOwner(lifecycleOwner)
         }
-        super.setInputView(view)
-        // Now parentPanel exists as view.parent — set owners on it and any
-        // further ancestors so Compose can find them from any level.
-        var p: android.view.ViewParent? = view.parent
-        while (p != null) {
-            if (p is ViewGroup) {
-                p.setViewTreeLifecycleOwner(lifecycleOwner)
-                p.setViewTreeSavedStateRegistryOwner(lifecycleOwner)
-                p.setViewTreeViewModelStoreOwner(lifecycleOwner)
-            }
-            p = (p as? View)?.parent
-        }
-    }
 
-    override fun onCreateInputView(): View {
         val composeView = ComposeView(this).apply {
             setViewCompositionStrategy(ViewCompositionStrategy.DisposeOnDetachedFromWindowOrReleasedFromPool)
             setViewTreeLifecycleOwner(lifecycleOwner)
@@ -221,7 +202,8 @@ class SinKeyInputMethodService : InputMethodService() {
             }
         }
 
-        return composeView
+        wrapper.addView(composeView)
+        return wrapper
     }
 
     override fun onStartInputView(info: EditorInfo?, restarting: Boolean) {
