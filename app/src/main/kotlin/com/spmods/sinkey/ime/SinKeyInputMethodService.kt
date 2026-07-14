@@ -7,7 +7,6 @@ import android.os.Vibrator
 import android.view.View
 import android.view.ViewGroup
 import android.view.inputmethod.EditorInfo
-import androidx.core.view.doOnAttach
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -153,31 +152,42 @@ class SinKeyInputMethodService : InputMethodService() {
         }
     }
 
-    override fun onCreateInputView(): View {
-        val composeView = ComposeView(this).apply {
-            setViewCompositionStrategy(ViewCompositionStrategy.DisposeOnDetachedFromWindowOrReleasedFromPool)
-
-            // The error "ViewTreeLifecycleOwner not found from LinearLayout" happens
-            // because Android wraps our ComposeView inside a LinearLayout (parentPanel)
-            // before attaching it to the window. We must set lifecycle owners on the
-            // ComposeView itself AND walk up to every ancestor once attached.
-            // doOnAttach fires after the system has inserted the parentPanel wrapper,
-            // so at that point parent is non-null and we can set owners up the tree.
+    // Android's InputMethodService.setInputView() wraps our ComposeView inside
+    // a LinearLayout called "parentPanel" BEFORE calling addView/attach. Compose
+    // walks UP the view tree looking for ViewTreeLifecycleOwner when the view is
+    // attached to the window — so the crash happens on parentPanel, not on our
+    // ComposeView. We must set the owners on parentPanel BEFORE addView is called.
+    // The only hook available before addView is overriding setInputView() itself.
+    override fun setInputView(view: View) {
+        // view here is our ComposeView — not yet inside parentPanel.
+        // super.setInputView() will wrap it in parentPanel and call addView.
+        // We set owners on the view first; then after super() we walk up to
+        // parentPanel (now view.parent) and set it there too.
+        (view as? ViewGroup)?.apply {
             setViewTreeLifecycleOwner(lifecycleOwner)
             setViewTreeSavedStateRegistryOwner(lifecycleOwner)
             setViewTreeViewModelStoreOwner(lifecycleOwner)
-
-            doOnAttach {
-                var p = parent
-                while (p != null) {
-                    if (p is ViewGroup) {
-                        p.setViewTreeLifecycleOwner(lifecycleOwner)
-                        p.setViewTreeSavedStateRegistryOwner(lifecycleOwner)
-                        p.setViewTreeViewModelStoreOwner(lifecycleOwner)
-                    }
-                    p = (p as? View)?.parent
-                }
+        }
+        super.setInputView(view)
+        // Now parentPanel exists as view.parent — set owners on it and any
+        // further ancestors so Compose can find them from any level.
+        var p: android.view.ViewParent? = view.parent
+        while (p != null) {
+            if (p is ViewGroup) {
+                p.setViewTreeLifecycleOwner(lifecycleOwner)
+                p.setViewTreeSavedStateRegistryOwner(lifecycleOwner)
+                p.setViewTreeViewModelStoreOwner(lifecycleOwner)
             }
+            p = (p as? View)?.parent
+        }
+    }
+
+    override fun onCreateInputView(): View {
+        val composeView = ComposeView(this).apply {
+            setViewCompositionStrategy(ViewCompositionStrategy.DisposeOnDetachedFromWindowOrReleasedFromPool)
+            setViewTreeLifecycleOwner(lifecycleOwner)
+            setViewTreeSavedStateRegistryOwner(lifecycleOwner)
+            setViewTreeViewModelStoreOwner(lifecycleOwner)
 
             setContent {
                 val themeMode by prefs.themeMode.collectAsState(initial = com.spmods.sinkey.data.ThemeMode.SYSTEM)
