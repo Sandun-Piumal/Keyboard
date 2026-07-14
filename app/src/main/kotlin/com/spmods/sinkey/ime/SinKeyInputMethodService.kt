@@ -80,6 +80,15 @@ class SinKeyInputMethodService : InputMethodService() {
         lifecycleOwner = ImeLifecycleOwner()
         lifecycleOwner.performRestore()
         lifecycleOwner.handleLifecycleEvent(Lifecycle.Event.ON_CREATE)
+        // Set ViewTree owners on the IME window's decorView so that Compose can
+        // find them when onAttachedToWindow fires. The IME window exists from
+        // onCreate onward, so this is the correct and earliest possible place.
+        // Setting on decorView propagates to all children via the view tag system.
+        window?.window?.decorView?.let { decor ->
+            decor.setViewTreeLifecycleOwner(lifecycleOwner)
+            decor.setViewTreeSavedStateRegistryOwner(lifecycleOwner)
+            decor.setViewTreeViewModelStoreOwner(lifecycleOwner)
+        }
         prefs = PreferencesManager(this)
 
         // FIX #1: Still need initial language synchronously, but we only block once
@@ -151,7 +160,7 @@ class SinKeyInputMethodService : InputMethodService() {
     }
 
     override fun onCreateInputView(): View {
-        val composeView = ImeComposeView(this, lifecycleOwner) {
+        val composeView = ImeComposeView(this) {
                 val themeMode by prefs.themeMode.collectAsState(initial = com.spmods.sinkey.data.ThemeMode.SYSTEM)
                 val isDark = when (themeMode) {
                     com.spmods.sinkey.data.ThemeMode.LIGHT  -> false
@@ -185,14 +194,9 @@ class SinKeyInputMethodService : InputMethodService() {
         return composeView
     }
 
-    // AbstractComposeView.onAttachedToWindow() looks for ViewTreeLifecycleOwner
-    // on the Window, not by walking up the view tree. The window is only
-    // accessible via getWindow() on InputMethodService, which corresponds to
-    // the IME's own Dialog window — so we must set owners there.
-    // We override onWindowShown() because at that point the IME window is fully
-    // initialized and window.decorView is non-null and attached.
     override fun onWindowShown() {
         super.onWindowShown()
+        // Re-apply owners on every show in case the IME window was recreated.
         window?.window?.decorView?.let { decor ->
             decor.setViewTreeLifecycleOwner(lifecycleOwner)
             decor.setViewTreeSavedStateRegistryOwner(lifecycleOwner)
