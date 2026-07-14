@@ -201,21 +201,33 @@ class SinKeyInputMethodService : InputMethodService() {
             }
         }
 
-        window?.window?.decorView?.apply {
-            setViewTreeLifecycleOwner(lifecycleOwner)
-            setViewTreeSavedStateRegistryOwner(lifecycleOwner)
-            setViewTreeViewModelStoreOwner(lifecycleOwner)
-        }
-
         cachedInputView = composeView
         return composeView
     }
 
     override fun onStartInputView(info: EditorInfo?, restarting: Boolean) {
         super.onStartInputView(info, restarting)
-        // ON_RESUME is now driven by onWindowShown() to stay in sync with the
-        // actual IME window visibility. Calling it here again would cause a
-        // double-resume that confuses the Compose recomposition scope.
+        lifecycleOwner.handleLifecycleEvent(Lifecycle.Event.ON_RESUME)
+
+        // FIX Ghost Keyboard: decorView lifecycle must be re-attached on every
+        // onStartInputView call — NOT only inside onCreateInputView.
+        //
+        // Root cause: onCreateInputView caches and returns the same ComposeView.
+        // When the user presses Call/back button while the keyboard is visible,
+        // WhatsApp replaces its Activity window. The IME window's decorView then
+        // points to a NEW window object. If we only set the lifecycle owner once
+        // (inside the cached-view early-return path), the new decorView has no
+        // LifecycleOwner, so Compose re-renders the keyboard into that orphaned
+        // window — producing the duplicate/ghost keyboard visible on top of the
+        // call screen or contact page.
+        //
+        // Re-attaching here ensures the current decorView always has the correct
+        // owners, regardless of how many Activity window transitions have occurred.
+        window?.window?.decorView?.apply {
+            setViewTreeLifecycleOwner(lifecycleOwner)
+            setViewTreeSavedStateRegistryOwner(lifecycleOwner)
+            setViewTreeViewModelStoreOwner(lifecycleOwner)
+        }
 
         // Bug O4 Fix: Cancel any active composing span on the previous
         // InputConnection before switching fields. Without this, the underlined
@@ -242,25 +254,6 @@ class SinKeyInputMethodService : InputMethodService() {
         super.onFinishInputView(finishingInput)
         lifecycleOwner.handleLifecycleEvent(Lifecycle.Event.ON_PAUSE)
         commitPendingWord()
-    }
-
-    // FIX Ghost-Keyboard: onWindowShown / onWindowHidden are called by the
-    // system when the IME window becomes visible/invisible WITHOUT necessarily
-    // calling onStartInputView (e.g. WhatsApp opens its emoji panel → system
-    // hides the keyboard window but keeps the InputConnection alive → then
-    // restores the keyboard without a fresh onStartInputView call).
-    // Without these hooks the lifecycle stays ON_RESUME while the window is
-    // hidden, so the Compose tree keeps recomposing against a detached window.
-    // Driving ON_PAUSE / ON_RESUME here keeps the lifecycle in sync with the
-    // actual window visibility and prevents the ghost toolbar layer.
-    override fun onWindowShown() {
-        super.onWindowShown()
-        lifecycleOwner.handleLifecycleEvent(Lifecycle.Event.ON_RESUME)
-    }
-
-    override fun onWindowHidden() {
-        super.onWindowHidden()
-        lifecycleOwner.handleLifecycleEvent(Lifecycle.Event.ON_PAUSE)
     }
 
     override fun onDestroy() {
