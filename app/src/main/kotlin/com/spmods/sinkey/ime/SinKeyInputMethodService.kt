@@ -153,7 +153,34 @@ class SinKeyInputMethodService : InputMethodService() {
     }
 
     override fun onCreateInputView(): View {
-        val composeView = ComposeView(this).apply {
+        // ComposeView extends AbstractComposeView which calls
+        // ViewTreeLifecycleOwner.get(this) in onAttachedToWindow().
+        // That lookup reads a tag set on the view itself — NOT on the window.
+        // So we must call setViewTreeLifecycleOwner() on the ComposeView AND
+        // on every ancestor that Android inserts (parentPanel LinearLayout)
+        // before the view is attached. We do this by overriding the ComposeView
+        // and setting the tags immediately in the constructor, before any
+        // attach can happen.
+        val composeView = object : ComposeView(this) {
+            init {
+                setViewTreeLifecycleOwner(lifecycleOwner)
+                setViewTreeSavedStateRegistryOwner(lifecycleOwner)
+                setViewTreeViewModelStoreOwner(lifecycleOwner)
+            }
+            override fun onAttachedToWindow() {
+                // Re-set on every attach cycle to handle window recreation.
+                setViewTreeLifecycleOwner(lifecycleOwner)
+                setViewTreeSavedStateRegistryOwner(lifecycleOwner)
+                setViewTreeViewModelStoreOwner(lifecycleOwner)
+                // Also set on parent (parentPanel) which Android inserts above us.
+                (parent as? ViewGroup)?.let {
+                    it.setViewTreeLifecycleOwner(lifecycleOwner)
+                    it.setViewTreeSavedStateRegistryOwner(lifecycleOwner)
+                    it.setViewTreeViewModelStoreOwner(lifecycleOwner)
+                }
+                super.onAttachedToWindow()
+            }
+        }.apply {
             setViewCompositionStrategy(ViewCompositionStrategy.DisposeOnDetachedFromWindowOrReleasedFromPool)
 
             setContent {
