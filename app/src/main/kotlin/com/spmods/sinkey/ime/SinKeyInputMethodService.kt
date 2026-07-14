@@ -154,6 +154,25 @@ class SinKeyInputMethodService : InputMethodService() {
     }
 
     override fun onCreateInputView(): View {
+        // FIX Ghost Keyboard: decorView lifecycle MUST be re-attached every time
+        // onCreateInputView is called — even when returning the cached view.
+        //
+        // Root cause: When the user presses Call / contact-info while the keyboard
+        // is visible, the host app replaces its Activity window. Android then calls
+        // onCreateInputView again so the IME can re-attach its view to the new
+        // window. If we skip the decorView setup on the cached-view early-return
+        // path, the new window's decorView has no LifecycleOwner and Compose
+        // crashes with "ViewTreeLifecycleOwner not found" — or silently re-renders
+        // the keyboard into the orphaned window producing the ghost/duplicate layer.
+        //
+        // Solution: attach lifecycle owners to the current window BEFORE the cache
+        // check, so they are always set regardless of whether the view is new or cached.
+        window?.window?.decorView?.apply {
+            setViewTreeLifecycleOwner(lifecycleOwner)
+            setViewTreeSavedStateRegistryOwner(lifecycleOwner)
+            setViewTreeViewModelStoreOwner(lifecycleOwner)
+        }
+
         cachedInputView?.let { return it }
 
         val composeView = ComposeView(this).apply {
@@ -208,26 +227,6 @@ class SinKeyInputMethodService : InputMethodService() {
     override fun onStartInputView(info: EditorInfo?, restarting: Boolean) {
         super.onStartInputView(info, restarting)
         lifecycleOwner.handleLifecycleEvent(Lifecycle.Event.ON_RESUME)
-
-        // FIX Ghost Keyboard: decorView lifecycle must be re-attached on every
-        // onStartInputView call — NOT only inside onCreateInputView.
-        //
-        // Root cause: onCreateInputView caches and returns the same ComposeView.
-        // When the user presses Call/back button while the keyboard is visible,
-        // WhatsApp replaces its Activity window. The IME window's decorView then
-        // points to a NEW window object. If we only set the lifecycle owner once
-        // (inside the cached-view early-return path), the new decorView has no
-        // LifecycleOwner, so Compose re-renders the keyboard into that orphaned
-        // window — producing the duplicate/ghost keyboard visible on top of the
-        // call screen or contact page.
-        //
-        // Re-attaching here ensures the current decorView always has the correct
-        // owners, regardless of how many Activity window transitions have occurred.
-        window?.window?.decorView?.apply {
-            setViewTreeLifecycleOwner(lifecycleOwner)
-            setViewTreeSavedStateRegistryOwner(lifecycleOwner)
-            setViewTreeViewModelStoreOwner(lifecycleOwner)
-        }
 
         // Bug O4 Fix: Cancel any active composing span on the previous
         // InputConnection before switching fields. Without this, the underlined
