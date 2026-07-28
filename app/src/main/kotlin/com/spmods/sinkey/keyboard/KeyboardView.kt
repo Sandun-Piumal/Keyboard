@@ -209,6 +209,16 @@ fun KeyboardView(
                 onKey = onKey
             )
 
+            // ── Recent emoji row (not on dial pad) ───────────────────────────
+            if (!isPhoneInput && recentEmojis.isNotEmpty()) {
+                EmojiRow(
+                    emojis = recentEmojis,
+                    colors = colors,
+                    onKey = onKey,
+                    onMoreClick = { pushBoard(Board.EMOJI) }
+                )
+            }
+
             // ── Content area — only this part switches ────────────────────────
             when {
                 isPhoneInput -> PhoneDialPadKeys(
@@ -216,7 +226,6 @@ fun KeyboardView(
                     keyShape = keyShape, bottomPadding = bottomPadding, onKey = onKey
                 )
                 currentBoard == Board.EMOJI -> EmojiPickerView(
-                    recentEmojis = recentEmojis,
                     colors = colors,
                     keyHeight = keyHeight,
                     bottomPadding = bottomPadding,
@@ -503,6 +512,35 @@ private fun AppsMicBar(
                 }
             }
         }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Emoji row — recent-emoji strip shown above the main typing keyboard
+// ─────────────────────────────────────────────────────────────────────────────
+@Composable
+private fun EmojiRow(emojis: List<String>, colors: KeyboardColors, onKey: (String) -> Unit, onMoreClick: () -> Unit) {
+    LazyRow(
+        modifier = Modifier.fillMaxWidth().background(colors.bg).padding(vertical = 2.dp),
+        horizontalArrangement = Arrangement.spacedBy(2.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        state = rememberLazyListState()
+    ) {
+        item { Spacer(modifier = Modifier.width(4.dp)) }
+        items(emojis.size) { index ->
+            val emoji = emojis[index]
+            Box(
+                modifier = Modifier.size(40.dp).clip(RoundedCornerShape(6.dp)).clickable { onKey(emoji) },
+                contentAlignment = Alignment.Center
+            ) { Text(text = emoji, fontSize = 22.sp) }
+        }
+        item {
+            Box(
+                modifier = Modifier.size(40.dp).clip(RoundedCornerShape(6.dp)).clickable { onMoreClick() },
+                contentAlignment = Alignment.Center
+            ) { Text(text = "•••", fontSize = 14.sp, color = colors.subText) }
+        }
+        item { Spacer(modifier = Modifier.width(4.dp)) }
+    }
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
