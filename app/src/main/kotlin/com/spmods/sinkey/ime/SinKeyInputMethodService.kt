@@ -18,6 +18,7 @@ import androidx.lifecycle.setViewTreeLifecycleOwner
 import androidx.savedstate.setViewTreeSavedStateRegistryOwner
 import androidx.lifecycle.setViewTreeViewModelStoreOwner
 import com.spmods.sinkey.data.PreferencesManager
+import com.spmods.sinkey.data.dictionary.WordRepository
 import com.spmods.sinkey.keyboard.Board
 import com.spmods.sinkey.keyboard.KeyboardView
 import com.spmods.sinkey.keyboard.SinhalaTransliterator
@@ -43,6 +44,7 @@ class SinKeyInputMethodService : InputMethodService() {
 
     private lateinit var lifecycleOwner: ImeLifecycleOwner
     private lateinit var prefs: PreferencesManager
+    private lateinit var wordRepo: WordRepository
     private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
 
     private var wordBuffer = StringBuilder()
@@ -90,6 +92,7 @@ class SinKeyInputMethodService : InputMethodService() {
             decor.setViewTreeViewModelStoreOwner(lifecycleOwner)
         }
         prefs = PreferencesManager(this)
+        wordRepo = WordRepository(this)
 
         // FIX #1: Still need initial language synchronously, but we only block once
         // here at startup (not on every key tap).
@@ -304,14 +307,14 @@ class SinKeyInputMethodService : InputMethodService() {
             }
             "SPACE" -> {
                 if (currentLanguage.value == "si") commitPendingWord()
-                else { englishBuffer.clear(); suggestions.value = emptyList() }
+                else { learnWord(englishBuffer.toString(), "en"); englishBuffer.clear(); suggestions.value = emptyList() }
                 ic.commitText(" ", 1)
                 // After space, check if previous char was sentence-ending punctuation
                 updateAutoShift(ic)
             }
             "ENTER" -> {
                 if (currentLanguage.value == "si") commitPendingWord()
-                else { englishBuffer.clear(); suggestions.value = emptyList() }
+                else { learnWord(englishBuffer.toString(), "en"); englishBuffer.clear(); suggestions.value = emptyList() }
                 ic.commitText("\n", 1)
                 // New line = sentence start → auto-shift
                 if (shiftState.value == ShiftState.OFF) shiftState.value = ShiftState.ONE_SHOT
@@ -330,7 +333,21 @@ class SinKeyInputMethodService : InputMethodService() {
             }
             "SYMBOLS_SHIFT", "EMOJI", "NUMPAD" -> { /* handled in KeyboardView */ }
             "TOOL_MIC" -> { sendDefaultEditorAction(true) }
-            "TOOL_APPS", "TOOL_STICKER", "TOOL_CLIPBOARD", "TOOL_FONT",
+            "TOOL_CLIPBOARD" -> {
+                // Paste the current system clipboard contents at the cursor.
+                val clipboard = getSystemService(android.content.ClipboardManager::class.java)
+                val clip = clipboard?.primaryClip
+                if (clip != null && clip.itemCount > 0) {
+                    val text = clip.getItemAt(0).coerceToText(this)
+                    if (!text.isNullOrEmpty()) {
+                        commitPendingWord()
+                        englishBuffer.clear()
+                        suggestions.value = emptyList()
+                        ic.commitText(text, 1)
+                    }
+                }
+            }
+            "TOOL_APPS", "TOOL_STICKER", "TOOL_FONT",
             "TOOL_TRANSLATE", "TOOL_SETTINGS" -> {
                 android.util.Log.d("SinKey", "Tool action: $key (not yet implemented)")
             }
@@ -430,21 +447,39 @@ class SinKeyInputMethodService : InputMethodService() {
         ic?.commitText(finalWord, 1)
         wordBuffer.clear()
         suggestions.value = emptyList()
+        learnWord(finalWord, "si")
     }
 
+    /**
+     * User picked a suggestion from the strip (spell-checker word, Sinhala
+     * transliteration variant, or a word learned from their own typing).
+     * After committing it we also add a trailing space, since picking a
+     * suggestion means the word is finished and the user will keep typing.
+     */
     private fun handleSuggestion(word: String) {
         val ic = currentInputConnection ?: return
         if (currentLanguage.value == "si") {
             ic.setComposingText("", 1)
             ic.commitText(word, 1)
             wordBuffer.clear()
+            learnWord(word, "si")
         } else {
             val len = englishBuffer.length
             if (len > 0) ic.deleteSurroundingText(len, 0)
             ic.commitText(word, 1)
             englishBuffer.clear()
+            learnWord(word, "en")
         }
+        // Auto-space after applying a suggestion.
+        ic.commitText(" ", 1)
         suggestions.value = emptyList()
+        updateAutoShift(ic)
+    }
+
+    /** Persist [word] into the personal dictionary (Room) so it can be suggested later. */
+    private fun learnWord(word: String, language: String) {
+        if (word.isBlank()) return
+        serviceScope.launch { wordRepo.learn(word, language) }
     }
 
     private fun updateSuggestions() {
@@ -461,6 +496,10 @@ class SinKeyInputMethodService : InputMethodService() {
                 if (cap != primary && cap != withA) list.add(cap)
             }
             suggestions.value = list.take(5)
+            // Merge in personal-dictionary words the user has typed before that
+            // start with the same rendered prefix (e.g. previously typed
+            // Sinhala words matching what's being composed right now).
+            fetchPersonalSuggestions(primary, "si", baseList = list)
         } else {
             // FIX #2: Use the single reusable session instead of creating a new one per keystroke.
             val session = spellCheckerSession
@@ -475,6 +514,23 @@ class SinKeyInputMethodService : InputMethodService() {
             } else {
                 suggestions.value = listOf(raw)
             }
+            fetchPersonalSuggestions(raw, "en", baseList = listOf(raw))
+        }
+    }
+
+    /**
+     * Looks up the personal dictionary (Room, async) for words starting with
+     * [prefix] and merges any new ones onto the end of the current suggestion
+     * list once they arrive, without disturbing suggestions already shown
+     * (spell-checker results / transliteration variants stay first).
+     */
+    private fun fetchPersonalSuggestions(prefix: String, language: String, baseList: List<String>) {
+        if (prefix.isEmpty()) return
+        serviceScope.launch {
+            val learned = wordRepo.suggestionsFor(prefix, language, limit = 5)
+            if (learned.isEmpty()) return@launch
+            val merged = (suggestions.value.ifEmpty { baseList } + learned).distinct().take(5)
+            suggestions.value = merged
         }
     }
 
