@@ -63,7 +63,7 @@ private fun String.isSupported(): Boolean {
  * then a scrollable emoji grid grouped by category.
  */
 @Composable
-fun EmojiPickerView(
+internal fun EmojiPickerView(
     recentEmojis: List<String>,
     colors: KeyboardColors,
     onEmojiSelected: (String) -> Unit,
