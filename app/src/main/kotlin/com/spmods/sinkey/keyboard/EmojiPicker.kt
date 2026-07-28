@@ -11,7 +11,6 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.Backspace
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -80,9 +79,10 @@ private fun categoryIconRes(name: String, selected: Boolean): Int = when (name) 
  * Emoji picker board. Fully theme-aware (dark/light follow [colors], the
  * same palette the rest of the keyboard uses) — previously this screen had
  * its own hardcoded light-grey colors and never changed with the system/app
- * theme. Layout follows a standard tabbed-category picker: back + category
- * tabs + delete on top, an active-tab underline baked into that same row,
- * a scrollable emoji grid, and a bottom icon row (keyboard / emoji / delete).
+ * theme. Layout follows a standard tabbed-category picker: category tabs
+ * (each with an active-tab underline) on top, a scrollable emoji grid, and
+ * a bottom icon row (keyboard / emoji / delete) that also covers dismiss
+ * and backspace.
  *
  * Sized to match MainKeyboardKeys' on-screen total height exactly, at any
  * keyboard-height setting. Two things make that non-trivial:
@@ -177,31 +177,16 @@ internal fun EmojiPickerView(
             .padding(horizontal = 4.dp, vertical = 2.dp)
             .padding(bottom = bottomPadding)
     ) {
-        // ── Row 1: back + category tabs + delete — same keyHeight-tall row
-        // as every other row on this board and on the main keyboard, so the
-        // board's total height always matches MainKeyboardKeys' total height,
-        // at any keyboard-height setting.
+        // ── Row 1: category tabs only — the back arrow and backspace icons
+        // were removed from this row (they're redundant with Row 4's
+        // keyboard/emoji/backspace icons below), so every category tab now
+        // gets an equal, larger share of the full row width instead of
+        // splitting space with those two fixed-purpose icons.
         Row(
             modifier = Modifier.fillMaxWidth().padding(vertical = 3.dp),
             horizontalArrangement = Arrangement.spacedBy(2.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Box(
-                modifier = Modifier
-                    .height(keyHeight)
-                    .weight(1.4f)
-                    .clip(RoundedCornerShape(6.dp))
-                    .clickable { onDismiss() },
-                contentAlignment = Alignment.Center
-            ) {
-                Icon(
-                    imageVector = Icons.Filled.ArrowBack,
-                    contentDescription = null,
-                    tint = colors.keyText,
-                    modifier = Modifier.size(20.dp)
-                )
-            }
-
             allCategories.forEachIndexed { index, category ->
                 val isSelected = index == selectedCategory
                 Box(
@@ -223,12 +208,12 @@ internal fun EmojiPickerView(
                             painter = painterResource(id = categoryIconRes(category.name, isSelected)),
                             contentDescription = category.name,
                             tint = if (isSelected) activeTint else inactiveTint,
-                            modifier = Modifier.size(18.dp)
+                            modifier = Modifier.size(22.dp)
                         )
                         Box(
                             modifier = Modifier
                                 .padding(top = 2.dp)
-                                .width(14.dp)
+                                .width(16.dp)
                                 .height(2.dp)
                                 .background(
                                     if (isSelected) underlineColor else Color.Transparent,
@@ -237,22 +222,6 @@ internal fun EmojiPickerView(
                         )
                     }
                 }
-            }
-
-            Box(
-                modifier = Modifier
-                    .height(keyHeight)
-                    .weight(1.4f)
-                    .clip(RoundedCornerShape(6.dp))
-                    .clickable { onBackspace() },
-                contentAlignment = Alignment.Center
-            ) {
-                Icon(
-                    imageVector = Icons.Filled.Backspace,
-                    contentDescription = null,
-                    tint = colors.keyText,
-                    modifier = Modifier.size(18.dp)
-                )
             }
         }
 
