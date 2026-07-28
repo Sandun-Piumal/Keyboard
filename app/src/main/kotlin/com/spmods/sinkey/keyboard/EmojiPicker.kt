@@ -80,20 +80,25 @@ private fun categoryIconRes(name: String, selected: Boolean): Int = when (name) 
  * same palette the rest of the keyboard uses) — previously this screen had
  * its own hardcoded light-grey colors and never changed with the system/app
  * theme. Layout follows a standard tabbed-category picker: category tabs
- * (each with an active-tab underline) on top, a scrollable emoji grid, and
- * a bottom icon row (keyboard / emoji / delete) that also covers dismiss
- * and backspace.
+ * (each with an active-tab underline) at the very top — replacing the
+ * AppsMicBar toolbar, which KeyboardView.kt hides for this board — then a
+ * scrollable emoji grid, and a bottom icon row (keyboard / emoji / delete)
+ * that also covers dismiss and backspace.
  *
  * Sized to match MainKeyboardKeys' on-screen total height exactly, at any
- * keyboard-height setting. Two things make that non-trivial:
+ * keyboard-height setting. Three things make that non-trivial:
  *  1. Every row here uses the same `keyHeight`-based `rowUnit` that every
  *     row on Main/Symbols/Numpad uses, so it scales identically with the
  *     keyboard-height setting instead of matching only at one setting.
  *  2. KeyboardView.kt shows a 44dp recent-emoji strip (EmojiRow) above
  *     every OTHER board, but hides it specifically when the Emoji board
  *     itself is active. So this board's own content must include that
- *     missing 44dp (folded into the grid) to reach the same on-screen
- *     total height Main/Symbols/Numpad get from (strip + their 4 rows).
+ *     missing 44dp (folded into the grid).
+ *  3. KeyboardView.kt also hides its 48dp AppsMicBar toolbar specifically
+ *     for this board (this board's own category tabs take that visual
+ *     slot instead), so that missing 48dp is folded into the grid too.
+ * Combined, this board's on-screen total height still equals what
+ * Main/Symbols/Numpad get from (toolbar + strip + their 4 rows).
  */
 @Composable
 internal fun EmojiPickerView(
@@ -162,13 +167,17 @@ internal fun EmojiPickerView(
     // KeyboardView.kt shows a 44dp-tall EmojiRow (the recent-emoji strip:
     // 40dp content + 2dp top/bottom padding — fixed, not keyHeight-based)
     // above every other board, but hides it specifically when the Emoji
-    // board itself is active (it has its own Recent tab instead). That
-    // means Main/Symbols/Numpad's on-screen total height is actually
-    // (that 44dp strip) + (4 × rowUnit), while this board was only
-    // (4 × rowUnit) — 44dp short. The grid absorbs that extra 44dp here so
-    // the Emoji board's on-screen total height matches the others exactly.
+    // board itself is active (it has its own Recent tab instead).
     val missingRecentStripHeight = 44.dp
-    val gridHeight = (rowUnit * 2) + missingRecentStripHeight
+    // KeyboardView.kt also hides the 48dp AppsMicBar toolbar specifically
+    // for the Emoji board (its category tabs sit at the very top instead,
+    // in place of that toolbar). Both hidden bars must be compensated for
+    // here so the Emoji board's on-screen total height still matches
+    // Main/Symbols/Numpad's total height exactly — (toolbar + strip + 4
+    // rows) on the other boards vs (4 rows here, with the grid absorbing
+    // both bars' combined height).
+    val missingToolbarHeight = 48.dp
+    val gridHeight = (rowUnit * 2) + missingRecentStripHeight + missingToolbarHeight
 
     Column(
         modifier = Modifier
