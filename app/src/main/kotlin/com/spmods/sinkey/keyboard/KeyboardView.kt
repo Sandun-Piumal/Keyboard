@@ -209,16 +209,6 @@ fun KeyboardView(
                 onKey = onKey
             )
 
-            // ── Recent emoji row (not on dial pad) ───────────────────────────
-            if (!isPhoneInput && recentEmojis.isNotEmpty()) {
-                EmojiRow(
-                    emojis = recentEmojis,
-                    colors = colors,
-                    onKey = onKey,
-                    onMoreClick = { pushBoard(Board.EMOJI) }
-                )
-            }
-
             // ── Content area — only this part switches ────────────────────────
             when {
                 isPhoneInput -> PhoneDialPadKeys(
@@ -228,6 +218,8 @@ fun KeyboardView(
                 currentBoard == Board.EMOJI -> EmojiPickerView(
                     recentEmojis = recentEmojis,
                     colors = colors,
+                    keyHeight = keyHeight,
+                    bottomPadding = bottomPadding,
                     onEmojiSelected = { emoji -> onKey(emoji) },
                     onBackspace = { onKey("BACKSPACE") },
                     onDismiss = { popBoard() }          // back to whichever board opened emoji
@@ -451,7 +443,7 @@ private fun AppsMicBar(
                                 .padding(horizontal = 12.dp, vertical = 6.dp),
                             contentAlignment = Alignment.Center
                         ) {
-                            Text(text = word, fontSize = 14.sp, color = colors.keyText, maxLines = 1)
+                            Text(text = word, fontSize = 17.sp, color = colors.keyText, maxLines = 1)
                         }
                         if (idx < suggestions.size - 1) {
                             Box(
@@ -511,39 +503,6 @@ private fun AppsMicBar(
                 }
             }
         }
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Emoji row
-// ─────────────────────────────────────────────────────────────────────────────
-// FIX #4: Removed dead ConditionalEmojiRow composable. It was never called —
-// KeyboardView already reads recentEmojis directly and calls EmojiRow itself.
-// ConditionalEmojiRow also created a redundant second PreferencesManager instance.
-
-@Composable
-private fun EmojiRow(emojis: List<String>, colors: KeyboardColors, onKey: (String) -> Unit, onMoreClick: () -> Unit) {
-    LazyRow(
-        modifier = Modifier.fillMaxWidth().background(colors.bg).padding(vertical = 2.dp),
-        horizontalArrangement = Arrangement.spacedBy(2.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        state = rememberLazyListState()
-    ) {
-        item { Spacer(modifier = Modifier.width(4.dp)) }
-        items(emojis.size) { index ->
-            val emoji = emojis[index]
-            Box(
-                modifier = Modifier.size(40.dp).clip(RoundedCornerShape(6.dp)).clickable { onKey(emoji) },
-                contentAlignment = Alignment.Center
-            ) { Text(text = emoji, fontSize = 22.sp) }
-        }
-        item {
-            Box(
-                modifier = Modifier.size(40.dp).clip(RoundedCornerShape(6.dp)).clickable { onMoreClick() },
-                contentAlignment = Alignment.Center
-            ) { Text(text = "•••", fontSize = 14.sp, color = colors.subText) }
-        }
-        item { Spacer(modifier = Modifier.width(4.dp)) }
-    }
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
