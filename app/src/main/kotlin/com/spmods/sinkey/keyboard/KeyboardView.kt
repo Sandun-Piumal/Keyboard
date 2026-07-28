@@ -71,7 +71,7 @@ private val DeshGreen = Color(0xFF6E9A65)
 
 // ── Theme-aware color helpers ─────────────────────────────────────────────────
 
-private data class KeyboardColors(
+internal data class KeyboardColors(
     val bg: Color,
     val keyBg: Color,
     val specialKeyBg: Color,
@@ -227,6 +227,7 @@ fun KeyboardView(
                 )
                 currentBoard == Board.EMOJI -> EmojiPickerView(
                     recentEmojis = recentEmojis,
+                    colors = colors,
                     onEmojiSelected = { emoji -> onKey(emoji) },
                     onBackspace = { onKey("BACKSPACE") },
                     onDismiss = { popBoard() }          // back to whichever board opened emoji
