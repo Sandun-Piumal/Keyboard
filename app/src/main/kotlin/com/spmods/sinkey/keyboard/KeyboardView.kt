@@ -409,6 +409,10 @@ private fun AppsMicBar(
     // the keyboard producing the visible ghost/duplicate toolbar layer.
     if (isTyping) {
             // ── Suggestion strip ─────────────────────────────────────────
+            // FIX: The grid/apps icon (TOOL_APPS) used to disappear entirely
+            // while typing because this whole branch replaced the tools row.
+            // Now it stays pinned on the left of the suggestion strip so the
+            // user can always reach it without needing to stop typing first.
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -416,6 +420,21 @@ private fun AppsMicBar(
                     .background(colors.bg),
                 verticalAlignment = Alignment.CenterVertically
             ) {
+                Box(
+                    modifier = Modifier
+                        .padding(start = 8.dp)
+                        .size(36.dp)
+                        .clip(RoundedCornerShape(6.dp))
+                        .clickable { onKey("TOOL_APPS") },
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        painter = painterResource(id = R.drawable.ic_unified_menu),
+                        contentDescription = null,
+                        modifier = Modifier.size(22.dp),
+                        tint = colors.subText
+                    )
+                }
                 LazyRow(
                     modifier = Modifier.weight(1f),
                     horizontalArrangement = Arrangement.spacedBy(4.dp),
@@ -449,7 +468,7 @@ private fun AppsMicBar(
             val tools = listOf(
                 R.drawable.ic_unified_menu  to "TOOL_APPS",
                 R.drawable.ic_sticker       to "TOOL_STICKER",
-                R.drawable.ic_emoji_for_compose to "TOOL_CLIPBOARD",
+                R.drawable.ic_clipboard     to "TOOL_CLIPBOARD",
                 R.drawable.ic_custom_font   to "TOOL_FONT",
                 R.drawable.ic_translation   to "TOOL_TRANSLATE",
                 R.drawable.ic_settings      to "TOOL_SETTINGS"
