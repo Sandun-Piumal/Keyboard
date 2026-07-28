@@ -1,7 +1,7 @@
 plugins {
-    id("com.android.application") version "8.5.0" apply false
-    id("org.jetbrains.kotlin.android") version "1.9.25" apply false
-    id("org.jetbrains.kotlin.kapt") version "1.9.25" apply false
+    id("com.android.application")
+    id("org.jetbrains.kotlin.android")
+    id("org.jetbrains.kotlin.kapt")
 }
 
 val hasKeystore = System.getenv("KEYSTORE_PATH") != null
@@ -79,4 +79,10 @@ dependencies {
     implementation("androidx.emoji2:emoji2:1.4.0")
     implementation("androidx.emoji2:emoji2-bundled:1.4.0")
     implementation("androidx.emoji2:emoji2-views:1.4.0")
+
+    // Room: local database used to store the user's personal word dictionary
+    // (learned words from typing) so they can be suggested again later.
+    implementation("androidx.room:room-runtime:2.6.1")
+    implementation("androidx.room:room-ktx:2.6.1")
+    kapt("androidx.room:room-compiler:2.6.1")
 }
