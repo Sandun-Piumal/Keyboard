@@ -7,7 +7,6 @@ import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.GridItemSpan
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.rememberLazyGridState
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
@@ -62,15 +61,18 @@ private fun String.isSupported(): Boolean {
  * same palette the rest of the keyboard uses) — previously this screen had
  * its own hardcoded light-grey colors and never changed with the system/app
  * theme. Layout follows a standard tabbed-category picker: back + category
- * tabs + delete on top, an active-tab underline, a scrollable emoji grid
- * grouped by category, and a bottom icon row (keyboard / emoji / delete)
- * mirroring the other boards (Symbols, Numpad) so switching between them
- * doesn't change the keyboard's overall height.
+ * tabs + delete on top, an active-tab underline baked into that same row,
+ * a scrollable emoji grid, and a bottom icon row (keyboard / emoji / delete).
  *
- * [keyHeight] and [bottomPadding] are the same values MainKeyboardKeys /
- * SymbolsKeyboardView use for their key rows — passing them in here keeps
- * this board's total height identical to the others instead of the previous
- * fixed 200dp grid, which made the keyboard visibly resize on every switch.
+ * Sized to structurally match SymbolsKeyboardView / NumberPadView rather
+ * than just matching total height by arithmetic: the outer Column uses the
+ * identical padding (`horizontal = 4dp, vertical = 2dp` + `bottom =
+ * bottomPadding`), and it has exactly 4 rows, each `Row().padding(vertical =
+ * 3dp)` wrapping `keyHeight`-tall content — top bar, grid (2 row-units tall),
+ * and bottom icon row. Because every board now uses the same 4×(keyHeight +
+ * 6dp) unit under the same outer padding, the Emoji board's total height is
+ * identical to Symbols/Numpad's for any keyboard-height setting, not just
+ * the default.
  */
 @Composable
 internal fun EmojiPickerView(
@@ -128,35 +130,35 @@ internal fun EmojiPickerView(
         }
     }
 
-    // Match SymbolsKeyboardView's total content height: 3 key rows + 1 bottom
-    // row, each (keyHeight + 6dp vertical padding), plus bottomPadding. The
-    // top bar + underline here take the place of one of those rows visually,
-    // so the grid gets the remaining space to land on the same overall height.
+    // One "row unit" is exactly what every key row on every other board
+    // uses: keyHeight of content inside vertical=3dp row padding.
     val rowUnit = keyHeight + 6.dp
-    val topBarHeight = 42.dp
-    val underlineRowHeight = 10.dp
-    val bottomIconRowHeight = keyHeight
-    val gridHeight = (rowUnit * 4) - topBarHeight - underlineRowHeight - bottomIconRowHeight - 6.dp
+    // The grid spans 2 row-units — same vertical space Symbols' row2+row3
+    // (its two full symbol rows) occupy — so total rows here (top bar 1 +
+    // grid 2 + bottom row 1 = 4) match Symbols' 4 rows exactly.
+    val gridHeight = (rowUnit * 2) - 4.dp // small trim: grid has no side gaps to absorb like key rows do
 
     Column(
         modifier = Modifier
             .fillMaxWidth()
             .background(colors.bg)
+            .padding(horizontal = 4.dp, vertical = 2.dp)
             .padding(bottom = bottomPadding)
     ) {
-        // ── Top bar: back + category tabs + delete ─────────────────
+        // ── Row 1: back + category tabs + delete, with the active-tab
+        // underline drawn as a thin bar under each tab inside this same row
+        // (keeps this a single keyHeight-tall row like every other board's
+        // rows, instead of a separate skinny row that breaks the 4-row match).
         Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(topBarHeight)
-                .padding(horizontal = 6.dp),
+            modifier = Modifier.fillMaxWidth().padding(vertical = 3.dp),
             horizontalArrangement = Arrangement.spacedBy(2.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
             Box(
                 modifier = Modifier
-                    .size(32.dp)
-                    .clip(CircleShape)
+                    .height(keyHeight)
+                    .weight(1.4f)
+                    .clip(RoundedCornerShape(6.dp))
                     .clickable { onDismiss() },
                 contentAlignment = Alignment.Center
             ) {
@@ -168,32 +170,38 @@ internal fun EmojiPickerView(
                 )
             }
 
-            // Icon-only category tabs, scrollable if they overflow width.
-            Row(
-                modifier = Modifier.weight(1f),
-                horizontalArrangement = Arrangement.SpaceEvenly,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                allCategories.forEachIndexed { index, category ->
-                    val isSelected = index == selectedCategory
-                    Box(
-                        modifier = Modifier
-                            .size(32.dp)
-                            .clip(CircleShape)
-                            .background(if (isSelected) activeTabBg else Color.Transparent)
-                            .clickable {
-                                selectedCategory = index
-                                coroutineScope.launch {
-                                    gridState.animateScrollToItem(categoryStartIndices[index])
-                                }
-                            },
-                        contentAlignment = Alignment.Center
-                    ) {
+            allCategories.forEachIndexed { index, category ->
+                val isSelected = index == selectedCategory
+                Box(
+                    modifier = Modifier
+                        .height(keyHeight)
+                        .weight(1f)
+                        .clip(RoundedCornerShape(6.dp))
+                        .background(if (isSelected) activeTabBg else Color.Transparent)
+                        .clickable {
+                            selectedCategory = index
+                            coroutineScope.launch {
+                                gridState.animateScrollToItem(categoryStartIndices[index])
+                            }
+                        },
+                    contentAlignment = Alignment.Center
+                ) {
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
                         Text(
                             text = category.icon,
                             fontSize = 15.sp,
                             textAlign = TextAlign.Center,
                             color = if (isSelected) activeTint else inactiveTint
+                        )
+                        Box(
+                            modifier = Modifier
+                                .padding(top = 2.dp)
+                                .width(14.dp)
+                                .height(2.dp)
+                                .background(
+                                    if (isSelected) underlineColor else Color.Transparent,
+                                    shape = RoundedCornerShape(1.dp)
+                                )
                         )
                     }
                 }
@@ -201,8 +209,9 @@ internal fun EmojiPickerView(
 
             Box(
                 modifier = Modifier
-                    .size(32.dp)
-                    .clip(CircleShape)
+                    .height(keyHeight)
+                    .weight(1.4f)
+                    .clip(RoundedCornerShape(6.dp))
                     .clickable { onBackspace() },
                 contentAlignment = Alignment.Center
             ) {
@@ -215,45 +224,14 @@ internal fun EmojiPickerView(
             }
         }
 
-        // Active-tab underline — thin bar centered under the selected tab.
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(underlineRowHeight)
-                .padding(horizontal = 6.dp),
-            horizontalArrangement = Arrangement.spacedBy(2.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            // Leading spacer matches the back-button width so the tab row
-            // (which sits in a weighted middle section) lines up below.
-            Spacer(modifier = Modifier.size(32.dp))
-            Row(
-                modifier = Modifier.weight(1f),
-                horizontalArrangement = Arrangement.SpaceEvenly
-            ) {
-                allCategories.forEachIndexed { index, _ ->
-                    Box(
-                        modifier = Modifier
-                            .width(20.dp)
-                            .height(2.dp)
-                            .background(
-                                if (index == selectedCategory) underlineColor else Color.Transparent,
-                                shape = RoundedCornerShape(1.dp)
-                            )
-                    )
-                }
-            }
-            Spacer(modifier = Modifier.size(32.dp))
-        }
-
-        // ── Single unified grid with all categories ────────────────
+        // ── Rows 2–3 (combined): scrollable emoji grid, exactly 2 row-units tall.
         LazyVerticalGrid(
             columns = GridCells.Fixed(8),
             state = gridState,
             modifier = Modifier
                 .fillMaxWidth()
                 .height(gridHeight)
-                .padding(horizontal = 4.dp),
+                .padding(vertical = 3.dp),
             contentPadding = PaddingValues(bottom = 4.dp)
         ) {
             allCategories.forEachIndexed { catIndex, category ->
@@ -269,7 +247,7 @@ internal fun EmojiPickerView(
                         color = colors.subText,
                         modifier = Modifier
                             .fillMaxWidth()
-                            .padding(start = 4.dp, top = 6.dp, bottom = 4.dp)
+                            .padding(start = 2.dp, top = 6.dp, bottom = 4.dp)
                     )
                 }
 
@@ -296,21 +274,16 @@ internal fun EmojiPickerView(
             }
         }
 
-        // ── Bottom icon row — matches the height of other boards' final
-        // row (SymbolsKeyboardView's ABC/space/enter row, NumberPad's row).
-        // Keyboard icon returns to the typing board; emoji icon is a no-op
-        // shortcut (already on this board) kept for visual/layout parity
-        // with standard emoji pickers; delete removes the last character.
+        // ── Row 4: bottom icon row — keyboard / emoji / delete — same
+        // keyHeight-tall row as every other board's final row.
         Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 4.dp, vertical = 3.dp),
-            horizontalArrangement = Arrangement.SpaceEvenly,
+            modifier = Modifier.fillMaxWidth().padding(vertical = 3.dp),
+            horizontalArrangement = Arrangement.spacedBy(6.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
             Box(
                 modifier = Modifier
-                    .height(bottomIconRowHeight)
+                    .height(keyHeight)
                     .weight(1f)
                     .clip(RoundedCornerShape(6.dp))
                     .clickable { onDismiss() },
@@ -325,7 +298,7 @@ internal fun EmojiPickerView(
             }
             Box(
                 modifier = Modifier
-                    .height(bottomIconRowHeight)
+                    .height(keyHeight)
                     .weight(1f)
                     .clip(RoundedCornerShape(6.dp)),
                 contentAlignment = Alignment.Center
@@ -339,7 +312,7 @@ internal fun EmojiPickerView(
             }
             Box(
                 modifier = Modifier
-                    .height(bottomIconRowHeight)
+                    .height(keyHeight)
                     .weight(1f)
                     .clip(RoundedCornerShape(6.dp))
                     .clickable { onBackspace() },
