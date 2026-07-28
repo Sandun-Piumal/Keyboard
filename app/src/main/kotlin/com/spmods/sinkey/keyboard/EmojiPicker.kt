@@ -7,8 +7,13 @@ import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.GridItemSpan
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.rememberLazyGridState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material.icons.filled.Backspace
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -19,10 +24,6 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.launch
-
-private val DeshGreenPicker = Color(0xFF2D6A4F)
-private val PickerBg = Color(0xFFDDE1E7)
-private val TabActiveBg = Color(0xFFC8D0D8)
 
 /**
  * Returns true if this emoji string is renderable on the current device.
@@ -53,9 +54,18 @@ private fun String.isSupported(): Boolean {
     return true
 }
 
+/**
+ * Emoji picker board. Fully theme-aware (dark/light follow [colors], the
+ * same palette the rest of the keyboard uses) — previously this screen had
+ * its own hardcoded light-grey colors and never changed with the system/app
+ * theme. Layout follows a standard tabbed-category picker: back + search +
+ * delete on top, an icon-only category tab row with an active-tab underline,
+ * then a scrollable emoji grid grouped by category.
+ */
 @Composable
 fun EmojiPickerView(
     recentEmojis: List<String>,
+    colors: KeyboardColors,
     onEmojiSelected: (String) -> Unit,
     onBackspace: () -> Unit,
     onDismiss: () -> Unit
@@ -89,6 +99,13 @@ fun EmojiPickerView(
     val gridState = rememberLazyGridState()
     val coroutineScope = rememberCoroutineScope()
 
+    // Tab / active-state colors derived from the shared keyboard palette so
+    // this board always matches whatever theme (dark or light) is active.
+    val activeTint = colors.keyText
+    val inactiveTint = colors.subText
+    val activeTabBg = colors.specialKeyBg
+    val underlineColor = colors.keyText
+
     // Auto-update selected tab based on scroll position
     LaunchedEffect(gridState.firstVisibleItemIndex) {
         val firstVisible = gridState.firstVisibleItemIndex
@@ -102,86 +119,105 @@ fun EmojiPickerView(
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .background(PickerBg)
+            .background(colors.bg)
     ) {
-        // ── Top bar: back + delete ─────────────────────────────────
+        // ── Top bar: back + category tabs + delete ─────────────────
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 6.dp, vertical = 4.dp),
-            horizontalArrangement = Arrangement.SpaceBetween,
+                .padding(horizontal = 6.dp, vertical = 6.dp),
+            horizontalArrangement = Arrangement.spacedBy(2.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
             Box(
                 modifier = Modifier
                     .size(36.dp)
-                    .clip(RoundedCornerShape(8.dp))
-                    .background(TabActiveBg)
+                    .clip(CircleShape)
                     .clickable { onDismiss() },
                 contentAlignment = Alignment.Center
             ) {
-                Text("⌨️", fontSize = 18.sp)
+                Icon(
+                    imageVector = Icons.Filled.ArrowBack,
+                    contentDescription = null,
+                    tint = colors.keyText,
+                    modifier = Modifier.size(20.dp)
+                )
             }
+
+            // Icon-only category tabs, scrollable if they overflow width.
+            Row(
+                modifier = Modifier.weight(1f),
+                horizontalArrangement = Arrangement.SpaceEvenly,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                allCategories.forEachIndexed { index, category ->
+                    val isSelected = index == selectedCategory
+                    Box(
+                        modifier = Modifier
+                            .size(36.dp)
+                            .clip(CircleShape)
+                            .background(if (isSelected) activeTabBg else Color.Transparent)
+                            .clickable {
+                                selectedCategory = index
+                                coroutineScope.launch {
+                                    gridState.animateScrollToItem(categoryStartIndices[index])
+                                }
+                            },
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(
+                            text = category.icon,
+                            fontSize = 16.sp,
+                            textAlign = TextAlign.Center,
+                            color = if (isSelected) activeTint else inactiveTint
+                        )
+                    }
+                }
+            }
+
             Box(
                 modifier = Modifier
                     .size(36.dp)
-                    .clip(RoundedCornerShape(8.dp))
-                    .background(TabActiveBg)
+                    .clip(CircleShape)
                     .clickable { onBackspace() },
                 contentAlignment = Alignment.Center
             ) {
-                Text("⌫", fontSize = 18.sp, color = Color(0xFF333333))
-            }
-        }
-
-        // ── Category tab row ───────────────────────────────────────
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 4.dp),
-            horizontalArrangement = Arrangement.SpaceEvenly
-        ) {
-            allCategories.forEachIndexed { index, category ->
-                val isSelected = index == selectedCategory
-                Box(
-                    modifier = Modifier
-                        .weight(1f)
-                        .height(36.dp)
-                        .clip(RoundedCornerShape(6.dp))
-                        .background(if (isSelected) TabActiveBg else Color.Transparent)
-                        .clickable {
-                            selectedCategory = index
-                            coroutineScope.launch {
-                                // Scroll grid to the header of this category
-                                gridState.animateScrollToItem(categoryStartIndices[index])
-                            }
-                        },
-                    contentAlignment = Alignment.Center
-                ) {
-                    Text(text = category.icon, fontSize = 18.sp, textAlign = TextAlign.Center)
-                }
-            }
-        }
-
-        // Green underline under selected tab
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 4.dp),
-            horizontalArrangement = Arrangement.SpaceEvenly
-        ) {
-            allCategories.forEachIndexed { index, _ ->
-                Box(
-                    modifier = Modifier
-                        .weight(1f)
-                        .height(2.dp)
-                        .padding(horizontal = 4.dp)
-                        .background(
-                            if (index == selectedCategory) DeshGreenPicker else Color.Transparent,
-                            shape = RoundedCornerShape(1.dp)
-                        )
+                Icon(
+                    imageVector = Icons.Filled.Backspace,
+                    contentDescription = null,
+                    tint = colors.keyText,
+                    modifier = Modifier.size(18.dp)
                 )
             }
+        }
+
+        // Active-tab underline — thin bar centered under the selected tab.
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 6.dp),
+            horizontalArrangement = Arrangement.spacedBy(2.dp)
+        ) {
+            // Leading spacer matches the back-button width so the tab row
+            // (which sits in a weighted middle section) lines up below.
+            Spacer(modifier = Modifier.size(36.dp))
+            Row(
+                modifier = Modifier.weight(1f),
+                horizontalArrangement = Arrangement.SpaceEvenly
+            ) {
+                allCategories.forEachIndexed { index, _ ->
+                    Box(
+                        modifier = Modifier
+                            .width(20.dp)
+                            .height(2.dp)
+                            .background(
+                                if (index == selectedCategory) underlineColor else Color.Transparent,
+                                shape = RoundedCornerShape(1.dp)
+                            )
+                    )
+                }
+            }
+            Spacer(modifier = Modifier.size(36.dp))
         }
 
         Spacer(modifier = Modifier.height(4.dp))
@@ -203,10 +239,10 @@ fun EmojiPickerView(
                     span = { GridItemSpan(8) }
                 ) {
                     Text(
-                        text = category.name,
+                        text = category.name.uppercase(),
                         fontSize = 11.sp,
                         fontWeight = FontWeight.SemiBold,
-                        color = Color(0xFF666666),
+                        color = colors.subText,
                         modifier = Modifier
                             .fillMaxWidth()
                             .padding(start = 4.dp, top = 8.dp, bottom = 4.dp)
