@@ -201,13 +201,17 @@ fun KeyboardView(
         Column(
             modifier = Modifier.fillMaxWidth().wrapContentHeight().background(colors.bg)
         ) {
-            // ── Toolbar (always visible, never re-created on pad switch) ──────
-            AppsMicBar(
-                colors = colors,
-                suggestions = if (isPhoneInput || currentBoard == Board.SYMBOLS || currentBoard == Board.NUMPAD) emptyList() else suggestions,
-                onSuggestionSelected = onSuggestionSelected,
-                onKey = onKey
-            )
+            // ── Toolbar (always visible, never re-created on pad switch,
+            // except for the Emoji board — which moves its own category
+            // tabs to the very top instead, in place of this toolbar) ──────
+            if (currentBoard != Board.EMOJI) {
+                AppsMicBar(
+                    colors = colors,
+                    suggestions = if (isPhoneInput || currentBoard == Board.SYMBOLS || currentBoard == Board.NUMPAD) emptyList() else suggestions,
+                    onSuggestionSelected = onSuggestionSelected,
+                    onKey = onKey
+                )
+            }
 
             // ── Recent emoji row — shown above whichever board is active,
             // except the Emoji board itself (which has its own Recent tab).
