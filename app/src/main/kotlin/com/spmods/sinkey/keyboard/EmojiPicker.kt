@@ -74,6 +74,7 @@ private fun String.isSupported(): Boolean {
  */
 @Composable
 internal fun EmojiPickerView(
+    recentEmojis: List<String>,
     colors: KeyboardColors,
     keyHeight: Dp,
     bottomPadding: Dp,
@@ -81,8 +82,10 @@ internal fun EmojiPickerView(
     onBackspace: () -> Unit,
     onDismiss: () -> Unit
 ) {
-    val allCategories = remember {
+    val hasRecent = recentEmojis.isNotEmpty()
+    val allCategories = remember(recentEmojis) {
         buildList {
+            if (hasRecent) add(EmojiData.Category("🕐", "Recent", recentEmojis))
             // Filter out emojis that won't render on this device
             EmojiData.categories.forEach { cat ->
                 val filtered = cat.emojis.filter { it.isSupported() }
