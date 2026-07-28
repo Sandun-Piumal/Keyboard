@@ -84,15 +84,16 @@ private fun categoryIconRes(name: String, selected: Boolean): Int = when (name) 
  * tabs + delete on top, an active-tab underline baked into that same row,
  * a scrollable emoji grid, and a bottom icon row (keyboard / emoji / delete).
  *
- * Row 1 (the category-tab row) is deliberately sized to match EmojiRow —
- * the recent-emoji strip shown above the main keyboard in KeyboardView.kt —
- * exactly: fixed 40dp boxes under `vertical = 2dp` row padding, so this
- * board's tab row looks and feels identical to that familiar strip rather
- * than scaling with the keyboard-height setting like the other rows do.
- * The scrollable grid (Row 2) then absorbs the remaining vertical space so
- * the board's total height still lines up with Symbols/Numpad's overall
- * height at any keyboard-height setting, and Row 3 (bottom icon row) stays
- * `keyHeight`-based like every other board's final row.
+ * Sized to structurally match MainKeyboardKeys / SymbolsKeyboardView /
+ * NumberPadView: the outer Column uses the identical padding
+ * (`horizontal = 4dp, vertical = 2dp` + `bottom = bottomPadding`), and it
+ * has exactly 4 rows, each `Row().padding(vertical = 3dp)` wrapping
+ * `keyHeight`-tall content — top tab bar, grid (2 row-units tall), and
+ * bottom icon row. Every row (including the tab row) scales with
+ * `keyHeight`, the same unit every other board's rows use, so this board's
+ * TOTAL height always matches the main keyboard's total height, at every
+ * keyboard-height setting — not just the default. A fixed-dp row here would
+ * only match by coincidence at one specific setting.
  */
 @Composable
 internal fun EmojiPickerView(
@@ -151,17 +152,17 @@ internal fun EmojiPickerView(
     }
 
     // One "row unit" is exactly what every key row on every other board
-    // uses: keyHeight of content inside vertical=3dp row padding.
+    // (Main / Symbols / Numpad) uses: keyHeight of content inside
+    // vertical=3dp row padding. Every row in this board — including the
+    // tab row — must use this same unit, or the board's TOTAL height stops
+    // matching the main keyboard's total height whenever the keyboard-height
+    // setting is changed from the default (a fixed-dp row only matches by
+    // coincidence at one specific setting).
     val rowUnit = keyHeight + 6.dp
-    // Row 1 (tabs) is now fixed at 40dp content + 4dp vertical padding (2dp
-    // top + 2dp bottom), matching the main-board recent-emoji row (EmojiRow
-    // in KeyboardView.kt) exactly instead of scaling with keyHeight. So the
-    // grid below absorbs whatever's left of the board's total height after
-    // Row 1 (fixed) and Row 4 (still keyHeight-based) are accounted for —
-    // keeping the overall board height matching Symbols/Numpad's total,
-    // rather than leaving empty space or overflowing.
-    val row1Height = 44.dp // 40dp box + 2dp top + 2dp bottom padding
-    val gridHeight = (rowUnit * 3) - row1Height
+    // Grid spans 2 row-units, same as Symbols' row2+row3 — so total rows
+    // here (tab row 1 + grid 2 + bottom row 1 = 4) match MainKeyboardKeys'
+    // 4 rows exactly, at every keyboard-height setting.
+    val gridHeight = rowUnit * 2
 
     Column(
         modifier = Modifier
@@ -170,20 +171,19 @@ internal fun EmojiPickerView(
             .padding(horizontal = 4.dp, vertical = 2.dp)
             .padding(bottom = bottomPadding)
     ) {
-        // ── Row 1: back + category tabs + delete. Sized to match the
-        // recent-emoji row shown above the main keyboard (EmojiRow in
-        // KeyboardView.kt) exactly: 40dp fixed-size boxes with the same
-        // vertical=2dp row padding, instead of scaling with keyHeight —
-        // so this row always looks/feels like that same familiar strip,
-        // regardless of the keyboard-height setting.
+        // ── Row 1: back + category tabs + delete — same keyHeight-tall row
+        // as every other row on this board and on the main keyboard, so the
+        // board's total height always matches MainKeyboardKeys' total height,
+        // at any keyboard-height setting.
         Row(
-            modifier = Modifier.fillMaxWidth().padding(vertical = 2.dp),
+            modifier = Modifier.fillMaxWidth().padding(vertical = 3.dp),
             horizontalArrangement = Arrangement.spacedBy(2.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
             Box(
                 modifier = Modifier
-                    .size(40.dp)
+                    .height(keyHeight)
+                    .weight(1.4f)
                     .clip(RoundedCornerShape(6.dp))
                     .clickable { onDismiss() },
                 contentAlignment = Alignment.Center
@@ -200,8 +200,8 @@ internal fun EmojiPickerView(
                 val isSelected = index == selectedCategory
                 Box(
                     modifier = Modifier
+                        .height(keyHeight)
                         .weight(1f)
-                        .height(40.dp)
                         .clip(RoundedCornerShape(6.dp))
                         .background(if (isSelected) activeTabBg else Color.Transparent)
                         .clickable {
@@ -235,7 +235,8 @@ internal fun EmojiPickerView(
 
             Box(
                 modifier = Modifier
-                    .size(40.dp)
+                    .height(keyHeight)
+                    .weight(1.4f)
                     .clip(RoundedCornerShape(6.dp))
                     .clickable { onBackspace() },
                 contentAlignment = Alignment.Center
