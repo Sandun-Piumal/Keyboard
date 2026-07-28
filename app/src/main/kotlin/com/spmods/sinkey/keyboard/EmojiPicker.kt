@@ -57,6 +57,26 @@ private fun String.isSupported(): Boolean {
 }
 
 /**
+ * Maps each emoji category name to its selected/unselected tab-icon drawable
+ * pair, matching the standard category glyphs (clock, smiley, paw, coffee
+ * cup, baseball, house, lightbulb, heart, flag).
+ */
+private fun categoryIconRes(name: String, selected: Boolean): Int = when (name) {
+    "Recent" -> if (selected) R.drawable.ic_emoji_recents_selected else R.drawable.ic_emoji_recents_unselected
+    "Smileys" -> if (selected) R.drawable.ic_emoji_people_selected else R.drawable.ic_emoji_people_unselected
+    "People" -> if (selected) R.drawable.ic_emoji_people_selected else R.drawable.ic_emoji_people_unselected
+    "Animals" -> if (selected) R.drawable.ic_emoji_animals_selected else R.drawable.ic_emoji_animals_unselected
+    "Food" -> if (selected) R.drawable.ic_emoji_food_selected else R.drawable.ic_emoji_food_unselected
+    "Travel" -> if (selected) R.drawable.ic_emoji_travel_selected else R.drawable.ic_emoji_travel_unselected
+    "Activities" -> if (selected) R.drawable.ic_emoji_activity_selected else R.drawable.ic_emoji_activity_unselected
+    "Objects" -> if (selected) R.drawable.ic_emoji_objects_selected else R.drawable.ic_emoji_objects_unselected
+    "Symbols" -> if (selected) R.drawable.ic_emoji_symbols_selected else R.drawable.ic_emoji_symbols_unselected
+    "New ✨" -> if (selected) R.drawable.ic_emoji_objects_selected else R.drawable.ic_emoji_objects_unselected
+    "Flags" -> if (selected) R.drawable.ic_emoji_flags_selected else R.drawable.ic_emoji_flags_unselected
+    else -> if (selected) R.drawable.ic_emoji_symbols_selected else R.drawable.ic_emoji_symbols_unselected
+}
+
+/**
  * Emoji picker board. Fully theme-aware (dark/light follow [colors], the
  * same palette the rest of the keyboard uses) — previously this screen had
  * its own hardcoded light-grey colors and never changed with the system/app
@@ -135,8 +155,12 @@ internal fun EmojiPickerView(
     val rowUnit = keyHeight + 6.dp
     // The grid spans 2 row-units — same vertical space Symbols' row2+row3
     // (its two full symbol rows) occupy — so total rows here (top bar 1 +
-    // grid 2 + bottom row 1 = 4) match Symbols' 4 rows exactly.
-    val gridHeight = (rowUnit * 2) - 4.dp // small trim: grid has no side gaps to absorb like key rows do
+    // grid 2 + bottom row 1 = 4) match Symbols' 4 rows exactly. The grid's
+    // own vertical padding is applied outside this height (via a wrapping
+    // Box), exactly like every other row's `Row().padding(vertical=3dp)`,
+    // so no extra trim is needed here — this box's height alone already
+    // equals 2 full row-units.
+    val gridHeight = rowUnit * 2
 
     Column(
         modifier = Modifier
@@ -187,11 +211,11 @@ internal fun EmojiPickerView(
                     contentAlignment = Alignment.Center
                 ) {
                     Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                        Text(
-                            text = category.icon,
-                            fontSize = 15.sp,
-                            textAlign = TextAlign.Center,
-                            color = if (isSelected) activeTint else inactiveTint
+                        Icon(
+                            painter = painterResource(id = categoryIconRes(category.name, isSelected)),
+                            contentDescription = category.name,
+                            tint = if (isSelected) activeTint else inactiveTint,
+                            modifier = Modifier.size(18.dp)
                         )
                         Box(
                             modifier = Modifier
@@ -225,13 +249,21 @@ internal fun EmojiPickerView(
         }
 
         // ── Rows 2–3 (combined): scrollable emoji grid, exactly 2 row-units tall.
-        LazyVerticalGrid(
-            columns = GridCells.Fixed(8),
-            state = gridState,
+        // NOTE: vertical padding must be applied OUTSIDE the height(...) box
+        // (like every other row's `Row().padding(vertical = 3.dp)` does),
+        // not inside it — padding inside a fixed-height Modifier shrinks the
+        // grid's actual content area instead of adding to the row's total
+        // height, which was leaving unfilled space at the bottom of the board.
+        Box(
             modifier = Modifier
                 .fillMaxWidth()
                 .height(gridHeight)
-                .padding(vertical = 3.dp),
+                .padding(vertical = 3.dp)
+        ) {
+        LazyVerticalGrid(
+            columns = GridCells.Fixed(8),
+            state = gridState,
+            modifier = Modifier.fillMaxSize(),
             contentPadding = PaddingValues(bottom = 4.dp)
         ) {
             allCategories.forEachIndexed { catIndex, category ->
@@ -272,6 +304,7 @@ internal fun EmojiPickerView(
                     }
                 }
             }
+        }
         }
 
         // ── Row 4: bottom icon row — keyboard / emoji / delete — same
