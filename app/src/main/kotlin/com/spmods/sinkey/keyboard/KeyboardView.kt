@@ -209,8 +209,9 @@ fun KeyboardView(
                 onKey = onKey
             )
 
-            // ── Recent emoji row (not on dial pad) ───────────────────────────
-            if (!isPhoneInput && recentEmojis.isNotEmpty()) {
+            // ── Recent emoji row — shown above whichever board is active,
+            // except the Emoji board itself (which has its own Recent tab).
+            if (!isPhoneInput && currentBoard != Board.EMOJI && recentEmojis.isNotEmpty()) {
                 EmojiRow(
                     emojis = recentEmojis,
                     colors = colors,
@@ -226,6 +227,7 @@ fun KeyboardView(
                     keyShape = keyShape, bottomPadding = bottomPadding, onKey = onKey
                 )
                 currentBoard == Board.EMOJI -> EmojiPickerView(
+                    recentEmojis = recentEmojis,
                     colors = colors,
                     keyHeight = keyHeight,
                     bottomPadding = bottomPadding,
