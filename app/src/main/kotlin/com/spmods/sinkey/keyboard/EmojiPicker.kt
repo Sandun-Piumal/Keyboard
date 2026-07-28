@@ -84,16 +84,16 @@ private fun categoryIconRes(name: String, selected: Boolean): Int = when (name) 
  * tabs + delete on top, an active-tab underline baked into that same row,
  * a scrollable emoji grid, and a bottom icon row (keyboard / emoji / delete).
  *
- * Sized to structurally match MainKeyboardKeys / SymbolsKeyboardView /
- * NumberPadView: the outer Column uses the identical padding
- * (`horizontal = 4dp, vertical = 2dp` + `bottom = bottomPadding`), and it
- * has exactly 4 rows, each `Row().padding(vertical = 3dp)` wrapping
- * `keyHeight`-tall content — top tab bar, grid (2 row-units tall), and
- * bottom icon row. Every row (including the tab row) scales with
- * `keyHeight`, the same unit every other board's rows use, so this board's
- * TOTAL height always matches the main keyboard's total height, at every
- * keyboard-height setting — not just the default. A fixed-dp row here would
- * only match by coincidence at one specific setting.
+ * Sized to match MainKeyboardKeys' on-screen total height exactly, at any
+ * keyboard-height setting. Two things make that non-trivial:
+ *  1. Every row here uses the same `keyHeight`-based `rowUnit` that every
+ *     row on Main/Symbols/Numpad uses, so it scales identically with the
+ *     keyboard-height setting instead of matching only at one setting.
+ *  2. KeyboardView.kt shows a 44dp recent-emoji strip (EmojiRow) above
+ *     every OTHER board, but hides it specifically when the Emoji board
+ *     itself is active. So this board's own content must include that
+ *     missing 44dp (folded into the grid) to reach the same on-screen
+ *     total height Main/Symbols/Numpad get from (strip + their 4 rows).
  */
 @Composable
 internal fun EmojiPickerView(
@@ -159,10 +159,16 @@ internal fun EmojiPickerView(
     // setting is changed from the default (a fixed-dp row only matches by
     // coincidence at one specific setting).
     val rowUnit = keyHeight + 6.dp
-    // Grid spans 2 row-units, same as Symbols' row2+row3 — so total rows
-    // here (tab row 1 + grid 2 + bottom row 1 = 4) match MainKeyboardKeys'
-    // 4 rows exactly, at every keyboard-height setting.
-    val gridHeight = rowUnit * 2
+    // KeyboardView.kt shows a 44dp-tall EmojiRow (the recent-emoji strip:
+    // 40dp content + 2dp top/bottom padding — fixed, not keyHeight-based)
+    // above every other board, but hides it specifically when the Emoji
+    // board itself is active (it has its own Recent tab instead). That
+    // means Main/Symbols/Numpad's on-screen total height is actually
+    // (that 44dp strip) + (4 × rowUnit), while this board was only
+    // (4 × rowUnit) — 44dp short. The grid absorbs that extra 44dp here so
+    // the Emoji board's on-screen total height matches the others exactly.
+    val missingRecentStripHeight = 44.dp
+    val gridHeight = (rowUnit * 2) + missingRecentStripHeight
 
     Column(
         modifier = Modifier
