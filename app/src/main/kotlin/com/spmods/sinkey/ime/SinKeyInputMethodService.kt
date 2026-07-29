@@ -47,6 +47,7 @@ class SinKeyInputMethodService : InputMethodService() {
     private lateinit var prefs: PreferencesManager
     private lateinit var wordRepo: WordRepository
     private lateinit var clipRepo: ClipRepository
+    private lateinit var stickerRepo: com.spmods.sinkey.data.sticker.StickerRepository
     private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
 
     // Listens system-wide for clipboard changes (not just copies made inside
@@ -121,6 +122,7 @@ class SinKeyInputMethodService : InputMethodService() {
         prefs = PreferencesManager(this)
         wordRepo = WordRepository(this)
         clipRepo = ClipRepository(this)
+        stickerRepo = com.spmods.sinkey.data.sticker.StickerRepository(this)
         registerClipboardListener()
 
         // FIX #1: Still need initial language synchronously, but we only block once
@@ -249,7 +251,9 @@ class SinKeyInputMethodService : InputMethodService() {
                         shiftState = shiftState.value,
                         onShiftStateChange = { shiftState.value = it },
                         dismissedUpdateVersionCode = dismissedUpdateVersionCode.value,
-                        onDismissedUpdateVersionCodeChange = { dismissedUpdateVersionCode.value = it }
+                        onDismissedUpdateVersionCodeChange = { dismissedUpdateVersionCode.value = it },
+                        onStickerSend = { pathOrUri, isOwn, mimeType -> onStickerSelected(pathOrUri, isOwn, mimeType) },
+                        onPickStickerImage = { pickImageForSticker() }
                     )
                 }
         }
@@ -551,6 +555,124 @@ class SinKeyInputMethodService : InputMethodService() {
     private fun learnWord(word: String, language: String) {
         if (word.isBlank()) return
         serviceScope.launch { wordRepo.learn(word, language) }
+    }
+
+    /**
+     * Converts an app-private sticker file path (StickerEntity.filePath)
+     * into a content:// Uri other apps can actually read, via the
+     * FileProvider declared in the manifest. External (WhatsApp/Telegram)
+     * stickers never go through this — they already have their own
+     * content:// Uri from DocumentFile.
+     */
+    private fun stickerContentUri(filePath: String): android.net.Uri =
+        androidx.core.content.FileProvider.getUriForFile(
+            this,
+            "$packageName.stickerprovider",
+            java.io.File(filePath)
+        )
+
+    /**
+     * Launches the system gallery picker (via StickerPickerActivity, since
+     * this Service can't host an ActivityResultLauncher itself — see that
+     * class's doc comment) for Board.STICKER_CREATE's "Image Sticker"
+     * option. On completion the picked image is decoded, downscaled, and
+     * saved as a new sticker by StickerRepository.createFromImage.
+     */
+    fun pickImageForSticker() {
+        com.spmods.sinkey.ime.StickerPickerActivity.onImagePicked = { uri ->
+            if (uri != null) {
+                serviceScope.launch {
+                    val created = stickerRepo.createFromImage(uri)
+                    if (created && boardStack.value.lastOrNull() == com.spmods.sinkey.keyboard.Board.STICKER_CREATE) {
+                        boardStack.value = boardStack.value.dropLast(1)
+                    }
+                }
+            }
+        }
+        val intent = android.content.Intent(this, com.spmods.sinkey.ime.StickerPickerActivity::class.java).apply {
+            putExtra(com.spmods.sinkey.ime.StickerPickerActivity.EXTRA_MODE, com.spmods.sinkey.ime.StickerPickerActivity.MODE_IMAGE)
+            addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
+        }
+        startActivity(intent)
+    }
+
+    /**
+     * Called from KeyboardView when the user taps a sticker to send it.
+     * [isOwnSticker] distinguishes a user-created sticker (needs the
+     * FileProvider content Uri built from its file path) from an external
+     * WhatsApp/Telegram sticker (whose Uri from DocumentFile is already a
+     * usable content:// Uri as-is).
+     *
+     * Shows a short toast when the receiving field doesn't support image
+     * content (see sendSticker's doc comment) since there's no way to
+     * gracefully degrade an image the way we can for styled text.
+     */
+    fun onStickerSelected(pathOrUri: String, isOwnSticker: Boolean, mimeType: String) {
+        val uri = if (isOwnSticker) stickerContentUri(pathOrUri) else android.net.Uri.parse(pathOrUri)
+        val sent = sendSticker(uri, mimeType)
+        if (!sent) {
+            android.widget.Toast.makeText(
+                this,
+                "This field doesn't support stickers",
+                android.widget.Toast.LENGTH_SHORT
+            ).show()
+        }
+    }
+
+    /**
+     * Sends a sticker image to the currently focused field via the
+     * InputConnection#commitContent (Commit Content API, N+). This is the
+     * same mechanism Gboard uses for its own stickers/GIFs — the receiving
+     * app (WhatsApp, Telegram, Messages, etc.) must opt in by declaring
+     * EditorInfo.EXTRA_CONTENT_MIME_TYPES on its input field, which chat
+     * apps generally do; plain single-line text fields (URL bars, search
+     * boxes) typically don't, and commitContent then simply returns false.
+     *
+     * [uri] must be readable by the receiving app. For user-created
+     * stickers this is a FileProvider content:// Uri (see
+     * StickerContentProvider) since the raw file:// path in app-private
+     * storage isn't accessible outside this app's own process. For external
+     * (WhatsApp/Telegram) stickers, [uri] is already the SAF content:// Uri
+     * returned by DocumentFile, which the source app itself owns — read
+     * permission for the *receiving* app still comes from the
+     * FLAG_GRANT_READ_URI_PERMISSION passed below, which the platform
+     * upgrades into a one-off grant scoped to that receiving package.
+     *
+     * Returns true if the receiving app accepted the content, false if it
+     * doesn't support commitContent (caller should fall back — e.g. no-op
+     * with a toast — since there is no universal fallback for images the
+     * way there is for text).
+     */
+    private fun sendSticker(uri: android.net.Uri, mimeType: String): Boolean {
+        val ic = currentInputConnection ?: return false
+        val editorInfo = currentInputEditorInfo ?: return false
+
+        val supportedMimeTypes = androidx.core.view.inputmethod.EditorInfoCompat
+            .getContentMimeTypes(editorInfo)
+        val accepts = supportedMimeTypes.any { pattern ->
+            android.content.ClipDescription.compareMimeTypes(mimeType, pattern)
+        }
+        if (!accepts) return false
+
+        grantUriPermission(
+            editorInfo.packageName,
+            uri,
+            android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION
+        )
+
+        val contentInfo = androidx.core.view.inputmethod.InputContentInfoCompat(
+            uri,
+            android.content.ClipDescription("sticker", arrayOf(mimeType)),
+            null
+        )
+
+        val flags = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.N_MR1) {
+            androidx.core.view.inputmethod.InputConnectionCompat.INPUT_CONTENT_GRANT_READ_URI_PERMISSION
+        } else 0
+
+        return androidx.core.view.inputmethod.InputConnectionCompat.commitContent(
+            ic, editorInfo, contentInfo, flags, null
+        )
     }
 
     private fun updateSuggestions() {
