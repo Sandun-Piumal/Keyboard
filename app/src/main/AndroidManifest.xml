@@ -52,5 +52,38 @@
                 android:resource="@xml/method" />
         </service>
 
+        <!--
+            Trampoline Activity that lets the keyboard (a Service, not an
+            Activity) launch system pickers — gallery image picker for
+            Image Sticker creation, SAF folder picker for connecting a
+            WhatsApp/Telegram sticker folder. See StickerPickerActivity's
+            class doc for why this indirection is required.
+        -->
+        <activity
+            android:name=".ime.StickerPickerActivity"
+            android:exported="false"
+            android:theme="@style/Theme.SinKey.Transparent"
+            android:excludeFromRecents="true"
+            android:taskAffinity=""
+            android:launchMode="singleTask" />
+
+        <!--
+            Exposes app-private sticker PNGs (files/stickers/) as
+            content:// Uris so they can be sent to other apps via
+            InputConnection#commitContent (see
+            SinKeyInputMethodService.sendSticker). Without this, a raw
+            file:// path in our private storage would be unreadable by the
+            receiving app's process.
+        -->
+        <provider
+            android:name="androidx.core.content.FileProvider"
+            android:authorities="${applicationId}.stickerprovider"
+            android:exported="false"
+            android:grantUriPermissions="true">
+            <meta-data
+                android:name="android.support.FILE_PROVIDER_PATHS"
+                android:resource="@xml/sticker_file_paths" />
+        </provider>
+
     </application>
 </manifest>
