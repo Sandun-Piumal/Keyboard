@@ -508,13 +508,17 @@ private fun AppsMicBar(
                 }
                 Box(
                     modifier = Modifier
-                        .size(42.dp)
-                        .clip(RoundedCornerShape(50))
-                        .background(Color(0xFFBBBBBB))
+                        .size(36.dp)
+                        .clip(RoundedCornerShape(6.dp))
                         .clickable { onKey("TOOL_MIC") },
                     contentAlignment = Alignment.Center
                 ) {
-                    Text(text = "🎤", fontSize = 19.sp)
+                    Icon(
+                        painter = painterResource(id = R.drawable.ic_microphone_normal),
+                        contentDescription = null,
+                        modifier = Modifier.size(22.dp),
+                        tint = colors.subText
+                    )
                 }
             }
         }
