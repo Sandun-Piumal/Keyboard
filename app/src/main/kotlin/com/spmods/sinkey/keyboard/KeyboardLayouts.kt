@@ -1,5 +1,143 @@
 package com.spmods.sinkey.keyboard
 
+/**
+ * Converts plain English text into the Unicode "fancy text" code points for
+ * a given [com.spmods.sinkey.data.FancyTextStyle]. This is what makes
+ * TOOL_FONT actually visible in the receiving app: unlike a Compose
+ * FontFamily (which only affects how the keyboard itself draws its key
+ * labels), these are genuinely different Unicode characters, so any app
+ * renders them in the chosen style exactly as committed.
+ *
+ * Only a-z, A-Z, 0-9 are mapped; anything else (spaces, punctuation,
+ * Sinhala) passes through unchanged. A few styles (SMALL_CAPS,
+ * UPSIDE_DOWN, CIRCLED) don't have Unicode digit variants for every value,
+ * in which case the plain digit is kept.
+ */
+object FancyTextMapper {
+
+    private const val LOWER = "abcdefghijklmnopqrstuvwxyz"
+    private const val UPPER = "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
+    private const val DIGITS = "0123456789"
+
+    // Each table is LOWER+UPPER+DIGITS worth of replacement strings, in the
+    // same order, built from the Unicode Mathematical Alphanumeric Symbols
+    // block (and a couple of legacy blocks for small-caps/upside-down/circled
+    // which predate that block and aren't part of it).
+    private fun mathTable(lowerStart: Int, upperStart: Int, digitStart: Int?): List<String> {
+        val out = mutableListOf<String>()
+        for (i in LOWER.indices) out.add(String(Character.toChars(lowerStart + i)))
+        for (i in UPPER.indices) out.add(String(Character.toChars(upperStart + i)))
+        if (digitStart != null) {
+            for (i in DIGITS.indices) out.add(String(Character.toChars(digitStart + i)))
+        } else {
+            for (c in DIGITS) out.add(c.toString())
+        }
+        return out
+    }
+
+    private val boldTable = mathTable(0x1D41A, 0x1D400, 0x1D7CE)
+    private val italicTable = mathTable(0x1D44E, 0x1D434, null) // no italic digits in Unicode
+    private val boldItalicTable = mathTable(0x1D482, 0x1D468, null)
+    private val scriptTable = run {
+        // Mathematical Script has gaps at a few letters that instead use
+        // pre-existing legacy Letterlike Symbols code points.
+        val exceptions = mapOf(
+            'B' to "ℬ", 'E' to "ℰ", 'F' to "ℱ", 'H' to "ℋ", 'I' to "ℐ",
+            'L' to "ℒ", 'M' to "ℳ", 'R' to "ℛ",
+            'e' to "ℯ", 'g' to "ℊ", 'o' to "ℴ"
+        )
+        val out = mutableListOf<String>()
+        for (c in LOWER) out.add(exceptions[c] ?: String(Character.toChars(0x1D4B6 + (c - 'a'))))
+        for (c in UPPER) out.add(exceptions[c] ?: String(Character.toChars(0x1D49C + (c - 'A'))))
+        for (c in DIGITS) out.add(c.toString())
+        out
+    }
+    private val doubleStruckTable = run {
+        val exceptions = mapOf('C' to "ℂ", 'H' to "ℍ", 'N' to "ℕ", 'P' to "ℙ", 'Q' to "ℚ", 'R' to "ℝ", 'Z' to "ℤ")
+        val out = mutableListOf<String>()
+        for (c in LOWER) out.add(String(Character.toChars(0x1D552 + (c - 'a'))))
+        for (c in UPPER) out.add(exceptions[c] ?: String(Character.toChars(0x1D538 + (c - 'A'))))
+        for (i in DIGITS.indices) out.add(String(Character.toChars(0x1D7D8 + i)))
+        out
+    }
+    private val frakturTable = run {
+        val exceptions = mapOf('C' to "ℭ", 'H' to "ℌ", 'I' to "ℑ", 'R' to "ℜ", 'Z' to "ℨ")
+        val out = mutableListOf<String>()
+        for (c in LOWER) out.add(String(Character.toChars(0x1D51E + (c - 'a'))))
+        for (c in UPPER) out.add(exceptions[c] ?: String(Character.toChars(0x1D504 + (c - 'A'))))
+        for (c in DIGITS) out.add(c.toString())
+        out
+    }
+    private val monospaceTable = mathTable(0x1D68A, 0x1D670, 0x1D7F6)
+    private val circledTable = run {
+        val out = mutableListOf<String>()
+        for (c in LOWER) out.add(String(Character.toChars(0x24D0 + (c - 'a')))) // ⓐ..ⓩ
+        for (c in UPPER) out.add(String(Character.toChars(0x24B6 + (c - 'A')))) // Ⓐ..Ⓩ
+        out.add("⓪")
+        for (i in 1..9) out.add(String(Character.toChars(0x2460 + (i - 1)))) // ①..⑨
+        out
+    }
+    private val smallCapsTable = run {
+        // Small caps has no true capitals or digits — keep those as-is.
+        val map = mapOf(
+            'a' to "ᴀ", 'b' to "ʙ", 'c' to "ᴄ", 'd' to "ᴅ", 'e' to "ᴇ", 'f' to "ꜰ",
+            'g' to "ɢ", 'h' to "ʜ", 'i' to "ɪ", 'j' to "ᴊ", 'k' to "ᴋ", 'l' to "ʟ",
+            'm' to "ᴍ", 'n' to "ɴ", 'o' to "ᴏ", 'p' to "ᴘ", 'q' to "ǫ", 'r' to "ʀ",
+            's' to "s", 't' to "ᴛ", 'u' to "ᴜ", 'v' to "ᴠ", 'w' to "ᴡ", 'x' to "x",
+            'y' to "ʏ", 'z' to "ᴢ"
+        )
+        val out = mutableListOf<String>()
+        for (c in LOWER) out.add(map[c] ?: c.toString())
+        for (c in UPPER) out.add(map[c.lowercaseChar()] ?: c.toString())
+        for (c in DIGITS) out.add(c.toString())
+        out
+    }
+    private val upsideDownTable = run {
+        val map = mapOf(
+            'a' to "ɐ", 'b' to "q", 'c' to "ɔ", 'd' to "p", 'e' to "ǝ", 'f' to "ɟ",
+            'g' to "ƃ", 'h' to "ɥ", 'i' to "ᴉ", 'j' to "ɾ", 'k' to "ʞ", 'l' to "l",
+            'm' to "ɯ", 'n' to "u", 'o' to "o", 'p' to "d", 'q' to "b", 'r' to "ɹ",
+            's' to "s", 't' to "ʇ", 'u' to "n", 'v' to "ʌ", 'w' to "ʍ", 'x' to "x",
+            'y' to "ʎ", 'z' to "z"
+        )
+        val digitMap = mapOf('0' to "0", '1' to "Ɩ", '2' to "ᄅ", '3' to "Ɛ", '4' to "ㄣ",
+            '5' to "5", '6' to "9", '7' to "ㄥ", '8' to "8", '9' to "6")
+        val out = mutableListOf<String>()
+        for (c in LOWER) out.add(map[c] ?: c.toString())
+        for (c in UPPER) out.add(map[c.lowercaseChar()] ?: c.toString())
+        for (c in DIGITS) out.add(digitMap[c] ?: c.toString())
+        out
+    }
+
+    private fun tableFor(style: com.spmods.sinkey.data.FancyTextStyle): List<String>? =
+        when (style) {
+            com.spmods.sinkey.data.FancyTextStyle.NONE -> null
+            com.spmods.sinkey.data.FancyTextStyle.BOLD -> boldTable
+            com.spmods.sinkey.data.FancyTextStyle.ITALIC -> italicTable
+            com.spmods.sinkey.data.FancyTextStyle.BOLD_ITALIC -> boldItalicTable
+            com.spmods.sinkey.data.FancyTextStyle.SCRIPT -> scriptTable
+            com.spmods.sinkey.data.FancyTextStyle.DOUBLE_STRUCK -> doubleStruckTable
+            com.spmods.sinkey.data.FancyTextStyle.FRAKTUR -> frakturTable
+            com.spmods.sinkey.data.FancyTextStyle.MONOSPACE -> monospaceTable
+            com.spmods.sinkey.data.FancyTextStyle.CIRCLED -> circledTable
+            com.spmods.sinkey.data.FancyTextStyle.SMALL_CAPS -> smallCapsTable
+            com.spmods.sinkey.data.FancyTextStyle.UPSIDE_DOWN -> upsideDownTable
+        }
+
+    private val alphabet = LOWER + UPPER + DIGITS
+
+    /** Applies [style] to every a-z/A-Z/0-9 character in [input]; everything else passes through unchanged. */
+    fun apply(input: String, style: com.spmods.sinkey.data.FancyTextStyle): String {
+        val table = tableFor(style) ?: return input
+        val out = StringBuilder(input.length)
+        for (ch in input) {
+            val idx = alphabet.indexOf(ch)
+            out.append(if (idx >= 0) table[idx] else ch.toString())
+        }
+        return out.toString()
+    }
+}
+
 /** Standard English QWERTY rows shown by the keyboard view. */
 val EnglishRows: List<List<String>> = listOf(
     listOf("q", "w", "e", "r", "t", "y", "u", "i", "o", "p"),
