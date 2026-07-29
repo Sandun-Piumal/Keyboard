@@ -56,7 +56,16 @@ import androidx.compose.ui.zIndex
 import com.spmods.sinkey.data.PreferencesManager
 import com.spmods.sinkey.data.RemoteUpdateInfo
 import com.spmods.sinkey.data.UpdateChecker
+import com.spmods.sinkey.data.clipboard.ClipEntity
+import com.spmods.sinkey.data.clipboard.ClipRepository
 import com.spmods.sinkey.ime.SinKeyInputMethodService
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
+import androidx.compose.material.icons.filled.PushPin
+import androidx.compose.material.icons.outlined.PushPin
+import androidx.compose.material.icons.filled.Delete
+import androidx.compose.runtime.rememberCoroutineScope
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.withTimeoutOrNull
 import androidx.compose.foundation.gestures.awaitEachGesture
@@ -146,7 +155,7 @@ private fun stepToBottomPadding(step: Float): Dp = when (Math.round(step)) {
 // Replaces the previous ad-hoc boolean flags (showSymbols, showEmojiPicker)
 // which had no memory of which board opened them, so back always went to MAIN.
 // Must be internal (not private) so SinKeyInputMethodService can reference it.
-enum class Board { MAIN, SYMBOLS, NUMPAD, EMOJI }
+enum class Board { MAIN, SYMBOLS, NUMPAD, EMOJI, CLIPBOARD }
 
 @Composable
 fun KeyboardView(
@@ -199,6 +208,9 @@ fun KeyboardView(
     val context = LocalContext.current
     val prefsManager = remember { PreferencesManager(context) }
     val recentEmojis by prefsManager.recentEmojis.collectAsState(initial = emptyList())
+    val clipRepository = remember { ClipRepository(context) }
+    val clipHistory by clipRepository.history.collectAsState(initial = emptyList())
+    val coroutineScope = rememberCoroutineScope()
 
     // ── Update check ────────────────────────────────────────────────────────
     // Fetched once per keyboard-composition (not on every recomposition —
@@ -232,12 +244,13 @@ fun KeyboardView(
             // ── Toolbar (always visible, never re-created on pad switch,
             // except for the Emoji board — which moves its own category
             // tabs to the very top instead, in place of this toolbar) ──────
-            if (currentBoard != Board.EMOJI) {
+            if (currentBoard != Board.EMOJI && currentBoard != Board.CLIPBOARD) {
                 AppsMicBar(
                     colors = colors,
                     suggestions = if (isPhoneInput || currentBoard == Board.SYMBOLS || currentBoard == Board.NUMPAD) emptyList() else suggestions,
                     onSuggestionSelected = onSuggestionSelected,
-                    onKey = onKey
+                    onKey = onKey,
+                    onClipboardOpen = { pushBoard(Board.CLIPBOARD) }
                 )
             }
 
@@ -248,7 +261,7 @@ fun KeyboardView(
             // (same slot, same 44dp height, so nothing else on the board
             // shifts or resizes) — the recent-emoji strip itself is not
             // shown at all while the banner is up.
-            if (!isPhoneInput && currentBoard != Board.EMOJI) {
+            if (!isPhoneInput && currentBoard != Board.EMOJI && currentBoard != Board.CLIPBOARD) {
                 if (showUpdateBanner) {
                     UpdateBanner(
                         colors = colors,
@@ -298,6 +311,22 @@ fun KeyboardView(
                     onKey = onKey,
                     onBack = { popBoard() },
                     onBoardStackChange = onBoardStackChange
+                )
+                currentBoard == Board.CLIPBOARD -> ClipboardHistoryView(
+                    colors = colors, keyHeight = keyHeight,
+                    bottomPadding = bottomPadding,
+                    history = clipHistory,
+                    onPaste = { text -> onKey("PASTE_TEXT:$text") },
+                    onTogglePin = { text, pinned ->
+                        coroutineScope.launch { clipRepository.setPinned(text, pinned) }
+                    },
+                    onDelete = { text ->
+                        coroutineScope.launch { clipRepository.delete(text) }
+                    },
+                    onClearAll = {
+                        coroutineScope.launch { clipRepository.clearUnpinned() }
+                    },
+                    onBack = { popBoard() }
                 )
                 else -> MainKeyboardKeys(
                     currentLanguage = currentLanguage,
@@ -447,7 +476,8 @@ private fun AppsMicBar(
     colors: KeyboardColors,
     suggestions: List<String>,
     onSuggestionSelected: (String) -> Unit,
-    onKey: (String) -> Unit
+    onKey: (String) -> Unit,
+    onClipboardOpen: () -> Unit
 ) {
     val isTyping = suggestions.isNotEmpty()
 
@@ -540,7 +570,15 @@ private fun AppsMicBar(
                         modifier = Modifier
                             .size(36.dp)
                             .clip(RoundedCornerShape(6.dp))
-                            .clickable { onKey(action) },
+                            .clickable {
+                                // TOOL_CLIPBOARD opens the clipboard history board (handled by
+                                // the parent KeyboardView via onBoardOpen) instead of instantly
+                                // pasting — previously this immediately pasted only whatever
+                                // was on the system clipboard *right now*, with no way to reach
+                                // anything copied earlier. Other tool actions still go through
+                                // onKey as before.
+                                if (action == "TOOL_CLIPBOARD") onClipboardOpen() else onKey(action)
+                            },
                         contentAlignment = Alignment.Center
                     ) {
                         Icon(
@@ -1425,6 +1463,156 @@ private fun RowScope.NumpadDigitKey(
             color = colors.keyText,
             fontWeight = FontWeight.Normal
         )
+    }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Clipboard history — persistent list of everything the user has copied
+// (system-wide, captured by SinKeyInputMethodService's clipboard listener).
+// Tap a row to paste it, tap the pin to keep it pinned to the top (pinned
+// entries survive "Clear all"), tap the trash icon on a row to remove just
+// that entry.
+// ─────────────────────────────────────────────────────────────────────────────
+@Composable
+private fun ClipboardHistoryView(
+    colors: KeyboardColors,
+    keyHeight: Dp,
+    bottomPadding: Dp,
+    history: List<ClipEntity>,
+    onPaste: (String) -> Unit,
+    onTogglePin: (String, Boolean) -> Unit,
+    onDelete: (String) -> Unit,
+    onClearAll: () -> Unit,
+    onBack: () -> Unit
+) {
+    // Total height matches other boards: same header row height (44dp) as
+    // EmojiRow/UpdateBanner would have occupied, plus a scrollable list area
+    // sized to roughly 4 key-rows so board height doesn't jump around when
+    // switching from the main keyboard.
+    val listHeight = keyHeight * 4 + 24.dp
+
+    Column(modifier = Modifier.fillMaxWidth().background(colors.bg)) {
+        // Header: back arrow, title, clear-all
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(44.dp)
+                .padding(horizontal = 8.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Box(
+                modifier = Modifier
+                    .size(32.dp)
+                    .clip(RoundedCornerShape(6.dp))
+                    .clickable { onBack() },
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    painter = painterResource(id = R.drawable.ic_back_to_keyboard),
+                    contentDescription = "Back",
+                    modifier = Modifier.size(20.dp),
+                    tint = colors.subText
+                )
+            }
+            Text(
+                text = "Clipboard",
+                fontSize = 15.sp,
+                fontWeight = FontWeight.Medium,
+                color = colors.keyText,
+                modifier = Modifier.weight(1f).padding(start = 4.dp)
+            )
+            if (history.any { !it.pinned }) {
+                Text(
+                    text = "Clear all",
+                    fontSize = 13.sp,
+                    color = colors.subText,
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(6.dp))
+                        .clickable { onClearAll() }
+                        .padding(horizontal = 8.dp, vertical = 4.dp)
+                )
+            }
+        }
+
+        if (history.isEmpty()) {
+            Box(
+                modifier = Modifier.fillMaxWidth().height(listHeight),
+                contentAlignment = Alignment.Center
+            ) {
+                Text(
+                    text = "Nothing copied yet",
+                    fontSize = 13.sp,
+                    color = colors.subText
+                )
+            }
+        } else {
+            LazyColumn(
+                modifier = Modifier.fillMaxWidth().height(listHeight),
+                contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 8.dp, vertical = 4.dp)
+            ) {
+                items(history, key = { it.text }) { clip ->
+                    ClipRow(clip = clip, colors = colors, onPaste = onPaste, onTogglePin = onTogglePin, onDelete = onDelete)
+                }
+            }
+        }
+
+        Spacer(modifier = Modifier.height(bottomPadding))
+    }
+}
+
+@Composable
+private fun ClipRow(
+    clip: ClipEntity,
+    colors: KeyboardColors,
+    onPaste: (String) -> Unit,
+    onTogglePin: (String, Boolean) -> Unit,
+    onDelete: (String) -> Unit
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 3.dp)
+            .clip(RoundedCornerShape(8.dp))
+            .background(colors.keyBg)
+            .clickable { onPaste(clip.text) }
+            .padding(horizontal = 10.dp, vertical = 8.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Text(
+            text = clip.text,
+            fontSize = 14.sp,
+            color = colors.keyText,
+            maxLines = 2,
+            modifier = Modifier.weight(1f).padding(end = 8.dp)
+        )
+        Box(
+            modifier = Modifier
+                .size(28.dp)
+                .clip(RoundedCornerShape(6.dp))
+                .clickable { onTogglePin(clip.text, !clip.pinned) },
+            contentAlignment = Alignment.Center
+        ) {
+            Icon(
+                imageVector = if (clip.pinned) Icons.Filled.PushPin else Icons.Outlined.PushPin,
+                contentDescription = if (clip.pinned) "Unpin" else "Pin",
+                modifier = Modifier.size(16.dp),
+                tint = if (clip.pinned) DeshGreen else colors.subText
+            )
+        }
+        Box(
+            modifier = Modifier
+                .size(28.dp)
+                .clip(RoundedCornerShape(6.dp))
+                .clickable { onDelete(clip.text) },
+            contentAlignment = Alignment.Center
+        ) {
+            Icon(
+                imageVector = Icons.Filled.Delete,
+                contentDescription = "Delete",
+                modifier = Modifier.size(16.dp),
+                tint = colors.subText
+            )
+        }
     }
 }
 
