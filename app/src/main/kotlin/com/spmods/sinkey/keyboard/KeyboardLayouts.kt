@@ -133,9 +133,16 @@ object SinhalaTransliterator {
 
             // 2. Anusvara: n/m before a different consonant (not gemination,
             //    and not the start of a known compound like nd, ng, mb…)
+            //    BUG FIX: also skip anusvara when the NEXT position starts a
+            //    known compound (th, dh, sh, Sh, ch, kn, gn…) — e.g. "ntha"
+            //    is n + tha (අන්ත), not anusvara + ta (අංත). Previously only
+            //    checked whether n/m itself began a compound, not whether the
+            //    following letters did, so words like "anthaya"/"sampatha"
+            //    rendered with a wrong ං instead of ්.
             if (input[i] == 'n' || input[i] == 'm') {
                 val comp = tryMatch(input, i, compoundBases)
-                if (comp == null) {
+                val nextStartsCompound = tryMatch(input, i + 1, compoundBases) != null
+                if (comp == null && !nextStartsCompound) {
                     val nextPos = i + 1
                     if (nextPos < input.length &&
                         input[nextPos] in consonantStarts &&
