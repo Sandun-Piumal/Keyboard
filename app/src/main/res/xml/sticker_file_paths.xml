@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<paths xmlns:android="http://schemas.android.com/apk/res/android">
+    <!--
+        Exposes only files/stickers/ (see StickerFileStore.DIR_NAME) — the
+        app-private folder holding user-created sticker PNGs. Nothing else
+        in the app's private storage is reachable through this provider.
+    -->
+    <files-path name="stickers" path="stickers/" />
+</paths>
