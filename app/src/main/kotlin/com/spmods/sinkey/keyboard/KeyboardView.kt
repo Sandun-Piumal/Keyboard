@@ -35,8 +35,6 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
-import androidx.compose.material3.ProvideTextStyle
-import androidx.compose.material3.LocalTextStyle
 import androidx.compose.ui.res.painterResource
 import com.spmods.sinkey.R
 import androidx.compose.runtime.Composable
@@ -59,7 +57,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.zIndex
 import com.spmods.sinkey.data.PreferencesManager
-import com.spmods.sinkey.data.KeyboardFont
+import com.spmods.sinkey.data.FancyTextStyle
 import com.spmods.sinkey.data.RemoteUpdateInfo
 import com.spmods.sinkey.data.UpdateChecker
 import com.spmods.sinkey.data.clipboard.ClipEntity
@@ -202,15 +200,25 @@ fun KeyboardView(
 
     var showLangTooltip by remember { mutableStateOf(false) }
 
-    // Measured (not formula-derived) height of MainKeyboardKeys' content, in
-    // dp. Boards that hide the toolbar/emoji-row and want to fill that
-    // reclaimed space exactly (currently: CLIPBOARD) read this instead of
-    // recomputing row-padding math by hand, which drifted by a dp or two
-    // from the real rendered height due to rounding. Starts at a reasonable
-    // fallback and is corrected to the true value the first time MAIN is
-    // actually composed and measured.
-    val density = LocalDensity.current
-    var measuredMainContentHeight by remember { mutableStateOf(keyHeight * 4 + 40.dp) }
+    // Formula-derived height of MainKeyboardKeys' content, in dp. Boards that
+    // hide the toolbar/emoji-row and want to fill that reclaimed space
+    // exactly (CLIPBOARD, FONT) read this so they always render at exactly
+    // the same height as MAIN.
+    //
+    // This used to be a *measured* value that started at a guessed fallback
+    // (keyHeight * 4 + 40.dp) and only became accurate after MAIN had been
+    // composed once and reported its real size via onGloballyPositioned. If
+    // the user opened Font/Clipboard first in a session — e.g. right when
+    // the keyboard popped up, before ever touching MAIN — they'd get the
+    // wrong guessed height, visibly mismatching the main board. Deriving it
+    // directly from the same row-height + padding formula MainKeyboardKeys
+    // itself uses removes that race entirely: it's correct on frame one,
+    // every time.
+    //
+    // MainKeyboardKeys layout: Column(vertical padding 2.dp top + bottom,
+    // plus bottomPadding) containing 4 rows of height keyHeight, each row
+    // padded 3.dp top+bottom.
+    val measuredMainContentHeight = (keyHeight + 6.dp) * 4 + 4.dp + bottomPadding
 
     val currentBoard = boardStack.last()
     fun pushBoard(b: Board) { onBoardStackChange(boardStack + b) }
@@ -227,7 +235,7 @@ fun KeyboardView(
     val clipRepository = remember { ClipRepository(context) }
     val clipHistory by clipRepository.history.collectAsState(initial = emptyList())
     val coroutineScope = rememberCoroutineScope()
-    val selectedFontKey by prefsManager.keyboardFont.collectAsState(initial = KeyboardFont.DEFAULT_REGULAR.key)
+    val selectedFontKey by prefsManager.keyboardFont.collectAsState(initial = FancyTextStyle.NONE.key)
 
     // ── Update check ────────────────────────────────────────────────────────
     // Fetched once per keyboard-composition (not on every recomposition —
@@ -359,35 +367,19 @@ fun KeyboardView(
                     },
                     onBack = { popBoard() }
                 )
-                else -> Box(
-                    modifier = Modifier.onGloballyPositioned { coords ->
-                        val heightDp = with(density) { coords.size.height.toDp() }
-                        if (heightDp > 0.dp && heightDp != measuredMainContentHeight) {
-                            measuredMainContentHeight = heightDp
-                        }
-                    }
-                ) {
-                    // Apply the user's selected keyboard font (TOOL_FONT →
-                    // Board.FONT) to every key label inside MainKeyboardKeys.
-                    // ProvideTextStyle only supplies fontFamily here — key
-                    // composables like LetterKey set their own explicit
-                    // fontWeight per key (e.g. shift-affected labels), so we
-                    // don't override weight globally and break that.
-                    val selectedFont = remember(selectedFontKey) { KeyboardFont.fromKey(selectedFontKey) }
-                    ProvideTextStyle(LocalTextStyle.current.copy(fontFamily = selectedFont.genericFamily)) {
-                        MainKeyboardKeys(
-                            currentLanguage = currentLanguage,
-                            shift = shift, shiftLocked = shiftLocked,
-                            onShiftStateChange = onShiftStateChange,
-                            keyHeight = keyHeight, keyShape = keyShape,
-                            bottomPadding = bottomPadding, colors = colors,
-                            onKey = onKey,
-                            onSymbols = { pushBoard(Board.SYMBOLS) },
-                            onEmojiPicker = { pushBoard(Board.EMOJI) },
-                            onLangTooltip = { showLangTooltip = true },
-                            imeAction = inputType
-                        )
-                    }
+                else -> Box {
+                    MainKeyboardKeys(
+                        currentLanguage = currentLanguage,
+                        shift = shift, shiftLocked = shiftLocked,
+                        onShiftStateChange = onShiftStateChange,
+                        keyHeight = keyHeight, keyShape = keyShape,
+                        bottomPadding = bottomPadding, colors = colors,
+                        onKey = onKey,
+                        onSymbols = { pushBoard(Board.SYMBOLS) },
+                        onEmojiPicker = { pushBoard(Board.EMOJI) },
+                        onLangTooltip = { showLangTooltip = true },
+                        imeAction = inputType
+                    )
                 }
             }
         }
@@ -1677,12 +1669,13 @@ private fun ClipRow(
 // ─────────────────────────────────────────────────────────────────────────────
 // Font picker — Board.FONT. Same layout pattern as ClipboardHistoryView:
 // hides the toolbar/emoji-row above it and reclaims that space so switching
-// boards never resizes the keyboard. Each row previews its own font.
-// Phase 1: system generic font families × weight (10 options), no bundled
-// or downloaded font files. A later phase can add extra KeyboardFont
-// entries backed by a custom FontFamily loaded from a file the user
-// downloaded (e.g. from a GitHub-hosted font pack), without changing this
-// UI beyond adding rows.
+// boards never resizes the keyboard.
+//
+// Each row previews a FancyTextStyle (see FancyTextMapper) using the exact
+// Unicode substitution that will be committed to the target app — not a
+// Compose FontFamily, which (as the old implementation showed) only affects
+// how the keyboard draws its own labels and has no effect on typed text.
+// English text only; Sinhala has no equivalent styled-Unicode block.
 // ─────────────────────────────────────────────────────────────────────────────
 @Composable
 private fun FontPickerView(
@@ -1695,9 +1688,9 @@ private fun FontPickerView(
     onBack: () -> Unit
 ) {
     val headerHeight = 44.dp
-    val listHeight = targetContentHeight - headerHeight
+    val captionHeight = 20.dp
 
-    Column(modifier = Modifier.fillMaxWidth().background(colors.bg)) {
+    Column(modifier = Modifier.fillMaxWidth().height(targetContentHeight).background(colors.bg)) {
         Row(
             modifier = Modifier
                 .fillMaxWidth()
@@ -1728,11 +1721,18 @@ private fun FontPickerView(
             )
         }
 
+        Text(
+            text = "Applies to English text only",
+            fontSize = 11.sp,
+            color = colors.subText,
+            modifier = Modifier.height(captionHeight).padding(horizontal = 12.dp)
+        )
+
         LazyColumn(
-            modifier = Modifier.fillMaxWidth().height(listHeight),
+            modifier = Modifier.fillMaxWidth().weight(1f),
             contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 8.dp, vertical = 4.dp)
         ) {
-            items(KeyboardFont.entries.toList(), key = { it.key }) { font ->
+            items(FancyTextStyle.entries.toList(), key = { it.key }) { font ->
                 FontRow(
                     font = font,
                     selected = font.key == selectedFontKey,
@@ -1748,7 +1748,7 @@ private fun FontPickerView(
 
 @Composable
 private fun FontRow(
-    font: KeyboardFont,
+    font: FancyTextStyle,
     selected: Boolean,
     colors: KeyboardColors,
     onSelect: () -> Unit
@@ -1770,11 +1770,12 @@ private fun FontRow(
                 color = colors.subText,
             )
             Text(
-                text = "Sinhala keyboard preview — අ ආ ක ම",
+                // Real Unicode substitution — this is exactly what gets typed
+                // into the target app when this style is selected, not just a
+                // keyboard-side preview approximation.
+                text = FancyTextMapper.apply("Hello World", font),
                 fontSize = 17.sp,
                 color = colors.keyText,
-                fontFamily = font.genericFamily,
-                fontWeight = font.weight,
                 maxLines = 1
             )
         }
