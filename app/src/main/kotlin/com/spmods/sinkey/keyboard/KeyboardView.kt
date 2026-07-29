@@ -27,11 +27,16 @@ import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.window.Popup
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.unit.Density
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
+import androidx.compose.material3.ProvideTextStyle
+import androidx.compose.material3.LocalTextStyle
 import androidx.compose.ui.res.painterResource
 import com.spmods.sinkey.R
 import androidx.compose.runtime.Composable
@@ -54,6 +59,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.zIndex
 import com.spmods.sinkey.data.PreferencesManager
+import com.spmods.sinkey.data.KeyboardFont
 import com.spmods.sinkey.data.RemoteUpdateInfo
 import com.spmods.sinkey.data.UpdateChecker
 import com.spmods.sinkey.data.clipboard.ClipEntity
@@ -155,7 +161,7 @@ private fun stepToBottomPadding(step: Float): Dp = when (Math.round(step)) {
 // Replaces the previous ad-hoc boolean flags (showSymbols, showEmojiPicker)
 // which had no memory of which board opened them, so back always went to MAIN.
 // Must be internal (not private) so SinKeyInputMethodService can reference it.
-enum class Board { MAIN, SYMBOLS, NUMPAD, EMOJI, CLIPBOARD }
+enum class Board { MAIN, SYMBOLS, NUMPAD, EMOJI, CLIPBOARD, FONT }
 
 @Composable
 fun KeyboardView(
@@ -196,6 +202,16 @@ fun KeyboardView(
 
     var showLangTooltip by remember { mutableStateOf(false) }
 
+    // Measured (not formula-derived) height of MainKeyboardKeys' content, in
+    // dp. Boards that hide the toolbar/emoji-row and want to fill that
+    // reclaimed space exactly (currently: CLIPBOARD) read this instead of
+    // recomputing row-padding math by hand, which drifted by a dp or two
+    // from the real rendered height due to rounding. Starts at a reasonable
+    // fallback and is corrected to the true value the first time MAIN is
+    // actually composed and measured.
+    val density = LocalDensity.current
+    var measuredMainContentHeight by remember { mutableStateOf(keyHeight * 4 + 40.dp) }
+
     val currentBoard = boardStack.last()
     fun pushBoard(b: Board) { onBoardStackChange(boardStack + b) }
     fun popBoard()          { if (boardStack.size > 1) onBoardStackChange(boardStack.dropLast(1)) }
@@ -211,6 +227,7 @@ fun KeyboardView(
     val clipRepository = remember { ClipRepository(context) }
     val clipHistory by clipRepository.history.collectAsState(initial = emptyList())
     val coroutineScope = rememberCoroutineScope()
+    val selectedFontKey by prefsManager.keyboardFont.collectAsState(initial = KeyboardFont.DEFAULT_REGULAR.key)
 
     // ── Update check ────────────────────────────────────────────────────────
     // Fetched once per keyboard-composition (not on every recomposition —
@@ -244,13 +261,14 @@ fun KeyboardView(
             // ── Toolbar (always visible, never re-created on pad switch,
             // except for the Emoji board — which moves its own category
             // tabs to the very top instead, in place of this toolbar) ──────
-            if (currentBoard != Board.EMOJI && currentBoard != Board.CLIPBOARD) {
+            if (currentBoard != Board.EMOJI && currentBoard != Board.CLIPBOARD && currentBoard != Board.FONT) {
                 AppsMicBar(
                     colors = colors,
                     suggestions = if (isPhoneInput || currentBoard == Board.SYMBOLS || currentBoard == Board.NUMPAD) emptyList() else suggestions,
                     onSuggestionSelected = onSuggestionSelected,
                     onKey = onKey,
-                    onClipboardOpen = { pushBoard(Board.CLIPBOARD) }
+                    onClipboardOpen = { pushBoard(Board.CLIPBOARD) },
+                    onFontOpen = { pushBoard(Board.FONT) }
                 )
             }
 
@@ -261,7 +279,7 @@ fun KeyboardView(
             // (same slot, same 44dp height, so nothing else on the board
             // shifts or resizes) — the recent-emoji strip itself is not
             // shown at all while the banner is up.
-            if (!isPhoneInput && currentBoard != Board.EMOJI && currentBoard != Board.CLIPBOARD) {
+            if (!isPhoneInput && currentBoard != Board.EMOJI && currentBoard != Board.CLIPBOARD && currentBoard != Board.FONT) {
                 if (showUpdateBanner) {
                     UpdateBanner(
                         colors = colors,
@@ -315,7 +333,7 @@ fun KeyboardView(
                 currentBoard == Board.CLIPBOARD -> ClipboardHistoryView(
                     colors = colors, keyHeight = keyHeight,
                     bottomPadding = bottomPadding,
-                    reclaimedRowsHeight = 48.dp +
+                    targetContentHeight = measuredMainContentHeight + 48.dp +
                         (if (!isPhoneInput && (showUpdateBanner || recentEmojis.isNotEmpty())) 44.dp else 0.dp),
                     history = clipHistory,
                     onPaste = { text -> onKey("PASTE_TEXT:$text") },
@@ -330,18 +348,47 @@ fun KeyboardView(
                     },
                     onBack = { popBoard() }
                 )
-                else -> MainKeyboardKeys(
-                    currentLanguage = currentLanguage,
-                    shift = shift, shiftLocked = shiftLocked,
-                    onShiftStateChange = onShiftStateChange,
-                    keyHeight = keyHeight, keyShape = keyShape,
-                    bottomPadding = bottomPadding, colors = colors,
-                    onKey = onKey,
-                    onSymbols = { pushBoard(Board.SYMBOLS) },
-                    onEmojiPicker = { pushBoard(Board.EMOJI) },
-                    onLangTooltip = { showLangTooltip = true },
-                    imeAction = inputType
+                currentBoard == Board.FONT -> FontPickerView(
+                    colors = colors, keyHeight = keyHeight,
+                    bottomPadding = bottomPadding,
+                    targetContentHeight = measuredMainContentHeight + 48.dp +
+                        (if (!isPhoneInput && (showUpdateBanner || recentEmojis.isNotEmpty())) 44.dp else 0.dp),
+                    selectedFontKey = selectedFontKey,
+                    onFontSelected = { fontKey ->
+                        coroutineScope.launch { prefsManager.setKeyboardFont(fontKey) }
+                    },
+                    onBack = { popBoard() }
                 )
+                else -> Box(
+                    modifier = Modifier.onGloballyPositioned { coords ->
+                        val heightDp = with(density) { coords.size.height.toDp() }
+                        if (heightDp > 0.dp && heightDp != measuredMainContentHeight) {
+                            measuredMainContentHeight = heightDp
+                        }
+                    }
+                ) {
+                    // Apply the user's selected keyboard font (TOOL_FONT →
+                    // Board.FONT) to every key label inside MainKeyboardKeys.
+                    // ProvideTextStyle only supplies fontFamily here — key
+                    // composables like LetterKey set their own explicit
+                    // fontWeight per key (e.g. shift-affected labels), so we
+                    // don't override weight globally and break that.
+                    val selectedFont = remember(selectedFontKey) { KeyboardFont.fromKey(selectedFontKey) }
+                    ProvideTextStyle(LocalTextStyle.current.copy(fontFamily = selectedFont.genericFamily)) {
+                        MainKeyboardKeys(
+                            currentLanguage = currentLanguage,
+                            shift = shift, shiftLocked = shiftLocked,
+                            onShiftStateChange = onShiftStateChange,
+                            keyHeight = keyHeight, keyShape = keyShape,
+                            bottomPadding = bottomPadding, colors = colors,
+                            onKey = onKey,
+                            onSymbols = { pushBoard(Board.SYMBOLS) },
+                            onEmojiPicker = { pushBoard(Board.EMOJI) },
+                            onLangTooltip = { showLangTooltip = true },
+                            imeAction = inputType
+                        )
+                    }
+                }
             }
         }
 
@@ -479,7 +526,8 @@ private fun AppsMicBar(
     suggestions: List<String>,
     onSuggestionSelected: (String) -> Unit,
     onKey: (String) -> Unit,
-    onClipboardOpen: () -> Unit
+    onClipboardOpen: () -> Unit,
+    onFontOpen: () -> Unit
 ) {
     val isTyping = suggestions.isNotEmpty()
 
@@ -573,13 +621,18 @@ private fun AppsMicBar(
                             .size(36.dp)
                             .clip(RoundedCornerShape(6.dp))
                             .clickable {
-                                // TOOL_CLIPBOARD opens the clipboard history board (handled by
-                                // the parent KeyboardView via onBoardOpen) instead of instantly
-                                // pasting — previously this immediately pasted only whatever
-                                // was on the system clipboard *right now*, with no way to reach
-                                // anything copied earlier. Other tool actions still go through
-                                // onKey as before.
-                                if (action == "TOOL_CLIPBOARD") onClipboardOpen() else onKey(action)
+                                // TOOL_CLIPBOARD / TOOL_FONT open their own boards (handled by
+                                // the parent KeyboardView) instead of going through onKey.
+                                // TOOL_CLIPBOARD previously instantly pasted only whatever was
+                                // on the system clipboard *right now*, with no way to reach
+                                // anything copied earlier. TOOL_FONT previously did nothing at
+                                // all (logged "not yet implemented"). Other tool actions still
+                                // go through onKey as before.
+                                when (action) {
+                                    "TOOL_CLIPBOARD" -> onClipboardOpen()
+                                    "TOOL_FONT" -> onFontOpen()
+                                    else -> onKey(action)
+                                }
                             },
                         contentAlignment = Alignment.Center
                     ) {
@@ -1480,12 +1533,12 @@ private fun ClipboardHistoryView(
     colors: KeyboardColors,
     keyHeight: Dp,
     bottomPadding: Dp,
-    // Whether the toolbar (48dp) and recent-emoji/update-banner row (44dp)
-    // would have been shown above MainKeyboardKeys. CLIPBOARD hides both of
-    // those (same as EMOJI does) and reclaims that space here instead, so
-    // the total board height still matches exactly — nothing on screen
-    // shrinks or grows when switching to/from this board.
-    reclaimedRowsHeight: Dp,
+    // The REAL measured height of MainKeyboardKeys' content (see
+    // measuredMainContentHeight in KeyboardView) plus however much of the
+    // toolbar/emoji-row above it this board reclaims by hiding them —
+    // passed in rather than recomputed from row-padding math, which drifted
+    // by a dp or two from the actual rendered height due to rounding.
+    targetContentHeight: Dp,
     history: List<ClipEntity>,
     onPaste: (String) -> Unit,
     onTogglePin: (String, Boolean) -> Unit,
@@ -1493,12 +1546,8 @@ private fun ClipboardHistoryView(
     onClearAll: () -> Unit,
     onBack: () -> Unit
 ) {
-    // MainKeyboardKeys is 4 rows, each wrapped in Row(padding(vertical = 3.dp))
-    // → 6dp per row, plus the outer Column's padding(vertical = 2.dp) → 4dp,
-    // plus bottomPadding once.
-    val mainKeyboardContentHeight = (keyHeight + 6.dp) * 4 + 4.dp + bottomPadding
     val headerHeight = 44.dp
-    val listHeight = mainKeyboardContentHeight + reclaimedRowsHeight - headerHeight
+    val listHeight = targetContentHeight - headerHeight
 
     Column(modifier = Modifier.fillMaxWidth().background(colors.bg)) {
         // Header: back arrow, title, clear-all
@@ -1621,6 +1670,124 @@ private fun ClipRow(
                 modifier = Modifier.size(16.dp),
                 tint = colors.subText
             )
+        }
+    }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Font picker — Board.FONT. Same layout pattern as ClipboardHistoryView:
+// hides the toolbar/emoji-row above it and reclaims that space so switching
+// boards never resizes the keyboard. Each row previews its own font.
+// Phase 1: system generic font families × weight (10 options), no bundled
+// or downloaded font files. A later phase can add extra KeyboardFont
+// entries backed by a custom FontFamily loaded from a file the user
+// downloaded (e.g. from a GitHub-hosted font pack), without changing this
+// UI beyond adding rows.
+// ─────────────────────────────────────────────────────────────────────────────
+@Composable
+private fun FontPickerView(
+    colors: KeyboardColors,
+    keyHeight: Dp,
+    bottomPadding: Dp,
+    targetContentHeight: Dp,
+    selectedFontKey: String,
+    onFontSelected: (String) -> Unit,
+    onBack: () -> Unit
+) {
+    val headerHeight = 44.dp
+    val listHeight = targetContentHeight - headerHeight
+
+    Column(modifier = Modifier.fillMaxWidth().background(colors.bg)) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(headerHeight)
+                .padding(horizontal = 8.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Box(
+                modifier = Modifier
+                    .size(32.dp)
+                    .clip(RoundedCornerShape(6.dp))
+                    .clickable { onBack() },
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    painter = painterResource(id = R.drawable.ic_back_to_keyboard),
+                    contentDescription = "Back",
+                    modifier = Modifier.size(20.dp),
+                    tint = colors.subText
+                )
+            }
+            Text(
+                text = "Font",
+                fontSize = 15.sp,
+                fontWeight = FontWeight.Medium,
+                color = colors.keyText,
+                modifier = Modifier.weight(1f).padding(start = 4.dp)
+            )
+        }
+
+        LazyColumn(
+            modifier = Modifier.fillMaxWidth().height(listHeight),
+            contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 8.dp, vertical = 4.dp)
+        ) {
+            items(KeyboardFont.entries.toList(), key = { it.key }) { font ->
+                FontRow(
+                    font = font,
+                    selected = font.key == selectedFontKey,
+                    colors = colors,
+                    onSelect = { onFontSelected(font.key) }
+                )
+            }
+        }
+
+        Spacer(modifier = Modifier.height(bottomPadding))
+    }
+}
+
+@Composable
+private fun FontRow(
+    font: KeyboardFont,
+    selected: Boolean,
+    colors: KeyboardColors,
+    onSelect: () -> Unit
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 3.dp)
+            .clip(RoundedCornerShape(8.dp))
+            .background(if (selected) DeshGreen.copy(alpha = 0.15f) else colors.keyBg)
+            .clickable { onSelect() }
+            .padding(horizontal = 12.dp, vertical = 10.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                text = font.label,
+                fontSize = 13.sp,
+                color = colors.subText,
+            )
+            Text(
+                text = "Sinhala keyboard preview — අ ආ ක ම",
+                fontSize = 17.sp,
+                color = colors.keyText,
+                fontFamily = font.genericFamily,
+                fontWeight = font.weight,
+                maxLines = 1
+            )
+        }
+        if (selected) {
+            Box(
+                modifier = Modifier
+                    .size(22.dp)
+                    .clip(RoundedCornerShape(50))
+                    .background(DeshGreen),
+                contentAlignment = Alignment.Center
+            ) {
+                Text("✓", fontSize = 13.sp, color = Color.White, fontWeight = FontWeight.Bold)
+            }
         }
     }
 }
