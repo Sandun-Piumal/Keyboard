@@ -315,6 +315,8 @@ fun KeyboardView(
                 currentBoard == Board.CLIPBOARD -> ClipboardHistoryView(
                     colors = colors, keyHeight = keyHeight,
                     bottomPadding = bottomPadding,
+                    reclaimedRowsHeight = 48.dp +
+                        (if (!isPhoneInput && (showUpdateBanner || recentEmojis.isNotEmpty())) 44.dp else 0.dp),
                     history = clipHistory,
                     onPaste = { text -> onKey("PASTE_TEXT:$text") },
                     onTogglePin = { text, pinned ->
@@ -1478,6 +1480,12 @@ private fun ClipboardHistoryView(
     colors: KeyboardColors,
     keyHeight: Dp,
     bottomPadding: Dp,
+    // Whether the toolbar (48dp) and recent-emoji/update-banner row (44dp)
+    // would have been shown above MainKeyboardKeys. CLIPBOARD hides both of
+    // those (same as EMOJI does) and reclaims that space here instead, so
+    // the total board height still matches exactly — nothing on screen
+    // shrinks or grows when switching to/from this board.
+    reclaimedRowsHeight: Dp,
     history: List<ClipEntity>,
     onPaste: (String) -> Unit,
     onTogglePin: (String, Boolean) -> Unit,
@@ -1485,18 +1493,19 @@ private fun ClipboardHistoryView(
     onClearAll: () -> Unit,
     onBack: () -> Unit
 ) {
-    // Total height matches other boards: same header row height (44dp) as
-    // EmojiRow/UpdateBanner would have occupied, plus a scrollable list area
-    // sized to roughly 4 key-rows so board height doesn't jump around when
-    // switching from the main keyboard.
-    val listHeight = keyHeight * 4 + 24.dp
+    // MainKeyboardKeys is 4 rows, each wrapped in Row(padding(vertical = 3.dp))
+    // → 6dp per row, plus the outer Column's padding(vertical = 2.dp) → 4dp,
+    // plus bottomPadding once.
+    val mainKeyboardContentHeight = (keyHeight + 6.dp) * 4 + 4.dp + bottomPadding
+    val headerHeight = 44.dp
+    val listHeight = mainKeyboardContentHeight + reclaimedRowsHeight - headerHeight
 
     Column(modifier = Modifier.fillMaxWidth().background(colors.bg)) {
         // Header: back arrow, title, clear-all
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .height(44.dp)
+                .height(headerHeight)
                 .padding(horizontal = 8.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
