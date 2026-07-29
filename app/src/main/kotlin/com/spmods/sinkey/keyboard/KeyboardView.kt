@@ -84,7 +84,7 @@ import androidx.compose.material.icons.filled.Search
 private val topRowNumbers = listOf("1","2","3","4","5","6","7","8","9","0")
 
 // Desh Keyboard exact accent color (accentContainer from ManglishLight theme)
-private val DeshGreen = Color(0xFF6E9A65)
+internal val DeshGreen = Color(0xFF6E9A65)
 
 // ── Theme-aware color helpers ─────────────────────────────────────────────────
 
@@ -159,7 +159,7 @@ private fun stepToBottomPadding(step: Float): Dp = when (Math.round(step)) {
 // Replaces the previous ad-hoc boolean flags (showSymbols, showEmojiPicker)
 // which had no memory of which board opened them, so back always went to MAIN.
 // Must be internal (not private) so SinKeyInputMethodService can reference it.
-enum class Board { MAIN, SYMBOLS, NUMPAD, EMOJI, CLIPBOARD, FONT }
+enum class Board { MAIN, SYMBOLS, NUMPAD, EMOJI, CLIPBOARD, FONT, STICKER, STICKER_CREATE }
 
 @Composable
 fun KeyboardView(
@@ -187,7 +187,16 @@ fun KeyboardView(
     // this one is deliberately NOT meant to survive hide/show. Preview
     // callers (MainActivity) omit these and default to "not dismissed".
     dismissedUpdateVersionCode: Int = 0,
-    onDismissedUpdateVersionCodeChange: (Int) -> Unit = {}
+    onDismissedUpdateVersionCodeChange: (Int) -> Unit = {},
+    // Sticker board (Board.STICKER / STICKER_CREATE). onStickerSend is
+    // called with (pathOrUri, isOwnSticker, mimeType) — see
+    // SinKeyInputMethodService.onStickerSelected for what each means.
+    // Preview callers (MainActivity) omit this and get a no-op.
+    onStickerSend: (String, Boolean, String) -> Unit = { _, _, _ -> },
+    // Triggers the system gallery picker for Board.STICKER_CREATE's Image
+    // Sticker option — wired to SinKeyInputMethodService.pickImageForSticker,
+    // since only the service can start the trampoline Activity needed here.
+    onPickStickerImage: () -> Unit = {}
 ) {
     val colors = keyboardColors(showKeyBorders, isDark)
     val keyHeight = stepToKeyHeight(keyboardHeight)
@@ -236,6 +245,11 @@ fun KeyboardView(
     val clipHistory by clipRepository.history.collectAsState(initial = emptyList())
     val coroutineScope = rememberCoroutineScope()
     val selectedFontKey by prefsManager.keyboardFont.collectAsState(initial = FancyTextStyle.NONE.key)
+    val stickerRepository = remember { com.spmods.sinkey.data.sticker.StickerRepository(context) }
+    val externalStickerSource = remember { com.spmods.sinkey.data.sticker.ExternalStickerSource(context) }
+    val ownStickers by stickerRepository.all.collectAsState(initial = emptyList())
+    val favouriteStickers by stickerRepository.favourites.collectAsState(initial = emptyList())
+    val connectedExternalFolders by externalStickerSource.connectedFolders.collectAsState(initial = emptyList())
 
     // ── Update check ────────────────────────────────────────────────────────
     // Fetched once per keyboard-composition (not on every recomposition —
@@ -269,14 +283,16 @@ fun KeyboardView(
             // ── Toolbar (always visible, never re-created on pad switch,
             // except for the Emoji board — which moves its own category
             // tabs to the very top instead, in place of this toolbar) ──────
-            if (currentBoard != Board.EMOJI && currentBoard != Board.CLIPBOARD && currentBoard != Board.FONT) {
+            if (currentBoard != Board.EMOJI && currentBoard != Board.CLIPBOARD && currentBoard != Board.FONT &&
+                currentBoard != Board.STICKER && currentBoard != Board.STICKER_CREATE) {
                 AppsMicBar(
                     colors = colors,
                     suggestions = if (isPhoneInput || currentBoard == Board.SYMBOLS || currentBoard == Board.NUMPAD) emptyList() else suggestions,
                     onSuggestionSelected = onSuggestionSelected,
                     onKey = onKey,
                     onClipboardOpen = { pushBoard(Board.CLIPBOARD) },
-                    onFontOpen = { pushBoard(Board.FONT) }
+                    onFontOpen = { pushBoard(Board.FONT) },
+                    onStickerOpen = { pushBoard(Board.STICKER) }
                 )
             }
 
@@ -287,7 +303,8 @@ fun KeyboardView(
             // (same slot, same 44dp height, so nothing else on the board
             // shifts or resizes) — the recent-emoji strip itself is not
             // shown at all while the banner is up.
-            if (!isPhoneInput && currentBoard != Board.EMOJI && currentBoard != Board.CLIPBOARD && currentBoard != Board.FONT) {
+            if (!isPhoneInput && currentBoard != Board.EMOJI && currentBoard != Board.CLIPBOARD && currentBoard != Board.FONT &&
+                currentBoard != Board.STICKER && currentBoard != Board.STICKER_CREATE) {
                 if (showUpdateBanner) {
                     UpdateBanner(
                         colors = colors,
@@ -367,6 +384,38 @@ fun KeyboardView(
                     },
                     onBack = { popBoard() }
                 )
+                currentBoard == Board.STICKER -> StickerBoardView(
+                    colors = colors, keyHeight = keyHeight,
+                    bottomPadding = bottomPadding,
+                    targetContentHeight = measuredMainContentHeight + 48.dp +
+                        (if (!isPhoneInput && (showUpdateBanner || recentEmojis.isNotEmpty())) 44.dp else 0.dp),
+                    ownStickers = ownStickers,
+                    favouriteStickers = favouriteStickers,
+                    connectedExternalFolders = connectedExternalFolders,
+                    externalStickerSource = externalStickerSource,
+                    onSendOwnSticker = { filePath -> onStickerSend(filePath, true, "image/png") },
+                    onSendExternalSticker = { uri, mime -> onStickerSend(uri, false, mime) },
+                    onToggleFavourite = { filePath, fav ->
+                        coroutineScope.launch { stickerRepository.setFavourite(filePath, fav) }
+                    },
+                    onDeleteSticker = { filePath ->
+                        coroutineScope.launch { stickerRepository.delete(filePath) }
+                    },
+                    onCreateClick = { pushBoard(Board.STICKER_CREATE) },
+                    onBack = { popBoard() }
+                )
+                currentBoard == Board.STICKER_CREATE -> StickerCreateView(
+                    colors = colors, keyHeight = keyHeight,
+                    bottomPadding = bottomPadding,
+                    targetContentHeight = measuredMainContentHeight + 48.dp +
+                        (if (!isPhoneInput && (showUpdateBanner || recentEmojis.isNotEmpty())) 44.dp else 0.dp),
+                    onPickImageRequested = onPickStickerImage,
+                    onTextSubmitted = { text ->
+                        coroutineScope.launch { stickerRepository.createFromText(text) }
+                        popBoard()
+                    },
+                    onBack = { popBoard() }
+                )
                 else -> Box {
                     MainKeyboardKeys(
                         currentLanguage = currentLanguage,
@@ -409,7 +458,7 @@ fun KeyboardView(
 // ─────────────────────────────────────────────────────────────────────────────
 
 @Composable
-private fun MainKeyboardKeys(
+internal fun MainKeyboardKeys(
     currentLanguage: String,
     shift: Boolean,
     shiftLocked: Boolean,
@@ -519,7 +568,8 @@ private fun AppsMicBar(
     onSuggestionSelected: (String) -> Unit,
     onKey: (String) -> Unit,
     onClipboardOpen: () -> Unit,
-    onFontOpen: () -> Unit
+    onFontOpen: () -> Unit,
+    onStickerOpen: () -> Unit
 ) {
     val isTyping = suggestions.isNotEmpty()
 
@@ -623,6 +673,7 @@ private fun AppsMicBar(
                                 when (action) {
                                     "TOOL_CLIPBOARD" -> onClipboardOpen()
                                     "TOOL_FONT" -> onFontOpen()
+                                    "TOOL_STICKER" -> onStickerOpen()
                                     else -> onKey(action)
                                 }
                             },
