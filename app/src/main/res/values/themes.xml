@@ -13,4 +13,17 @@
         <item name="windowSplashScreenIconBackgroundColor">@color/splash_background</item>
         <item name="postSplashScreenTheme">@style/Theme.SinKey</item>
     </style>
+
+    <!--
+        Invisible host theme for StickerPickerActivity — a trampoline that
+        only launches a system picker (gallery / SAF folder tree) and
+        immediately finishes. It should never actually be seen; the system
+        picker UI is what the user sees.
+    -->
+    <style name="Theme.SinKey.Transparent" parent="android:Theme.Material.Light.NoActionBar">
+        <item name="android:windowIsTranslucent">true</item>
+        <item name="android:windowBackground">@android:color/transparent</item>
+        <item name="android:windowNoTitle">true</item>
+        <item name="android:windowAnimationStyle">@null</item>
+    </style>
 </resources>
