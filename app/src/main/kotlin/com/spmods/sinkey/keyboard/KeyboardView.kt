@@ -1,5 +1,6 @@
 package com.spmods.sinkey.keyboard
 
+import android.util.Log
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -53,6 +54,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.zIndex
 import com.spmods.sinkey.data.PreferencesManager
+import com.spmods.sinkey.data.RemoteUpdateInfo
+import com.spmods.sinkey.data.UpdateChecker
 import com.spmods.sinkey.ime.SinKeyInputMethodService
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.withTimeoutOrNull
@@ -61,6 +64,7 @@ import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.waitForUpOrCancellation
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Search
 
 // Number labels for top row keys
@@ -163,7 +167,14 @@ fun KeyboardView(
     onBoardStackChange: (List<Board>) -> Unit = {},
     // ShiftState owned by the IME service (survives hide/show). Preview callers omit.
     shiftState: SinKeyInputMethodService.ShiftState = SinKeyInputMethodService.ShiftState.OFF,
-    onShiftStateChange: (SinKeyInputMethodService.ShiftState) -> Unit = {}
+    onShiftStateChange: (SinKeyInputMethodService.ShiftState) -> Unit = {},
+    // Update-banner dismiss state, owned by the IME service so it's reset
+    // on every keyboard show (see the field comment in
+    // SinKeyInputMethodService.kt) — unlike boardStack/shiftState above,
+    // this one is deliberately NOT meant to survive hide/show. Preview
+    // callers (MainActivity) omit these and default to "not dismissed".
+    dismissedUpdateVersionCode: Int = 0,
+    onDismissedUpdateVersionCodeChange: (Int) -> Unit = {}
 ) {
     val colors = keyboardColors(showKeyBorders, isDark)
     val keyHeight = stepToKeyHeight(keyboardHeight)
@@ -188,6 +199,23 @@ fun KeyboardView(
     val context = LocalContext.current
     val prefsManager = remember { PreferencesManager(context) }
     val recentEmojis by prefsManager.recentEmojis.collectAsState(initial = emptyList())
+
+    // ── Update check ────────────────────────────────────────────────────────
+    // Fetched once per keyboard-composition (not on every recomposition —
+    // `Unit` as the LaunchedEffect key means this block runs exactly once
+    // for the lifetime of this composable instance, same as the keyboard
+    // being shown once per IME session). Any failure inside UpdateChecker
+    // is already swallowed there and returns null, so this can't crash or
+    // show an error — it just silently stays "no update" on failure.
+    var remoteUpdate by remember { mutableStateOf<RemoteUpdateInfo?>(null) }
+    LaunchedEffect(Unit) {
+        remoteUpdate = UpdateChecker.checkForUpdate(context)
+    }
+    // dismissedUpdateVersionCode comes from the IME service (see its param
+    // doc above) — NOT DataStore/PreferencesManager, because dismissal here
+    // must be undone every time the keyboard is reopened, not persisted
+    // forever like a normal user preference.
+    val showUpdateBanner = remoteUpdate != null && remoteUpdate!!.versionCode > dismissedUpdateVersionCode
 
     LaunchedEffect(showLangTooltip) {
         if (showLangTooltip) {
@@ -215,13 +243,30 @@ fun KeyboardView(
 
             // ── Recent emoji row — shown above whichever board is active,
             // except the Emoji board itself (which has its own Recent tab).
-            if (!isPhoneInput && currentBoard != Board.EMOJI && recentEmojis.isNotEmpty()) {
-                EmojiRow(
-                    emojis = recentEmojis,
-                    colors = colors,
-                    onKey = onKey,
-                    onMoreClick = { pushBoard(Board.EMOJI) }
-                )
+            // When an update is available and hasn't been dismissed, this
+            // strip is TEMPORARILY replaced by the update banner instead
+            // (same slot, same 44dp height, so nothing else on the board
+            // shifts or resizes) — the recent-emoji strip itself is not
+            // shown at all while the banner is up.
+            if (!isPhoneInput && currentBoard != Board.EMOJI) {
+                if (showUpdateBanner) {
+                    UpdateBanner(
+                        colors = colors,
+                        onOpenClick = {
+                            openUrl(context, remoteUpdate!!.url)
+                        },
+                        onDismissClick = {
+                            onDismissedUpdateVersionCodeChange(remoteUpdate!!.versionCode)
+                        }
+                    )
+                } else if (recentEmojis.isNotEmpty()) {
+                    EmojiRow(
+                        emojis = recentEmojis,
+                        colors = colors,
+                        onKey = onKey,
+                        onMoreClick = { pushBoard(Board.EMOJI) }
+                    )
+                }
             }
 
             // ── Content area — only this part switches ────────────────────────
@@ -551,6 +596,73 @@ private fun EmojiRow(emojis: List<String>, colors: KeyboardColors, onKey: (Strin
             ) { Text(text = "•••", fontSize = 14.sp, color = colors.subText) }
         }
         item { Spacer(modifier = Modifier.width(4.dp)) }
+    }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Update banner — temporarily replaces the recent-emoji strip above the main
+// keyboard when UpdateChecker finds a newer versionCode in the remote JSON.
+// Sized identically to EmojiRow (44dp total: 40dp content + 2dp top/bottom
+// padding) so swapping between the two never shifts or resizes anything
+// else on the board.
+// ─────────────────────────────────────────────────────────────────────────────
+@Composable
+private fun UpdateBanner(
+    colors: KeyboardColors,
+    onOpenClick: () -> Unit,
+    onDismissClick: () -> Unit
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(40.dp)
+            .padding(vertical = 2.dp)
+            .padding(horizontal = 4.dp)
+            .clip(RoundedCornerShape(6.dp))
+            .background(colors.specialKeyBg)
+            .clickable { onOpenClick() },
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Text(
+            text = "🎉 New update available — tap to download",
+            fontSize = 13.sp,
+            color = colors.keyText,
+            fontWeight = FontWeight.Medium,
+            maxLines = 1,
+            modifier = Modifier
+                .weight(1f)
+                .padding(start = 12.dp)
+        )
+        Box(
+            modifier = Modifier
+                .size(36.dp)
+                .clip(RoundedCornerShape(6.dp))
+                .clickable { onDismissClick() },
+            contentAlignment = Alignment.Center
+        ) {
+            Icon(
+                imageVector = Icons.Filled.Close,
+                contentDescription = null,
+                modifier = Modifier.size(16.dp),
+                tint = colors.subText
+            )
+        }
+    }
+}
+
+/**
+ * Opens [url] in the device's default browser. Launched from a Service
+ * context (the IME, not an Activity), so FLAG_ACTIVITY_NEW_TASK is required
+ * — without it, starting an Activity from a non-Activity context throws
+ * android.util.AndroidRuntimeException at runtime.
+ */
+private fun openUrl(context: android.content.Context, url: String) {
+    try {
+        val intent = android.content.Intent(android.content.Intent.ACTION_VIEW, android.net.Uri.parse(url))
+        intent.addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
+        context.startActivity(intent)
+    } catch (e: Exception) {
+        Log.w("KeyboardView", "Could not open update URL: $url", e)
     }
 }
 
