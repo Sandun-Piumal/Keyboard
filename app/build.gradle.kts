@@ -73,6 +73,11 @@ dependencies {
     implementation("androidx.savedstate:savedstate-ktx:1.2.1")
     implementation("androidx.core:core-splashscreen:1.0.1")
 
+    // DocumentFile: used to read WhatsApp/Telegram sticker folders the user
+    // has explicitly connected via the Storage Access Framework folder
+    // picker (Board.STICKER external sources) — never broad file access.
+    implementation("androidx.documentfile:documentfile:1.0.1")
+
     // EmojiCompat: downloadable Noto Color Emoji font (Unicode 15.x)
     // Allows modern emojis to render on any Android 7+ device without
     // waiting for a system update. Font downloaded once from Google Fonts.
