@@ -89,6 +89,14 @@ class SinKeyInputMethodService : InputMethodService() {
     private var cachedVibrateEnabled = false
     private var cachedSoundEnabled = true
 
+    // Fancy-text style (TOOL_FONT) applied to committed ENGLISH text only —
+    // see FancyTextMapper. Cached the same way as the feedback prefs above:
+    // read once via a Flow collector so applying it on every keystroke never
+    // blocks. Sinhala typing ignores this — there's no styled-Unicode
+    // equivalent for Sinhala script, so it's applied only in the "en" branch
+    // of handleKey/handleSuggestion below.
+    private var cachedFancyTextStyle = com.spmods.sinkey.data.FancyTextStyle.NONE
+
     // FIX #2: Single reusable SpellCheckerSession — created once, reused across
     // keystrokes. Previous code created a new session per keystroke, leaking OS
     // resources and causing memory growth over time.
@@ -126,6 +134,9 @@ class SinKeyInputMethodService : InputMethodService() {
         }
         serviceScope.launch {
             prefs.keySoundEnabled.collect { cachedSoundEnabled = it }
+        }
+        serviceScope.launch {
+            prefs.keyboardFont.collect { cachedFancyTextStyle = com.spmods.sinkey.data.FancyTextStyle.fromKey(it) }
         }
 
         // FIX #2: Create spell-checker session once for the lifetime of the service.
@@ -457,7 +468,8 @@ class SinKeyInputMethodService : InputMethodService() {
                     // Apply shift to English letter
                     val typed = if (shiftState.value != ShiftState.OFF) key.uppercase() else key.lowercase()
                     englishBuffer.append(typed)
-                    ic.commitText(typed, 1)
+                    val styled = com.spmods.sinkey.keyboard.FancyTextMapper.apply(typed, cachedFancyTextStyle)
+                    ic.commitText(styled, 1)
                     updateSuggestions()
                     // Consume one-shot shift after letter
                     if (shiftState.value == ShiftState.ONE_SHOT) shiftState.value = ShiftState.OFF
@@ -524,7 +536,8 @@ class SinKeyInputMethodService : InputMethodService() {
         } else {
             val len = englishBuffer.length
             if (len > 0) ic.deleteSurroundingText(len, 0)
-            ic.commitText(word, 1)
+            val styled = com.spmods.sinkey.keyboard.FancyTextMapper.apply(word, cachedFancyTextStyle)
+            ic.commitText(styled, 1)
             englishBuffer.clear()
             learnWord(word, "en")
         }
