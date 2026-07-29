@@ -1539,9 +1539,8 @@ private fun ClipboardHistoryView(
     onBack: () -> Unit
 ) {
     val headerHeight = 44.dp
-    val listHeight = targetContentHeight - headerHeight
 
-    Column(modifier = Modifier.fillMaxWidth().background(colors.bg)) {
+    Column(modifier = Modifier.fillMaxWidth().height(targetContentHeight).background(colors.bg)) {
         // Header: back arrow, title, clear-all
         Row(
             modifier = Modifier
@@ -1586,7 +1585,7 @@ private fun ClipboardHistoryView(
 
         if (history.isEmpty()) {
             Box(
-                modifier = Modifier.fillMaxWidth().height(listHeight),
+                modifier = Modifier.fillMaxWidth().weight(1f),
                 contentAlignment = Alignment.Center
             ) {
                 Text(
@@ -1597,7 +1596,7 @@ private fun ClipboardHistoryView(
             }
         } else {
             LazyColumn(
-                modifier = Modifier.fillMaxWidth().height(listHeight),
+                modifier = Modifier.fillMaxWidth().weight(1f),
                 contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 8.dp, vertical = 4.dp)
             ) {
                 items(history, key = { it.text }) { clip ->
