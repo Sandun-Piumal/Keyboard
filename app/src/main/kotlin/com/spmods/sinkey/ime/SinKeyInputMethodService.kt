@@ -64,6 +64,17 @@ class SinKeyInputMethodService : InputMethodService() {
     enum class ShiftState { OFF, ONE_SHOT, LOCKED }
     private var shiftState = mutableStateOf(ShiftState.ONE_SHOT) // default: first letter capital
 
+    // Update banner dismiss state — deliberately in-memory only (NOT
+    // DataStore/PreferencesManager), and deliberately at service level (not
+    // remember{} inside the Composable) for the opposite reason boardStack
+    // is hoisted here: boardStack needs to SURVIVE hide/show, but this flag
+    // needs to be UNDONE on every hide/show. A dismissed update banner must
+    // come back the next time the keyboard is reopened (per product
+    // decision — dismiss is a "not right now", not a permanent opt-out),
+    // so it's reset unconditionally in onStartInputView below, which fires
+    // on every keyboard show including simple hide→show of the same field.
+    private var dismissedUpdateVersionCode = mutableStateOf(0)
+
     // FIX #1 & #3: Cached prefs — read once on start, updated via coroutine.
     // Eliminates runBlocking on every key tap (was causing main-thread lag / ANR).
     // Also enables key sound which was previously unimplemented.
@@ -193,7 +204,9 @@ class SinKeyInputMethodService : InputMethodService() {
                         boardStack = boardStack.value,
                         onBoardStackChange = { boardStack.value = it },
                         shiftState = shiftState.value,
-                        onShiftStateChange = { shiftState.value = it }
+                        onShiftStateChange = { shiftState.value = it },
+                        dismissedUpdateVersionCode = dismissedUpdateVersionCode.value,
+                        onDismissedUpdateVersionCodeChange = { dismissedUpdateVersionCode.value = it }
                     )
                 }
         }
@@ -246,6 +259,12 @@ class SinKeyInputMethodService : InputMethodService() {
         englishBuffer.clear()
         suggestions.value = emptyList()
         currentInputTypeState.value = info?.inputType ?: 0
+
+        // Update-banner dismissal is undone on every keyboard show (not
+        // gated by `restarting` like the board-reset below) — see the field
+        // comment on dismissedUpdateVersionCode for why this must fire on
+        // every show, including simple hide→show of the same field.
+        dismissedUpdateVersionCode.value = 0
 
         // Reset board to MAIN when the user moves to a different input field
         // (not on simple hide/show of the same field). restarting=true means
