@@ -509,7 +509,8 @@ private fun AppsMicBar(
                 Box(
                     modifier = Modifier
                         .size(36.dp)
-                        .clip(RoundedCornerShape(6.dp))
+                        .clip(RoundedCornerShape(50))
+                        .background(Color(0x191212))
                         .clickable { onKey("TOOL_MIC") },
                     contentAlignment = Alignment.Center
                 ) {
@@ -523,6 +524,8 @@ private fun AppsMicBar(
             }
         }
 }
+
+
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Emoji row — recent-emoji strip shown above the main typing keyboard
