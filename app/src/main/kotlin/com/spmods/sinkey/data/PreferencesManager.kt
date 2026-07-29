@@ -30,7 +30,10 @@ class PreferencesManager(private val context: Context) {
         val BOTTOM_SPACE_ENABLED = booleanPreferencesKey("bottom_space_enabled")
         val BOTTOM_SPACE_SIZE = floatPreferencesKey("bottom_space_size") // 0f=S, 1f=M, 2f=L, 3f=XL
         val SHOW_KEY_BORDERS = booleanPreferencesKey("show_key_borders")
-        // Composing/preview text font — one of KeyboardFont.entries' .key values.
+        // Fancy-text style applied to committed English text — one of
+        // FancyTextStyle.entries' .key values. Reusing the old preference
+        // key name (keyboard_font) so existing users' stored default isn't
+        // silently reset to NONE by this migration.
         val KEYBOARD_FONT = stringPreferencesKey("keyboard_font")
     }
 
@@ -72,9 +75,9 @@ class PreferencesManager(private val context: Context) {
         prefs[Keys.SHOW_KEY_BORDERS] ?: true
     }
 
-    /** Currently selected composing/preview font, defaulting to the system default. */
+    /** Currently selected fancy-text style for English typing, defaulting to off (plain text). */
     val keyboardFont: Flow<String> = context.dataStore.data.map { prefs ->
-        prefs[Keys.KEYBOARD_FONT] ?: KeyboardFont.DEFAULT_REGULAR.key
+        prefs[Keys.KEYBOARD_FONT] ?: FancyTextStyle.NONE.key
     }
 
     /** Emits the most-recently-used emojis list (up to [MAX_RECENT] entries). */
@@ -140,43 +143,45 @@ class PreferencesManager(private val context: Context) {
 }
 
 /**
- * The 10 built-in font options for the composing/preview text (Phase 1 —
- * system generic font families × weight, no bundled/downloaded font files).
- * [key] is the stable identifier persisted to DataStore; [label] is shown
- * in the Font board UI.
+ * "Fancy text" styles for English typing.
  *
- * A later phase can add user-downloaded fonts (e.g. fetched from a GitHub
- * repo of .ttf files) as additional entries that resolve to a custom
- * FontFamily loaded from a cached file instead of [genericFamily].
+ * IMPORTANT — what this actually does and why the old version didn't work:
+ * A soft keyboard cannot force a custom *font* onto text typed into another
+ * app. It can only send Unicode characters via commitText(); how those
+ * characters are drawn is entirely up to the receiving app (WhatsApp,
+ * Messages, etc.), which uses its own font/renderer. The previous
+ * KeyboardFont implementation only fed a Compose FontFamily into
+ * ProvideTextStyle around the keyboard's own key labels — so it changed how
+ * the letters on the KEYS looked, but had no effect whatsoever on what was
+ * actually committed to the input field. Nothing was wired into
+ * commitText()/setComposingText() at all, so typed text always came out in
+ * the receiving app's normal font.
+ *
+ * This replaces that with genuine Unicode character substitution: each
+ * style maps plain a-z / A-Z / 0-9 to visually distinct Unicode code points
+ * (𝓼𝓬𝓻𝓲𝓹𝓽, 𝗯𝗼𝗹𝗱, 𝕕𝕠𝕦𝕓𝕝𝕖-𝕤𝕥𝕣𝕦𝕔𝕜, etc.). Those ARE real characters, so
+ * they render with the chosen look in *any* app, exactly as typed — because
+ * the visual difference now lives in the character itself, not in a font
+ * request the receiving app has no reason to honor.
+ *
+ * English only: Sinhala Unicode has no equivalent styled code-point block,
+ * so applying this to Sinhala text isn't possible the same way. The style
+ * is simply not applied while typing in Sinhala.
  */
-enum class KeyboardFont(
-    val key: String,
-    val label: String,
-    val genericFamily: androidx.compose.ui.text.font.FontFamily,
-    val weight: androidx.compose.ui.text.font.FontWeight
-) {
-    DEFAULT_LIGHT("default_light", "Default Light",
-        androidx.compose.ui.text.font.FontFamily.Default, androidx.compose.ui.text.font.FontWeight.Light),
-    DEFAULT_REGULAR("default_regular", "Default",
-        androidx.compose.ui.text.font.FontFamily.Default, androidx.compose.ui.text.font.FontWeight.Normal),
-    DEFAULT_BOLD("default_bold", "Default Bold",
-        androidx.compose.ui.text.font.FontFamily.Default, androidx.compose.ui.text.font.FontWeight.Bold),
-    SANS_SERIF_LIGHT("sans_serif_light", "Sans-serif Light",
-        androidx.compose.ui.text.font.FontFamily.SansSerif, androidx.compose.ui.text.font.FontWeight.Light),
-    SANS_SERIF_BOLD("sans_serif_bold", "Sans-serif Bold",
-        androidx.compose.ui.text.font.FontFamily.SansSerif, androidx.compose.ui.text.font.FontWeight.Bold),
-    SERIF_REGULAR("serif_regular", "Serif",
-        androidx.compose.ui.text.font.FontFamily.Serif, androidx.compose.ui.text.font.FontWeight.Normal),
-    SERIF_BOLD("serif_bold", "Serif Bold",
-        androidx.compose.ui.text.font.FontFamily.Serif, androidx.compose.ui.text.font.FontWeight.Bold),
-    MONOSPACE_REGULAR("monospace_regular", "Monospace",
-        androidx.compose.ui.text.font.FontFamily.Monospace, androidx.compose.ui.text.font.FontWeight.Normal),
-    MONOSPACE_BOLD("monospace_bold", "Monospace Bold",
-        androidx.compose.ui.text.font.FontFamily.Monospace, androidx.compose.ui.text.font.FontWeight.Bold),
-    CURSIVE_REGULAR("cursive_regular", "Cursive",
-        androidx.compose.ui.text.font.FontFamily.Cursive, androidx.compose.ui.text.font.FontWeight.Normal);
+enum class FancyTextStyle(val key: String, val label: String, val preview: String) {
+    NONE("none", "Normal (off)", "Normal"),
+    BOLD("bold", "𝗕𝗼𝗹𝗱", "𝗕𝗼𝗹𝗱"),
+    ITALIC("italic", "𝘐𝘵𝘢𝘭𝘪𝘤", "𝘐𝘵𝘢𝘭𝘪𝘤"),
+    BOLD_ITALIC("bold_italic", "𝙱𝚘𝚕𝚍 𝙸𝚝𝚊𝚕𝚒𝚌", "𝙱𝚘𝚕𝚍 𝙸𝚝𝚊𝚕𝚒𝚌"),
+    SCRIPT("script", "𝓢𝓬𝓻𝓲𝓹𝓽", "𝓢𝓬𝓻𝓲𝓹𝓽"),
+    DOUBLE_STRUCK("double_struck", "𝔻𝕠𝕦𝕓𝕝𝕖-𝕤𝕥𝕣𝕦𝕔𝕜", "𝔻𝕠𝕦𝕓𝕝𝕖-𝕤𝕥𝕣𝕦𝕔𝕜"),
+    FRAKTUR("fraktur", "𝔉𝔯𝔞𝔨𝔱𝔲𝔯", "𝔉𝔯𝔞𝔨𝔱𝔲𝔯"),
+    MONOSPACE("monospace", "𝙼𝚘𝚗𝚘𝚜𝚙𝚊𝚌𝚎", "𝙼𝚘𝚗𝚘𝚜𝚙𝚊𝚌𝚎"),
+    CIRCLED("circled", "Ⓒⓘⓡⓒ⓵ⓔⓓ", "Ⓒⓘⓡⓒ⓵ⓔⓓ"),
+    SMALL_CAPS("small_caps", "sᴍᴀʟʟ ᴄᴀᴘs", "sᴍᴀʟʟ ᴄᴀᴘs"),
+    UPSIDE_DOWN("upside_down", "ıɟlıpsn-uʍop", "ıɟlıpsn-uʍop");
 
     companion object {
-        fun fromKey(key: String): KeyboardFont = entries.find { it.key == key } ?: DEFAULT_REGULAR
+        fun fromKey(key: String): FancyTextStyle = entries.find { it.key == key } ?: NONE
     }
 }
