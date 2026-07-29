@@ -18,6 +18,7 @@ import androidx.lifecycle.setViewTreeLifecycleOwner
 import androidx.savedstate.setViewTreeSavedStateRegistryOwner
 import androidx.lifecycle.setViewTreeViewModelStoreOwner
 import com.spmods.sinkey.data.PreferencesManager
+import com.spmods.sinkey.data.clipboard.ClipRepository
 import com.spmods.sinkey.data.dictionary.WordRepository
 import com.spmods.sinkey.keyboard.Board
 import com.spmods.sinkey.keyboard.KeyboardView
@@ -45,7 +46,14 @@ class SinKeyInputMethodService : InputMethodService() {
     private lateinit var lifecycleOwner: ImeLifecycleOwner
     private lateinit var prefs: PreferencesManager
     private lateinit var wordRepo: WordRepository
+    private lateinit var clipRepo: ClipRepository
     private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
+
+    // Listens system-wide for clipboard changes (not just copies made inside
+    // SinKey) so the clipboard history board has something to show even when
+    // the user copied text from another app. Registered in onCreate,
+    // unregistered in onDestroy to avoid leaking the listener.
+    private var clipboardListener: android.content.ClipboardManager.OnPrimaryClipChangedListener? = null
 
     private var wordBuffer = StringBuilder()
     private var englishBuffer = StringBuilder()
@@ -104,6 +112,8 @@ class SinKeyInputMethodService : InputMethodService() {
         }
         prefs = PreferencesManager(this)
         wordRepo = WordRepository(this)
+        clipRepo = ClipRepository(this)
+        registerClipboardListener()
 
         // FIX #1: Still need initial language synchronously, but we only block once
         // here at startup (not on every key tap).
@@ -141,6 +151,28 @@ class SinKeyInputMethodService : InputMethodService() {
         } catch (e: Exception) {
             android.util.Log.w("SinKey", "EmojiCompat init exception", e)
         }
+    }
+
+    /**
+     * Records every text copied anywhere on the device (not just inside
+     * SinKey) into the persistent clipboard history, so TOOL_CLIPBOARD can
+     * show more than "whatever is on the clipboard right now". Fires
+     * immediately when registered if a clip already exists, and again on
+     * every subsequent copy for the lifetime of the service.
+     */
+    private fun registerClipboardListener() {
+        val clipboard = getSystemService(android.content.ClipboardManager::class.java) ?: return
+        val listener = android.content.ClipboardManager.OnPrimaryClipChangedListener {
+            val clip = clipboard.primaryClip
+            if (clip != null && clip.itemCount > 0) {
+                val text = clip.getItemAt(0).coerceToText(this)?.toString()
+                if (!text.isNullOrBlank()) {
+                    serviceScope.launch { clipRepo.record(text) }
+                }
+            }
+        }
+        clipboard.addPrimaryClipChangedListener(listener)
+        clipboardListener = listener
     }
 
     // FIX #2: Single SpellCheckerSession created once and reused.
@@ -287,6 +319,13 @@ class SinKeyInputMethodService : InputMethodService() {
         // FIX #2: Close spell-checker session to release OS resources.
         spellCheckerSession?.close()
         spellCheckerSession = null
+        // Unregister the clipboard listener to avoid leaking it past this
+        // service instance's lifetime.
+        clipboardListener?.let { listener ->
+            getSystemService(android.content.ClipboardManager::class.java)
+                ?.removePrimaryClipChangedListener(listener)
+        }
+        clipboardListener = null
         super.onDestroy()
     }
 
@@ -352,20 +391,6 @@ class SinKeyInputMethodService : InputMethodService() {
             }
             "SYMBOLS_SHIFT", "EMOJI", "NUMPAD" -> { /* handled in KeyboardView */ }
             "TOOL_MIC" -> { sendDefaultEditorAction(true) }
-            "TOOL_CLIPBOARD" -> {
-                // Paste the current system clipboard contents at the cursor.
-                val clipboard = getSystemService(android.content.ClipboardManager::class.java)
-                val clip = clipboard?.primaryClip
-                if (clip != null && clip.itemCount > 0) {
-                    val text = clip.getItemAt(0).coerceToText(this)
-                    if (!text.isNullOrEmpty()) {
-                        commitPendingWord()
-                        englishBuffer.clear()
-                        suggestions.value = emptyList()
-                        ic.commitText(text, 1)
-                    }
-                }
-            }
             "TOOL_APPS", "TOOL_STICKER", "TOOL_FONT",
             "TOOL_TRANSLATE", "TOOL_SETTINGS" -> {
                 android.util.Log.d("SinKey", "Tool action: $key (not yet implemented)")
@@ -391,6 +416,20 @@ class SinKeyInputMethodService : InputMethodService() {
                 }
             }
             else -> {
+                if (key.startsWith("PASTE_TEXT:")) {
+                    // User picked an entry from the clipboard history board
+                    // (KeyboardView's ClipboardHistoryView) — paste it at the
+                    // cursor exactly like TOOL_CLIPBOARD used to, then finish
+                    // any in-progress word/suggestions first.
+                    val text = key.removePrefix("PASTE_TEXT:")
+                    if (text.isNotEmpty()) {
+                        commitPendingWord()
+                        englishBuffer.clear()
+                        suggestions.value = emptyList()
+                        ic.commitText(text, 1)
+                    }
+                    return
+                }
                 val isSinglePrintable = key.length == 1 && !key[0].isLetter()
                 if (isSinglePrintable) {
                     commitPendingWord()
