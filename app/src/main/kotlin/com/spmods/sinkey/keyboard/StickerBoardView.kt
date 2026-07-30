@@ -8,6 +8,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.aspectRatio
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -22,11 +23,9 @@ import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.outlined.Star
-import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -34,27 +33,32 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.documentfile.provider.DocumentFile
 import com.spmods.sinkey.R
-import com.spmods.sinkey.data.sticker.ExternalSticker
-import com.spmods.sinkey.data.sticker.ExternalStickerSource
 import com.spmods.sinkey.data.sticker.StickerEntity
 
-private enum class StickerTab { ALL, FAVOURITES, EXTERNAL }
+private enum class StickerTab { ALL, FAVOURITES }
 
 /**
- * Board.STICKER — grid of the user's own created stickers plus (opt-in)
- * externally-connected WhatsApp/Telegram sticker folders, with a
- * Favourites tab. Tapping a sticker sends it immediately via
- * onSendOwnSticker/onSendExternalSticker; favourite star and delete are
- * always-visible small icons on each cell since this is a touch keyboard
- * with no long-press affordance elsewhere.
+ * Board.STICKER — grid of the user's own created stickers, with a
+ * Favourites tab. Tapping a sticker stages a confirmation overlay
+ * ("Send this sticker?") rather than sending immediately; favourite star
+ * and delete are always-visible small icons on each cell since this is a
+ * touch keyboard with no long-press affordance elsewhere.
+ *
+ * NOTE: this board previously also supported opt-in, read-only access to
+ * WhatsApp/Telegram sticker folders via Storage Access Framework. That was
+ * removed — in practice the connected folders kept re-scanning/reloading
+ * every time the tab was reopened and stickers from them never actually
+ * sent successfully, so the whole subsystem (ExternalStickerSource,
+ * connectFolder/disconnectFolder, the Settings "Connect sticker folder"
+ * row) was more trouble than it was worth. Only user-created stickers
+ * (Image Sticker / Text Sticker, see StickerCreateView) remain.
  *
  * Sized exactly like ClipboardHistoryView/FontPickerView: a fixed-height
  * outer Column matching [targetContentHeight] (the main board's real
@@ -71,10 +75,7 @@ internal fun StickerBoardView(
     targetContentHeight: Dp,
     ownStickers: List<StickerEntity>,
     favouriteStickers: List<StickerEntity>,
-    connectedExternalFolders: List<DocumentFile>,
-    externalStickerSource: ExternalStickerSource,
     onSendOwnSticker: (String) -> Unit,
-    onSendExternalSticker: (String, String) -> Unit,
     onToggleFavourite: (String, Boolean) -> Unit,
     onDeleteSticker: (String) -> Unit,
     onCreateClick: () -> Unit,
@@ -83,11 +84,12 @@ internal fun StickerBoardView(
     val headerHeight = 44.dp
     val tabsHeight = 40.dp
     var tab by remember { mutableStateOf(StickerTab.ALL) }
-    // Which connected external folder is active, when tab == EXTERNAL and
-    // there's more than one folder connected. Defaults to the first.
-    var activeFolder by remember(connectedExternalFolders) {
-        mutableStateOf(connectedExternalFolders.firstOrNull())
-    }
+
+    // Tapping a sticker doesn't send it immediately — it stages a
+    // confirmation ("Send this sticker?") shown as an overlay over the grid,
+    // per the user's request to always confirm before a sticker leaves the
+    // keyboard. Null means no confirmation is showing.
+    var pendingSend by remember { mutableStateOf<String?>(null) }
 
     Column(modifier = Modifier.fillMaxWidth().height(targetContentHeight).background(colors.bg)) {
         // ── Header ──────────────────────────────────────────────────────
@@ -132,7 +134,7 @@ internal fun StickerBoardView(
             }
         }
 
-        // ── Tabs: All / Favourites / one per connected external folder ────
+        // ── Tabs: All / Favourites ─────────────────────────────────────
         Row(
             modifier = Modifier.fillMaxWidth().height(tabsHeight).padding(horizontal = 8.dp),
             horizontalArrangement = Arrangement.spacedBy(6.dp),
@@ -143,46 +145,38 @@ internal fun StickerBoardView(
                 onClick = { tab = StickerTab.ALL }
             )
             StickerTabChip(
-                label = "★", selected = tab == StickerTab.FAVOURITES, colors = colors,
+                label = "★ Favourites", selected = tab == StickerTab.FAVOURITES, colors = colors,
                 onClick = { tab = StickerTab.FAVOURITES }
             )
-            connectedExternalFolders.forEach { folder ->
-                val label = externalFolderLabel(folder)
-                StickerTabChip(
-                    label = label,
-                    selected = tab == StickerTab.EXTERNAL && activeFolder?.uri == folder.uri,
-                    colors = colors,
-                    onClick = { tab = StickerTab.EXTERNAL; activeFolder = folder }
-                )
-            }
         }
 
-        when (tab) {
-            StickerTab.ALL -> OwnStickerGrid(
-                stickers = ownStickers, colors = colors, modifier = Modifier.fillMaxWidth().weight(1f),
-                onSend = onSendOwnSticker, onToggleFavourite = onToggleFavourite, onDelete = onDeleteSticker,
-                emptyMessage = "No stickers yet — tap + to create one"
+        Box(modifier = Modifier.fillMaxWidth().weight(1f)) {
+            val stickers = if (tab == StickerTab.ALL) ownStickers else favouriteStickers
+            val emptyMessage = if (tab == StickerTab.ALL) {
+                "No stickers yet — tap + to create one"
+            } else {
+                "Tap ★ on a sticker to add it here"
+            }
+            OwnStickerGrid(
+                stickers = stickers, colors = colors, modifier = Modifier.fillMaxWidth().fillMaxHeight(),
+                onSend = { path -> pendingSend = path },
+                onToggleFavourite = onToggleFavourite, onDelete = onDeleteSticker,
+                emptyMessage = emptyMessage
             )
-            StickerTab.FAVOURITES -> OwnStickerGrid(
-                stickers = favouriteStickers, colors = colors, modifier = Modifier.fillMaxWidth().weight(1f),
-                onSend = onSendOwnSticker, onToggleFavourite = onToggleFavourite, onDelete = onDeleteSticker,
-                emptyMessage = "Tap ★ on a sticker to add it here"
-            )
-            StickerTab.EXTERNAL -> {
-                val folder = activeFolder
-                if (folder == null) {
-                    Box(modifier = Modifier.fillMaxWidth().weight(1f), contentAlignment = Alignment.Center) {
-                        Text("No folder connected", fontSize = 13.sp, color = colors.subText)
-                    }
-                } else {
-                    ExternalStickerGrid(
-                        folder = folder,
-                        source = externalStickerSource,
-                        colors = colors,
-                        modifier = Modifier.fillMaxWidth().weight(1f),
-                        onSend = onSendExternalSticker
-                    )
-                }
+
+            // Confirmation overlay — nothing is sent to the target app until
+            // the user explicitly taps Send here.
+            val pending = pendingSend
+            if (pending != null) {
+                StickerSendConfirmation(
+                    filePath = pending,
+                    colors = colors,
+                    onConfirm = {
+                        onSendOwnSticker(pending)
+                        pendingSend = null
+                    },
+                    onCancel = { pendingSend = null }
+                )
             }
         }
 
@@ -190,12 +184,72 @@ internal fun StickerBoardView(
     }
 }
 
-private fun externalFolderLabel(folder: DocumentFile): String {
-    val name = folder.name?.lowercase() ?: ""
-    return when {
-        "whatsapp" in name -> "WhatsApp"
-        "telegram" in name -> "Telegram"
-        else -> folder.name?.take(10) ?: "Folder"
+@Composable
+private fun StickerSendConfirmation(
+    filePath: String,
+    colors: KeyboardColors,
+    onConfirm: () -> Unit,
+    onCancel: () -> Unit
+) {
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .fillMaxHeight()
+            .background(Color.Black.copy(alpha = 0.55f))
+            .clickable(
+                indication = null,
+                interactionSource = remember { androidx.compose.foundation.interaction.MutableInteractionSource() }
+            ) { onCancel() },
+        contentAlignment = Alignment.Center
+    ) {
+        Column(
+            modifier = Modifier
+                .padding(24.dp)
+                .clip(RoundedCornerShape(14.dp))
+                .background(colors.bg)
+                .clickable(
+                    indication = null,
+                    interactionSource = remember { androidx.compose.foundation.interaction.MutableInteractionSource() }
+                ) { /* swallow — don't dismiss when tapping the card itself */ }
+                .padding(16.dp),
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            Box(
+                modifier = Modifier
+                    .size(84.dp)
+                    .clip(RoundedCornerShape(10.dp))
+                    .background(colors.keyBg)
+            ) {
+                StickerImage(
+                    source = filePath,
+                    modifier = Modifier.fillMaxSize().padding(8.dp),
+                    contentDescription = "Sticker"
+                )
+            }
+            androidx.compose.foundation.layout.Spacer(modifier = Modifier.height(10.dp))
+            Text("Send this sticker?", fontSize = 13.sp, color = colors.keyText, fontWeight = FontWeight.Medium)
+            androidx.compose.foundation.layout.Spacer(modifier = Modifier.height(14.dp))
+            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                Box(
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(8.dp))
+                        .background(colors.keyBg)
+                        .clickable { onCancel() }
+                        .padding(horizontal = 18.dp, vertical = 9.dp)
+                ) {
+                    Text("Cancel", fontSize = 13.sp, color = colors.subText)
+                }
+                Box(
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(8.dp))
+                        .background(DeshGreen)
+                        .clickable { onConfirm() }
+                        .padding(horizontal = 18.dp, vertical = 9.dp)
+                ) {
+                    Text("Send", fontSize = 13.sp, color = Color.White, fontWeight = FontWeight.Medium)
+                }
+            }
+        }
     }
 }
 
@@ -276,59 +330,6 @@ private fun OwnStickerGrid(
                         .padding(2.dp),
                     tint = colors.subText.copy(alpha = 0.7f)
                 )
-            }
-        }
-    }
-}
-
-@Composable
-private fun ExternalStickerGrid(
-    folder: DocumentFile,
-    source: ExternalStickerSource,
-    colors: KeyboardColors,
-    modifier: Modifier,
-    onSend: (String, String) -> Unit
-) {
-    var stickers by remember(folder.uri) { mutableStateOf<List<ExternalSticker>>(emptyList()) }
-    var loaded by remember(folder.uri) { mutableStateOf(false) }
-
-    LaunchedEffect(folder.uri) {
-        stickers = source.listStickers(folder)
-        loaded = true
-    }
-
-    when {
-        !loaded -> Box(modifier = modifier, contentAlignment = Alignment.Center) {
-            CircularProgressIndicator(modifier = Modifier.size(24.dp), strokeWidth = 2.dp)
-        }
-        stickers.isEmpty() -> Box(modifier = modifier, contentAlignment = Alignment.Center) {
-            Text("No stickers found in this folder", fontSize = 13.sp, color = colors.subText)
-        }
-        else -> LazyVerticalGrid(
-            columns = GridCells.Fixed(4),
-            modifier = modifier,
-            contentPadding = androidx.compose.foundation.layout.PaddingValues(8.dp),
-            horizontalArrangement = Arrangement.spacedBy(6.dp),
-            verticalArrangement = Arrangement.spacedBy(6.dp)
-        ) {
-            items(stickers, key = { it.uri.toString() }) { sticker ->
-                val context = LocalContext.current
-                val mimeType = remember(sticker.uri) {
-                    context.contentResolver.getType(sticker.uri) ?: "image/webp"
-                }
-                Box(
-                    modifier = Modifier
-                        .aspectRatio(1f)
-                        .clip(RoundedCornerShape(8.dp))
-                        .background(colors.keyBg)
-                        .clickable { onSend(sticker.uri.toString(), mimeType) }
-                ) {
-                    StickerImage(
-                        source = sticker.uri.toString(),
-                        modifier = Modifier.fillMaxSize().padding(6.dp),
-                        contentDescription = sticker.displayName
-                    )
-                }
             }
         }
     }
