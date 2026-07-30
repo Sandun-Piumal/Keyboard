@@ -31,10 +31,12 @@ fun SettingsScreen(
     keySoundEnabled: Boolean,
     keyVibrateEnabled: Boolean,
     themeMode: ThemeMode,
+    mixAutoSinhala: Boolean,
     onLanguageChange: (String) -> Unit,
     onKeySoundChange: (Boolean) -> Unit,
     onKeyVibrateChange: (Boolean) -> Unit,
     onThemeModeChange: (ThemeMode) -> Unit,
+    onMixAutoSinhalaChange: (Boolean) -> Unit,
     onOpenKeyboardHeight: () -> Unit = {}
 ) {
     Column(modifier = Modifier.fillMaxWidth().padding(bottom = 24.dp)) {
@@ -69,6 +71,13 @@ fun SettingsScreen(
                         )
                     }
                 )
+            }
+            SettingRow(
+                icon = "🔁",
+                title = "Mix mode: auto-convert to Sinhala",
+                subtitle = "On space/enter, turn the typed word into Sinhala"
+            ) {
+                Switch(checked = mixAutoSinhala, onCheckedChange = onMixAutoSinhalaChange)
             }
             SettingRow(icon = "🔊", title = "Key sound", subtitle = "Play a click on tap") {
                 Switch(checked = keySoundEnabled, onCheckedChange = onKeySoundChange)
