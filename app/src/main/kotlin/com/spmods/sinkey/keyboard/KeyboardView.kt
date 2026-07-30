@@ -189,10 +189,10 @@ fun KeyboardView(
     dismissedUpdateVersionCode: Int = 0,
     onDismissedUpdateVersionCodeChange: (Int) -> Unit = {},
     // Sticker board (Board.STICKER / STICKER_CREATE). onStickerSend is
-    // called with (pathOrUri, isOwnSticker, mimeType) — see
+    // called with (filePath, mimeType) — see
     // SinKeyInputMethodService.onStickerSelected for what each means.
     // Preview callers (MainActivity) omit this and get a no-op.
-    onStickerSend: (String, Boolean, String) -> Unit = { _, _, _ -> },
+    onStickerSend: (String, String) -> Unit = { _, _ -> },
     // Triggers the system gallery picker for Board.STICKER_CREATE's Image
     // Sticker option — wired to SinKeyInputMethodService.pickImageForSticker,
     // since only the service can start the trampoline Activity needed here.
@@ -246,10 +246,8 @@ fun KeyboardView(
     val coroutineScope = rememberCoroutineScope()
     val selectedFontKey by prefsManager.keyboardFont.collectAsState(initial = FancyTextStyle.NONE.key)
     val stickerRepository = remember { com.spmods.sinkey.data.sticker.StickerRepository(context) }
-    val externalStickerSource = remember { com.spmods.sinkey.data.sticker.ExternalStickerSource(context) }
     val ownStickers by stickerRepository.all.collectAsState(initial = emptyList())
     val favouriteStickers by stickerRepository.favourites.collectAsState(initial = emptyList())
-    val connectedExternalFolders by externalStickerSource.connectedFolders.collectAsState(initial = emptyList())
 
     // ── Update check ────────────────────────────────────────────────────────
     // Fetched once per keyboard-composition (not on every recomposition —
@@ -391,10 +389,7 @@ fun KeyboardView(
                         (if (!isPhoneInput && (showUpdateBanner || recentEmojis.isNotEmpty())) 44.dp else 0.dp),
                     ownStickers = ownStickers,
                     favouriteStickers = favouriteStickers,
-                    connectedExternalFolders = connectedExternalFolders,
-                    externalStickerSource = externalStickerSource,
-                    onSendOwnSticker = { filePath -> onStickerSend(filePath, true, "image/png") },
-                    onSendExternalSticker = { uri, mime -> onStickerSend(uri, false, mime) },
+                    onSendOwnSticker = { filePath -> onStickerSend(filePath, "image/png") },
                     onToggleFavourite = { filePath, fav ->
                         coroutineScope.launch { stickerRepository.setFavourite(filePath, fav) }
                     },
