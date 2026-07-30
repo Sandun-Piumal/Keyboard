@@ -806,21 +806,26 @@ private fun openUrl(context: android.content.Context, url: String) {
 // ─────────────────────────────────────────────────────────────────────────────
 @Composable
 private fun LangTooltip(currentLanguage: String) {
-    val label = if (currentLanguage == "en") "English enabled" else "සිංහල enabled"
+    val label = when (currentLanguage) {
+        "en" -> "English enabled"
+        "mix" -> "Mix (සිංහල+English) enabled"
+        else -> "සිංහල enabled"
+    }
     Box(
         modifier = Modifier
             .shadow(4.dp, RoundedCornerShape(8.dp))
             .clip(RoundedCornerShape(8.dp))
-            .background(DeshGreen)
+            .background(if (currentLanguage == "mix") Color.Black else DeshGreen)
             .padding(horizontal = 14.dp, vertical = 8.dp)
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Text("✓ ", fontSize = 13.sp, color = Color.White, fontWeight = FontWeight.Bold)
             Text(
-                text = if (currentLanguage == "en")
-                    buildAnnotatedStringBold("English", " enabled")
-                else
-                    buildAnnotatedStringBold("සිංහල", " enabled"),
+                text = when (currentLanguage) {
+                    "en" -> buildAnnotatedStringBold("English", " enabled")
+                    "mix" -> buildAnnotatedStringBold("Mix", " (සිංහල+English) enabled")
+                    else -> buildAnnotatedStringBold("සිංහල", " enabled")
+                },
                 fontSize = 13.sp,
                 color = Color.White
             )
@@ -1185,6 +1190,12 @@ private fun LangToggleKey(
     onTap: () -> Unit
 ) {
     val isSinhala = currentLanguage == "si"
+    val isMix = currentLanguage == "mix"
+    val indicatorColor = when (currentLanguage) {
+        "si" -> DeshGreen
+        "mix" -> Color.Black
+        else -> Color.Transparent
+    }
     var pressed by remember { mutableStateOf(false) }
     val bumpScale = rememberKeyBumpScale(pressed)
     Box(
@@ -1209,13 +1220,13 @@ private fun LangToggleKey(
                 painter = painterResource(id = R.drawable.ic_native_letter),
                 contentDescription = "Language",
                 modifier = Modifier.size(18.dp),
-                tint = if (isSinhala) DeshGreen else colors.specialKeyText
+                tint = if (isSinhala || isMix) indicatorColor else colors.specialKeyText
             )
             Box(
                 modifier = Modifier
                     .padding(top = 2.dp).height(2.dp).width(18.dp)
                     .background(
-                        color = if (isSinhala) DeshGreen else Color.Transparent,
+                        color = indicatorColor,
                         shape = RoundedCornerShape(1.dp)
                     )
             )
