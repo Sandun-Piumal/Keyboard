@@ -252,7 +252,7 @@ class SinKeyInputMethodService : InputMethodService() {
                         onShiftStateChange = { shiftState.value = it },
                         dismissedUpdateVersionCode = dismissedUpdateVersionCode.value,
                         onDismissedUpdateVersionCodeChange = { dismissedUpdateVersionCode.value = it },
-                        onStickerSend = { pathOrUri, isOwn, mimeType -> onStickerSelected(pathOrUri, isOwn, mimeType) },
+                        onStickerSend = { filePath, mimeType -> onStickerSelected(filePath, mimeType) },
                         onPickStickerImage = { pickImageForSticker() }
                     )
                 }
@@ -583,7 +583,13 @@ class SinKeyInputMethodService : InputMethodService() {
             if (uri != null) {
                 serviceScope.launch {
                     val created = stickerRepo.createFromImage(uri)
-                    if (created && boardStack.value.lastOrNull() == com.spmods.sinkey.keyboard.Board.STICKER_CREATE) {
+                    if (!created) {
+                        android.widget.Toast.makeText(
+                            this@SinKeyInputMethodService,
+                            "Couldn't read that image",
+                            android.widget.Toast.LENGTH_SHORT
+                        ).show()
+                    } else if (boardStack.value.lastOrNull() == com.spmods.sinkey.keyboard.Board.STICKER_CREATE) {
                         boardStack.value = boardStack.value.dropLast(1)
                     }
                 }
@@ -593,23 +599,35 @@ class SinKeyInputMethodService : InputMethodService() {
             putExtra(com.spmods.sinkey.ime.StickerPickerActivity.EXTRA_MODE, com.spmods.sinkey.ime.StickerPickerActivity.MODE_IMAGE)
             addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
         }
-        startActivity(intent)
+        try {
+            startActivity(intent)
+        } catch (e: Exception) {
+            // Most likely cause: the OEM/platform blocked a background
+            // activity start from this IME process. "Current input method"
+            // is documented as an exception to that restriction, but some
+            // OEM skins (or a moment where the IME briefly isn't considered
+            // foreground) can still reject it — surfacing this beats a
+            // silent no-op, which otherwise looks exactly like "does nothing".
+            android.widget.Toast.makeText(
+                this,
+                "Couldn't open the picker — try again",
+                android.widget.Toast.LENGTH_SHORT
+            ).show()
+        }
     }
 
     /**
-     * Called from KeyboardView when the user taps a sticker to send it.
-     * [isOwnSticker] distinguishes a user-created sticker (needs the
-     * FileProvider content Uri built from its file path) from an external
-     * WhatsApp/Telegram sticker (whose Uri from DocumentFile is already a
-     * usable content:// Uri as-is).
+     * Called from KeyboardView when the user taps a sticker and confirms
+     * sending it. [filePath] is always an app-private sticker file path
+     * (StickerEntity.filePath) — resolved here to a shareable FileProvider
+     * content:// Uri before being committed.
      *
      * Shows a short toast when the receiving field doesn't support image
      * content (see sendSticker's doc comment) since there's no way to
      * gracefully degrade an image the way we can for styled text.
      */
-    fun onStickerSelected(pathOrUri: String, isOwnSticker: Boolean, mimeType: String) {
-        val uri = if (isOwnSticker) stickerContentUri(pathOrUri) else android.net.Uri.parse(pathOrUri)
-        val sent = sendSticker(uri, mimeType)
+    fun onStickerSelected(filePath: String, mimeType: String) {
+        val sent = sendSticker(stickerContentUri(filePath), mimeType)
         if (!sent) {
             android.widget.Toast.makeText(
                 this,
@@ -628,13 +646,10 @@ class SinKeyInputMethodService : InputMethodService() {
      * apps generally do; plain single-line text fields (URL bars, search
      * boxes) typically don't, and commitContent then simply returns false.
      *
-     * [uri] must be readable by the receiving app. For user-created
-     * stickers this is a FileProvider content:// Uri (see
-     * StickerContentProvider) since the raw file:// path in app-private
-     * storage isn't accessible outside this app's own process. For external
-     * (WhatsApp/Telegram) stickers, [uri] is already the SAF content:// Uri
-     * returned by DocumentFile, which the source app itself owns — read
-     * permission for the *receiving* app still comes from the
+     * [uri] must be readable by the receiving app — always a FileProvider
+     * content:// Uri here (see stickerContentUri), since the raw file://
+     * path in app-private storage isn't accessible outside this app's own
+     * process. Read permission for the *receiving* app comes from the
      * FLAG_GRANT_READ_URI_PERMISSION passed below, which the platform
      * upgrades into a one-off grant scoped to that receiving package.
      *
