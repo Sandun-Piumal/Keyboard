@@ -44,15 +44,29 @@ fun SettingsScreen(
             SettingRow(
                 icon = "🌐",
                 title = "Default language",
-                subtitle = if (defaultLanguage == "si") "Sinhala first" else "English first"
+                subtitle = when (defaultLanguage) {
+                    "si" -> "Sinhala first"
+                    "en" -> "English first"
+                    else -> "Mix — Sinhala + English"
+                }
             ) {
                 Text(
-                    if (defaultLanguage == "si") "සිංහල" else "English",
+                    when (defaultLanguage) {
+                        "si" -> "සිංහල"
+                        "en" -> "English"
+                        else -> "Mix"
+                    },
                     fontSize = 12.sp,
                     color = MaterialTheme.colorScheme.primary,
                     fontWeight = FontWeight.SemiBold,
                     modifier = Modifier.clickable {
-                        onLanguageChange(if (defaultLanguage == "si") "en" else "si")
+                        onLanguageChange(
+                            when (defaultLanguage) {
+                                "mix" -> "en"
+                                "en" -> "si"
+                                else -> "mix"
+                            }
+                        )
                     }
                 )
             }
