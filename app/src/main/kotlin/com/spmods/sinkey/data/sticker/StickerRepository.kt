@@ -10,7 +10,8 @@ import kotlinx.coroutines.flow.Flow
  * Room (metadata) + app-private PNG files (pixel data) via StickerFileStore.
  *
  * For read-only WhatsApp/Telegram folder stickers, see
- * ExternalStickerSource instead — those are intentionally not stored here.
+ * WhatsApp/Telegram sticker folder access was tried and removed (see
+ * StickerBoardView's doc comment) — only stickers created in-app live here.
  */
 class StickerRepository(private val context: Context) {
     private val dao = StickerDatabase.getInstance(context).stickerDao()
