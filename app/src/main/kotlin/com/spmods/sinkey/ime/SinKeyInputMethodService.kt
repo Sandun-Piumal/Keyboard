@@ -618,16 +618,34 @@ class SinKeyInputMethodService : InputMethodService() {
 
     /**
      * Called from KeyboardView when the user taps a sticker and confirms
-     * sending it. [filePath] is always an app-private sticker file path
-     * (StickerEntity.filePath) — resolved here to a shareable FileProvider
-     * content:// Uri before being committed.
+     * sending it. [filePath] is the app-private PNG sticker file path
+     * (StickerEntity.filePath).
      *
-     * Shows a short toast when the receiving field doesn't support image
-     * content (see sendSticker's doc comment) since there's no way to
-     * gracefully degrade an image the way we can for styled text.
+     * Sends the sticker's WhatsApp-ready WebP sibling file (see
+     * StickerFileStore.writeWhatsAppWebp) via commitContent with mime type
+     * image/webp, rather than the PNG. Chat apps that implement the sticker
+     * side of the Commit Content API (WhatsApp, Telegram, etc.) key off the
+     * WebP format + exact 512x512 size + sub-100KB filesize to decide
+     * whether to treat incoming content as a real sticker versus a generic
+     * photo attachment; a PNG (or an oversized/wrong-size WebP) gets treated
+     * as a photo, which triggers that app's own send/preview sheet instead
+     * of delivering instantly. No sticker-pack registration is involved —
+     * this is a plain one-off commitContent per send, same as SinKey's own
+     * emoji/text.
      */
     fun onStickerSelected(filePath: String, mimeType: String) {
-        val sent = sendSticker(stickerContentUri(filePath), mimeType)
+        val webpPath = com.spmods.sinkey.data.sticker.StickerFileStore.webpPathFor(filePath)
+        if (!java.io.File(webpPath).exists()) {
+            // Sticker predates WebP export — backfill synchronously (a single
+            // small bitmap decode/encode) so this send still goes out as a
+            // proper sticker instead of falling back to the raw PNG.
+            com.spmods.sinkey.data.sticker.StickerFileStore.backfillWebp(filePath)
+        }
+        val webpExists = java.io.File(webpPath).exists()
+        val sendPath = if (webpExists) webpPath else filePath
+        val sendMime = if (webpExists) "image/webp" else mimeType
+
+        val sent = sendSticker(stickerContentUri(sendPath), sendMime)
         if (!sent) {
             android.widget.Toast.makeText(
                 this,
