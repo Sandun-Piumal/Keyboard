@@ -21,7 +21,7 @@ class PreferencesManager(private val context: Context) {
 
     private object Keys {
         val THEME_MODE = stringPreferencesKey("theme_mode")
-        val DEFAULT_LANG = stringPreferencesKey("default_lang") // "si" or "en"
+        val DEFAULT_LANG = stringPreferencesKey("default_lang") // "si", "en", or "mix"
         val KEY_SOUND = booleanPreferencesKey("key_sound")
         val KEY_VIBRATE = booleanPreferencesKey("key_vibrate")
         val RECENT_EMOJIS = stringPreferencesKey("recent_emojis") // comma-separated
@@ -46,7 +46,7 @@ class PreferencesManager(private val context: Context) {
     }
 
     val defaultLanguage: Flow<String> = context.dataStore.data.map { prefs ->
-        prefs[Keys.DEFAULT_LANG] ?: "si"
+        prefs[Keys.DEFAULT_LANG] ?: "mix"
     }
 
     val keySoundEnabled: Flow<Boolean> = context.dataStore.data.map { prefs ->
