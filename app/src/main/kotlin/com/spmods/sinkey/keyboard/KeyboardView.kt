@@ -7,6 +7,10 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
 import androidx.compose.animation.togetherWith
+import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.spring
+import androidx.compose.ui.draw.scale
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -899,6 +903,24 @@ private fun keyLabelFontSize(keyHeight: Dp): androidx.compose.ui.unit.TextUnit =
 private fun keyNumberFontSize(keyHeight: Dp): androidx.compose.ui.unit.TextUnit =
     (keyHeight.value * 0.25f).sp   // ~10sp @ 42dp, ~12sp @ 48dp, ~15sp @ 62dp
 
+/**
+ * Animates a quick "bump" scale for key-press feedback: snaps down fast on press,
+ * springs back up with a slight overshoot on release.
+ */
+@Composable
+private fun rememberKeyBumpScale(pressed: Boolean): Float {
+    val scale by animateFloatAsState(
+        targetValue = if (pressed) 0.88f else 1f,
+        animationSpec = if (pressed) {
+            spring(dampingRatio = Spring.DampingRatioNoBouncy, stiffness = Spring.StiffnessHigh)
+        } else {
+            spring(dampingRatio = Spring.DampingRatioMediumBouncy, stiffness = Spring.StiffnessMedium)
+        },
+        label = "keyBumpScale"
+    )
+    return scale
+}
+
 @Composable
 private fun KeyPreviewPopup(label: String, keyHeight: Dp, colors: KeyboardColors) {
     val size = (keyHeight.value * 1.1f).dp
@@ -927,9 +949,11 @@ private fun RowScope.NumberedLetterKey(
     onTap: () -> Unit, onLongPress: () -> Unit
 ) {
     var pressed by remember { mutableStateOf(false) }
+    val bumpScale = rememberKeyBumpScale(pressed)
     Box(
         modifier = Modifier
             .height(keyHeight).weight(weight)
+            .scale(bumpScale)
             .clip(keyShape)
             .background(if (pressed) colors.keyBg.copy(alpha = 0.6f) else colors.keyBg)
             .combinedClickable(onClick = { onTap() }, onLongClick = { onLongPress() })
@@ -963,9 +987,11 @@ private fun RowScope.LetterKey(
     onTap: () -> Unit
 ) {
     var pressed by remember { mutableStateOf(false) }
+    val bumpScale = rememberKeyBumpScale(pressed)
     Box(
         modifier = Modifier
             .height(keyHeight).weight(weight)
+            .scale(bumpScale)
             .clip(keyShape)
             .background(if (pressed) colors.keyBg.copy(alpha = 0.6f) else colors.keyBg)
             // clickable handles the actual tap/long-press logic reliably.
@@ -1000,6 +1026,8 @@ private fun RowScope.ShiftKey(
     onTap: () -> Unit,
     onDoubleTap: () -> Unit
 ) {
+    var pressed by remember { mutableStateOf(false) }
+    val bumpScale = rememberKeyBumpScale(pressed)
     val bg = when {
         locked -> DeshGreen.copy(alpha = 0.85f)
         active -> colors.specialKeyBg.copy(alpha = 0.7f)
@@ -1008,11 +1036,20 @@ private fun RowScope.ShiftKey(
     Box(
         modifier = Modifier
             .height(keyHeight).weight(weight)
+            .scale(bumpScale)
             .clip(keyShape).background(bg)
             .combinedClickable(
                 onClick = onTap,
                 onDoubleClick = onDoubleTap
-            ),
+            )
+            .pointerInput(Unit) {
+                awaitEachGesture {
+                    awaitFirstDown(requireUnconsumed = false)
+                    pressed = true
+                    waitForUpOrCancellation()
+                    pressed = false
+                }
+            },
         contentAlignment = Alignment.Center
     ) {
         Icon(
@@ -1030,13 +1067,17 @@ private fun RowScope.BackspaceKey(
     keyHeight: Dp, colors: KeyboardColors, keyShape: RoundedCornerShape,
     onTap: () -> Unit
 ) {
+    var pressed by remember { mutableStateOf(false) }
+    val bumpScale = rememberKeyBumpScale(pressed)
     Box(
         modifier = Modifier
             .height(keyHeight).weight(weight)
+            .scale(bumpScale)
             .clip(keyShape).background(colors.specialKeyBg)
             .pointerInput(Unit) {
                 detectTapGestures(
                     onPress = { _ ->
+                        pressed = true
                         val longPressDelay = 400L
                         val repeatInterval = 50L
                         val released = withTimeoutOrNull(longPressDelay) { tryAwaitRelease() }
@@ -1053,6 +1094,7 @@ private fun RowScope.BackspaceKey(
                                 }
                             } catch (_: Exception) { }
                         }
+                        pressed = false
                     }
                 )
             },
@@ -1074,9 +1116,11 @@ private fun RowScope.SpecialKey(
     onTap: () -> Unit
 ) {
     var pressed by remember { mutableStateOf(false) }
+    val bumpScale = rememberKeyBumpScale(pressed)
     Box(
         modifier = Modifier
             .height(keyHeight).weight(weight)
+            .scale(bumpScale)
             .clip(keyShape)
             .background(if (pressed) colors.specialKeyBg.copy(alpha = 0.6f) else colors.specialKeyBg)
             .clickable { onTap() }
@@ -1106,11 +1150,23 @@ private fun RowScope.SymbolsKey(
     keyHeight: Dp, colors: KeyboardColors, keyShape: RoundedCornerShape,
     onTap: () -> Unit
 ) {
+    var pressed by remember { mutableStateOf(false) }
+    val bumpScale = rememberKeyBumpScale(pressed)
     Box(
         modifier = Modifier
             .height(keyHeight).weight(weight)
-            .clip(keyShape).background(colors.specialKeyBg)
-            .clickable { onTap() },
+            .scale(bumpScale)
+            .clip(keyShape)
+            .background(if (pressed) colors.specialKeyBg.copy(alpha = 0.6f) else colors.specialKeyBg)
+            .clickable { onTap() }
+            .pointerInput(Unit) {
+                awaitEachGesture {
+                    awaitFirstDown(requireUnconsumed = false)
+                    pressed = true
+                    waitForUpOrCancellation()
+                    pressed = false
+                }
+            },
         contentAlignment = Alignment.Center
     ) {
         Icon(
@@ -1129,11 +1185,23 @@ private fun LangToggleKey(
     onTap: () -> Unit
 ) {
     val isSinhala = currentLanguage == "si"
+    var pressed by remember { mutableStateOf(false) }
+    val bumpScale = rememberKeyBumpScale(pressed)
     Box(
         modifier = Modifier
             .height(keyHeight).fillMaxWidth()
-            .clip(keyShape).background(colors.specialKeyBg)
-            .clickable { onTap() },
+            .scale(bumpScale)
+            .clip(keyShape)
+            .background(if (pressed) colors.specialKeyBg.copy(alpha = 0.6f) else colors.specialKeyBg)
+            .clickable { onTap() }
+            .pointerInput(Unit) {
+                awaitEachGesture {
+                    awaitFirstDown(requireUnconsumed = false)
+                    pressed = true
+                    waitForUpOrCancellation()
+                    pressed = false
+                }
+            },
         contentAlignment = Alignment.Center
     ) {
         Column(horizontalAlignment = Alignment.CenterHorizontally) {
@@ -1162,11 +1230,23 @@ private fun RowScope.EmojiKey(
     keyHeight: Dp, colors: KeyboardColors, keyShape: RoundedCornerShape,
     onTap: () -> Unit, onLongPress: () -> Unit
 ) {
+    var pressed by remember { mutableStateOf(false) }
+    val bumpScale = rememberKeyBumpScale(pressed)
     Box(
         modifier = Modifier
             .height(keyHeight).weight(weight)
-            .clip(keyShape).background(colors.specialKeyBg)
-            .combinedClickable(onClick = { onTap() }, onLongClick = { onLongPress() }),
+            .scale(bumpScale)
+            .clip(keyShape)
+            .background(if (pressed) colors.specialKeyBg.copy(alpha = 0.6f) else colors.specialKeyBg)
+            .combinedClickable(onClick = { onTap() }, onLongClick = { onLongPress() })
+            .pointerInput(Unit) {
+                awaitEachGesture {
+                    awaitFirstDown(requireUnconsumed = false)
+                    pressed = true
+                    waitForUpOrCancellation()
+                    pressed = false
+                }
+            },
         contentAlignment = Alignment.Center
     ) {
         Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
@@ -1188,11 +1268,21 @@ private fun RowScope.SpaceKey(
     keyHeight: Dp, colors: KeyboardColors, keyShape: RoundedCornerShape,
     onTap: () -> Unit, onLongPress: () -> Unit
 ) {
+    var pressed by remember { mutableStateOf(false) }
     Box(
         modifier = Modifier
             .height(keyHeight).weight(weight)
-            .clip(keyShape).background(colors.spaceKeyBg)
-            .combinedClickable(onClick = { onTap() }, onLongClick = { onLongPress() }),
+            .clip(keyShape)
+            .background(if (pressed) colors.spaceKeyBg.copy(alpha = 0.6f) else colors.spaceKeyBg)
+            .combinedClickable(onClick = { onTap() }, onLongClick = { onLongPress() })
+            .pointerInput(Unit) {
+                awaitEachGesture {
+                    awaitFirstDown(requireUnconsumed = false)
+                    pressed = true
+                    waitForUpOrCancellation()
+                    pressed = false
+                }
+            },
         contentAlignment = Alignment.Center
     ) {
         Text(
@@ -1220,11 +1310,23 @@ private fun RowScope.EnterKey(
     imeAction: Int = android.view.inputmethod.EditorInfo.IME_ACTION_NONE,
     onTap: () -> Unit
 ) {
+    var pressed by remember { mutableStateOf(false) }
+    val bumpScale = rememberKeyBumpScale(pressed)
     Box(
         modifier = Modifier
             .height(keyHeight).weight(weight)
-            .clip(keyShape).background(DeshGreen)
-            .clickable { onTap() },
+            .scale(bumpScale)
+            .clip(keyShape)
+            .background(if (pressed) DeshGreen.copy(alpha = 0.8f) else DeshGreen)
+            .clickable { onTap() }
+            .pointerInput(Unit) {
+                awaitEachGesture {
+                    awaitFirstDown(requireUnconsumed = false)
+                    pressed = true
+                    waitForUpOrCancellation()
+                    pressed = false
+                }
+            },
         contentAlignment = Alignment.Center
     ) {
         when (imeAction and android.view.inputmethod.EditorInfo.IME_MASK_ACTION) {
@@ -1543,11 +1645,23 @@ private fun RowScope.NumpadDigitKey(
     keyShape: RoundedCornerShape,
     onTap: () -> Unit
 ) {
+    var pressed by remember { mutableStateOf(false) }
+    val bumpScale = rememberKeyBumpScale(pressed)
     Box(
         modifier = Modifier
             .height(keyHeight).weight(1f)
-            .clip(keyShape).background(colors.keyBg)
-            .clickable { onTap() },
+            .scale(bumpScale)
+            .clip(keyShape)
+            .background(if (pressed) colors.keyBg.copy(alpha = 0.6f) else colors.keyBg)
+            .clickable { onTap() }
+            .pointerInput(Unit) {
+                awaitEachGesture {
+                    awaitFirstDown(requireUnconsumed = false)
+                    pressed = true
+                    waitForUpOrCancellation()
+                    pressed = false
+                }
+            },
         contentAlignment = Alignment.Center
     ) {
         Text(
