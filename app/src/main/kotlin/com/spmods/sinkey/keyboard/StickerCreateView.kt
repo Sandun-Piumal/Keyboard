@@ -193,7 +193,7 @@ private fun StickerTextComposeView(
     val previewHeight = 90.dp
     val headerHeight = 44.dp
 
-    Column(modifier = Modifier.fillMaxWidth().height(targetContentHeight).background(colors.bg)) {
+    Column(modifier = Modifier.fillMaxWidth().background(colors.bg)) {
         Row(
             modifier = Modifier.fillMaxWidth().height(headerHeight).padding(horizontal = 8.dp),
             verticalAlignment = Alignment.CenterVertically
