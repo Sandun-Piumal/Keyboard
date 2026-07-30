@@ -14,9 +14,9 @@ import androidx.room.PrimaryKey
  *
  * This is a separate concept from "external" stickers picked up read-only
  * from a WhatsApp/Telegram sticker folder the user has connected via SAF
- * (see ExternalStickerFolder / ExternalStickerSource) — those are never
- * copied into this table, since SinKey doesn't own that content and should
- * keep reading it live from the folder instead of duplicating it.
+ * (WhatsApp/Telegram sticker folder access was tried via SAF and later
+ * removed — see StickerBoardView's doc comment for why) — external
+ * stickers, while supported, were never copied into this table.
  *
  * [filePath]   absolute path to the PNG file in app-private storage.
  * [source]     how this sticker was created — SOURCE_IMAGE or SOURCE_TEXT.
