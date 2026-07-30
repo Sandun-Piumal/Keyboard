@@ -58,7 +58,14 @@ class SinKeyInputMethodService : InputMethodService() {
 
     private var wordBuffer = StringBuilder()
     private var englishBuffer = StringBuilder()
-    private var currentLanguage = mutableStateOf("si")
+    // "si" = pure Sinhala, "en" = pure English, "mix" = default mode — types
+    // Sinhala phonetically same as "si" (LANG_TOGGLE still switches to "en"
+    // mid-message), but is visually distinguished by a black composing
+    // underline instead of Sinhala's green one (see composingSpanFor).
+    private var currentLanguage = mutableStateOf("mix")
+
+    /** True when the buffer typing engine should run in Sinhala/phonetic mode ("si" or "mix"). */
+    private fun isSinhalaTyping(): Boolean = currentLanguage.value != "en"
     private var suggestions = mutableStateOf<List<String>>(emptyList())
     private var currentInputTypeState = mutableStateOf(0)
 
@@ -102,6 +109,11 @@ class SinKeyInputMethodService : InputMethodService() {
     // keystrokes. Previous code created a new session per keystroke, leaking OS
     // resources and causing memory growth over time.
     private var spellCheckerSession: android.view.textservice.SpellCheckerSession? = null
+
+    // Tracks the raw Latin buffer last sent to the spell checker from mix
+    // mode, so the async onGetSuggestions callback above knows what it's
+    // answering (mix mode reuses wordBuffer, not englishBuffer, for typing).
+    private var mixEnglishQuery: String = ""
 
     override fun onEvaluateFullscreenMode(): Boolean = false
 
@@ -198,16 +210,40 @@ class SinKeyInputMethodService : InputMethodService() {
                 java.util.Locale.ENGLISH,
                 object : android.view.textservice.SpellCheckerSession.SpellCheckerSessionListener {
                     override fun onGetSuggestions(results: Array<out android.view.textservice.SuggestionsInfo>?) {
-                        val raw = englishBuffer.toString()
-                        val words = mutableListOf<String>()
-                        if (raw.isNotEmpty()) words.add(raw)
+                        // Pure English mode: ("en") — this callback owns the whole
+                        // suggestion bar keyed off englishBuffer, as before.
+                        if (currentLanguage.value == "en") {
+                            val raw = englishBuffer.toString()
+                            val words = mutableListOf<String>()
+                            if (raw.isNotEmpty()) words.add(raw)
+                            results?.forEach { info ->
+                                for (i in 0 until info.suggestionsCount) {
+                                    val s = info.getSuggestionAt(i)
+                                    if (s != raw && words.size < 5) words.add(s)
+                                }
+                            }
+                            if (words.isNotEmpty()) suggestions.value = words
+                            return
+                        }
+
+                        // Mix mode: this callback is answering the extra English-side
+                        // lookup fired from fetchEnglishSuggestionsForMix — merge its
+                        // results onto the end of whatever Sinhala suggestions are
+                        // already showing instead of replacing them. Bail out if the
+                        // buffer has since moved on (cleared, or now a different word)
+                        // so a slow async reply can't attach stale suggestions.
+                        val raw = mixEnglishQuery
+                        if (currentLanguage.value != "mix" || raw.isEmpty()) return
+                        if (wordBuffer.toString() != raw) return
+                        val englishWords = mutableListOf<String>()
+                        englishWords.add(raw)
                         results?.forEach { info ->
                             for (i in 0 until info.suggestionsCount) {
                                 val s = info.getSuggestionAt(i)
-                                if (s != raw && words.size < 5) words.add(s)
+                                if (s != raw && englishWords.size < 3) englishWords.add(s)
                             }
                         }
-                        if (words.isNotEmpty()) suggestions.value = words
+                        suggestions.value = (suggestions.value + englishWords).distinct().take(6)
                     }
                     override fun onGetSentenceSuggestions(results: Array<out android.view.textservice.SentenceSuggestionsInfo>?) {}
                 },
@@ -361,7 +397,7 @@ class SinKeyInputMethodService : InputMethodService() {
                         ic.setComposingText("", 1)
                         ic.finishComposingText()
                     } else {
-                        ic.setComposingText(renderBuffer(), 1)
+                        setComposingTextStyled(ic, renderBuffer())
                     }
                 } else {
                     if (englishBuffer.isNotEmpty()) englishBuffer.deleteCharAt(englishBuffer.length - 1)
@@ -379,14 +415,14 @@ class SinKeyInputMethodService : InputMethodService() {
                 updateAutoShift(ic)
             }
             "SPACE" -> {
-                if (currentLanguage.value == "si") commitPendingWord()
+                if (isSinhalaTyping()) commitPendingWord()
                 else { learnWord(englishBuffer.toString(), "en"); englishBuffer.clear(); suggestions.value = emptyList() }
                 ic.commitText(" ", 1)
                 // After space, check if previous char was sentence-ending punctuation
                 updateAutoShift(ic)
             }
             "ENTER" -> {
-                if (currentLanguage.value == "si") commitPendingWord()
+                if (isSinhalaTyping()) commitPendingWord()
                 else { learnWord(englishBuffer.toString(), "en"); englishBuffer.clear(); suggestions.value = emptyList() }
                 ic.commitText("\n", 1)
                 // New line = sentence start → auto-shift
@@ -418,7 +454,11 @@ class SinKeyInputMethodService : InputMethodService() {
                 commitPendingWord()
                 englishBuffer.clear()
                 suggestions.value = emptyList()
-                currentLanguage.value = if (currentLanguage.value == "en") "si" else "en"
+                currentLanguage.value = when (currentLanguage.value) {
+                    "mix" -> "en"
+                    "en"  -> "si"
+                    else  -> "mix" // "si" -> "mix"
+                }
             }
             "," , "." -> {
                 commitPendingWord()
@@ -460,11 +500,11 @@ class SinKeyInputMethodService : InputMethodService() {
                     commitPendingWord()
                     ic.commitText(key, 1)
                     serviceScope.launch { prefs.addRecentEmoji(key) }
-                } else if (currentLanguage.value == "si") {
+                } else if (isSinhalaTyping()) {
                     val lower = key.lowercase()
                     wordBuffer.append(lower)
                     val preview = SinhalaTransliterator.transliterate(wordBuffer.toString())
-                    ic.setComposingText(preview, 1)
+                    setComposingTextStyled(ic, preview)
                     updateSuggestions()
                     // Consume one-shot shift after first Sinhala letter
                     if (shiftState.value == ShiftState.ONE_SHOT) shiftState.value = ShiftState.OFF
@@ -493,6 +533,46 @@ class SinKeyInputMethodService : InputMethodService() {
     }
 
     private fun renderBuffer(): String = SinhalaTransliterator.transliterate(wordBuffer.toString())
+
+    // Sinhala composing underline — matches the app's DeshGreen accent.
+    private val sinhalaUnderlineColor = android.graphics.Color.rgb(0x6E, 0x9A, 0x65)
+    // Mix-mode composing underline — plain black, so it's visually distinct
+    // from pure Sinhala mode's green while typing.
+    private val mixUnderlineColor = android.graphics.Color.BLACK
+
+    /** CharacterStyle that draws the composing-text underline in a fixed [color]. */
+    private class ColoredUnderlineSpan(private val color: Int) : android.text.style.CharacterStyle() {
+        override fun updateDrawState(tp: android.text.TextPaint) {
+            tp.isUnderlineText = true
+            tp.underlineColor = color
+            tp.underlineThickness = 4f
+        }
+    }
+
+    /**
+     * Sends [text] to the editor as composing text with an underline colored
+     * according to the current language mode: green for pure Sinhala ("si"),
+     * black for the default mix mode, and the system default for plain
+     * English (no custom span needed there).
+     */
+    private fun setComposingTextStyled(ic: android.view.inputmethod.InputConnection, text: String) {
+        val color = when (currentLanguage.value) {
+            "si" -> sinhalaUnderlineColor
+            "mix" -> mixUnderlineColor
+            else -> null
+        }
+        if (color == null) {
+            ic.setComposingText(text, 1)
+        } else {
+            val spanned = android.text.SpannableString(text)
+            spanned.setSpan(
+                ColoredUnderlineSpan(color),
+                0, text.length,
+                android.text.Spannable.SPAN_EXCLUSIVE_EXCLUSIVE
+            )
+            ic.setComposingText(spanned, 1)
+        }
+    }
 
     /**
      * FIX #10: Removed the `key.length > 8` guard that rejected ZWJ emoji
@@ -532,11 +612,17 @@ class SinKeyInputMethodService : InputMethodService() {
      */
     private fun handleSuggestion(word: String) {
         val ic = currentInputConnection ?: return
-        if (currentLanguage.value == "si") {
+        if (isSinhalaTyping()) {
             ic.setComposingText("", 1)
             ic.commitText(word, 1)
+            // In mix mode the suggestion bar can hold both a Sinhala rendering
+            // and the raw-Latin English reading of the same buffer (see
+            // fetchEnglishSuggestionsForMix) — learn each into its matching
+            // dictionary rather than always tagging as Sinhala.
+            val pickedEnglish = currentLanguage.value == "mix" &&
+                word.equals(mixEnglishQuery, ignoreCase = true)
             wordBuffer.clear()
-            learnWord(word, "si")
+            learnWord(word, if (pickedEnglish) "en" else "si")
         } else {
             val len = englishBuffer.length
             if (len > 0) ic.deleteSurroundingText(len, 0)
@@ -709,10 +795,10 @@ class SinKeyInputMethodService : InputMethodService() {
     }
 
     private fun updateSuggestions() {
-        val raw = if (currentLanguage.value == "si") wordBuffer.toString() else englishBuffer.toString()
+        val raw = if (isSinhalaTyping()) wordBuffer.toString() else englishBuffer.toString()
         if (raw.isEmpty()) { suggestions.value = emptyList(); return }
 
-        if (currentLanguage.value == "si") {
+        if (isSinhalaTyping()) {
             val primary = SinhalaTransliterator.transliterate(raw)
             val list = mutableListOf(primary)
             val withA = SinhalaTransliterator.transliterate("${raw}a")
@@ -726,6 +812,14 @@ class SinKeyInputMethodService : InputMethodService() {
             // start with the same rendered prefix (e.g. previously typed
             // Sinhala words matching what's being composed right now).
             fetchPersonalSuggestions(primary, "si", baseList = list)
+
+            // Mix mode only: also surface the raw Latin buffer as a plain-English
+            // suggestion (and its spell-checker completions) alongside the Sinhala
+            // ones above, since the user may actually be typing an English word
+            // while in the default mix mode rather than Singlish.
+            if (currentLanguage.value == "mix") {
+                fetchEnglishSuggestionsForMix(raw)
+            }
         } else {
             // FIX #2: Use the single reusable session instead of creating a new one per keystroke.
             val session = spellCheckerSession
@@ -741,6 +835,30 @@ class SinKeyInputMethodService : InputMethodService() {
                 suggestions.value = listOf(raw)
             }
             fetchPersonalSuggestions(raw, "en", baseList = listOf(raw))
+        }
+    }
+
+    /**
+     * Mix mode only: asks the English spell checker about the raw Latin text
+     * the user is typing (e.g. "office"), so its English reading can show up
+     * in the suggestion bar next to the Sinhala transliteration ("ඔෆිස්")
+     * without the user needing to switch modes first. Also merges the
+     * learned personal English dictionary immediately (synchronous data
+     * already in memory via wordRepo below), then the async spell-checker
+     * results arrive via the shared session's onGetSuggestions.
+     */
+    private fun fetchEnglishSuggestionsForMix(raw: String) {
+        mixEnglishQuery = raw
+        val session = spellCheckerSession
+        if (session != null) {
+            try {
+                session.getSuggestions(android.view.textservice.TextInfo(raw), 3)
+            } catch (e: Exception) {
+                android.util.Log.w("SinKey", "getSuggestions (mix) failed", e)
+            }
+        } else {
+            // No spell-checker available — still surface the raw word itself.
+            suggestions.value = (suggestions.value + raw).distinct().take(6)
         }
     }
 
