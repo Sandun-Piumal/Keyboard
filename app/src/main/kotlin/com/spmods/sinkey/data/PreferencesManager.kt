@@ -35,11 +35,6 @@ class PreferencesManager(private val context: Context) {
         // key name (keyboard_font) so existing users' stored default isn't
         // silently reset to NONE by this migration.
         val KEYBOARD_FONT = stringPreferencesKey("keyboard_font")
-        // Comma-separated list of SAF tree URIs the user has explicitly
-        // connected as external sticker sources (e.g. WhatsApp's or
-        // Telegram's sticker folder). Read-only, opt-in — see
-        // ExternalStickerSource. Empty/absent means none connected.
-        val EXTERNAL_STICKER_FOLDERS = stringPreferencesKey("external_sticker_folders")
     }
 
     val themeMode: Flow<ThemeMode> = context.dataStore.data.map { prefs ->
@@ -126,30 +121,6 @@ class PreferencesManager(private val context: Context) {
 
     suspend fun setKeyboardFont(fontKey: String) {
         context.dataStore.edit { it[Keys.KEYBOARD_FONT] = fontKey }
-    }
-
-    /** SAF tree URIs (as strings) of every external sticker folder the user has connected. */
-    val externalStickerFolders: Flow<List<String>> = context.dataStore.data.map { prefs ->
-        val raw = prefs[Keys.EXTERNAL_STICKER_FOLDERS] ?: ""
-        if (raw.isBlank()) emptyList() else raw.split(",").filter { it.isNotBlank() }
-    }
-
-    suspend fun addExternalStickerFolder(uri: String) {
-        context.dataStore.edit { prefs ->
-            val current = (prefs[Keys.EXTERNAL_STICKER_FOLDERS] ?: "")
-                .split(",").filter { it.isNotBlank() }.toMutableSet()
-            current.add(uri)
-            prefs[Keys.EXTERNAL_STICKER_FOLDERS] = current.joinToString(",")
-        }
-    }
-
-    suspend fun removeExternalStickerFolder(uri: String) {
-        context.dataStore.edit { prefs ->
-            val current = (prefs[Keys.EXTERNAL_STICKER_FOLDERS] ?: "")
-                .split(",").filter { it.isNotBlank() }.toMutableSet()
-            current.remove(uri)
-            prefs[Keys.EXTERNAL_STICKER_FOLDERS] = current.joinToString(",")
-        }
     }
 
     /**
