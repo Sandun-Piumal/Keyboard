@@ -54,18 +54,16 @@
 
         <!--
             Trampoline Activity that lets the keyboard (a Service, not an
-            Activity) launch system pickers — gallery image picker for
-            Image Sticker creation, SAF folder picker for connecting a
-            WhatsApp/Telegram sticker folder. See StickerPickerActivity's
-            class doc for why this indirection is required.
+            Activity) launch the system gallery picker for Image Sticker
+            creation. See StickerPickerActivity's class doc for why this
+            indirection is required.
         -->
         <activity
             android:name=".ime.StickerPickerActivity"
             android:exported="false"
             android:theme="@style/Theme.SinKey.Transparent"
             android:excludeFromRecents="true"
-            android:taskAffinity=""
-            android:launchMode="singleTask" />
+            android:launchMode="standard" />
 
         <!--
             Exposes app-private sticker PNGs (files/stickers/) as
