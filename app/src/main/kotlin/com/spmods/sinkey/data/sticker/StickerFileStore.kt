@@ -27,6 +27,7 @@ object StickerFileStore {
 
     private const val DIR_NAME = "stickers"
     private const val MAX_DIMENSION_PX = 512 // stickers don't need to be larger than this on any screen
+    private const val MAX_STICKER_BYTES = 100 * 1024 // WhatsApp rejects static stickers over 100KB
 
     private fun dir(context: Context): File =
         File(context.filesDir, DIR_NAME).apply { if (!exists()) mkdirs() }
@@ -91,9 +92,27 @@ object StickerFileStore {
         }
     }
 
-    /** Deletes the PNG file backing a sticker. Safe to call even if the file is already gone. */
+    /**
+     * Decodes an existing PNG sticker (one created before WebP export was
+     * added) and writes its missing sibling WebP file. Returns false if the
+     * PNG itself can't be read.
+     */
+    fun backfillWebp(pngPath: String): Boolean {
+        val pngFile = File(pngPath)
+        if (!pngFile.exists()) return false
+        val bitmap = BitmapFactory.decodeFile(pngPath) ?: return false
+        return try {
+            writeWhatsAppWebp(bitmap, File(webpPathFor(pngPath)))
+            true
+        } finally {
+            bitmap.recycle()
+        }
+    }
+
+    /** Deletes the PNG file backing a sticker, and its sibling WebP if present. Safe to call even if either file is already gone. */
     fun deleteFile(filePath: String) {
         runCatching { File(filePath).delete() }
+        runCatching { File(webpPathFor(filePath)).delete() }
     }
 
     private fun decodeScaledBitmap(context: Context, uri: Uri): Bitmap? {
@@ -133,10 +152,58 @@ object StickerFileStore {
     }
 
     private fun writeBitmap(context: Context, bitmap: Bitmap): String {
-        val file = File(dir(context), "${UUID.randomUUID()}.png")
-        FileOutputStream(file).use { out ->
+        val id = UUID.randomUUID().toString()
+        val pngFile = File(dir(context), "$id.png")
+        FileOutputStream(pngFile).use { out ->
             bitmap.compress(Bitmap.CompressFormat.PNG, 100, out)
         }
-        return file.absolutePath
+        // Also write a WhatsApp-compliant WebP copy alongside the PNG. WhatsApp's
+        // sticker pipeline (StickerContentProvider) requires WebP — it will not
+        // accept a PNG sticker, which is why sending via commitContent as PNG
+        // gets treated as a generic photo attachment instead of a real sticker.
+        // Same UUID, .webp extension, so callers can derive one path from the
+        // other (see StickerFileStore.webpPathFor).
+        writeWhatsAppWebp(bitmap, File(dir(context), "$id.webp"))
+        return pngFile.absolutePath
+    }
+
+    /**
+     * Given a sticker's stored PNG path, returns the path of its sibling
+     * WhatsApp-ready WebP file (same UUID, .webp extension). Does not check
+     * the file actually exists — callers that need that should check
+     * File(path).exists() (older stickers created before WebP export was
+     * added won't have one).
+     */
+    fun webpPathFor(pngPath: String): String = pngPath.removeSuffix(".png") + ".webp"
+
+    /**
+     * Re-encodes [bitmap] to satisfy WhatsApp's static-sticker requirements:
+     * exactly 512x512 WebP, RGBA, under 100KB. WhatsApp's Sticker Pack
+     * content provider validates these at "Add to WhatsApp" time and will
+     * silently refuse the whole pack if any sticker fails them, so this is
+     * not just a nice-to-have — it's required for stickers to work at all.
+     */
+    private fun writeWhatsAppWebp(source: Bitmap, outFile: File) {
+        val sized = if (source.width == MAX_DIMENSION_PX && source.height == MAX_DIMENSION_PX) {
+            source
+        } else {
+            Bitmap.createScaledBitmap(source, MAX_DIMENSION_PX, MAX_DIMENSION_PX, true)
+        }
+        var quality = 90
+        var bytes: ByteArray
+        do {
+            val stream = java.io.ByteArrayOutputStream()
+            val format = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.R) {
+                Bitmap.CompressFormat.WEBP_LOSSY
+            } else {
+                @Suppress("DEPRECATION") Bitmap.CompressFormat.WEBP
+            }
+            sized.compress(format, quality, stream)
+            bytes = stream.toByteArray()
+            quality -= 15
+        } while (bytes.size > MAX_STICKER_BYTES && quality > 10)
+
+        FileOutputStream(outFile).use { it.write(bytes) }
+        if (sized !== source) sized.recycle()
     }
 }
