@@ -910,9 +910,9 @@ private fun keyNumberFontSize(keyHeight: Dp): androidx.compose.ui.unit.TextUnit 
 @Composable
 private fun rememberKeyBumpScale(pressed: Boolean): Float {
     val scale by animateFloatAsState(
-        targetValue = if (pressed) 0.88f else 1f,
+        targetValue = if (pressed) 0.82f else 1f,
         animationSpec = if (pressed) {
-            spring(dampingRatio = Spring.DampingRatioNoBouncy, stiffness = Spring.StiffnessHigh)
+            spring(dampingRatio = Spring.DampingRatioNoBouncy, stiffness = Spring.StiffnessHigh * 1.5f)
         } else {
             spring(dampingRatio = Spring.DampingRatioMediumBouncy, stiffness = Spring.StiffnessMedium)
         },
@@ -922,12 +922,12 @@ private fun rememberKeyBumpScale(pressed: Boolean): Float {
 }
 
 @Composable
-private fun KeyPreviewPopup(label: String, keyHeight: Dp, colors: KeyboardColors) {
+private fun KeyPreviewPopup(label: String, keyHeight: Dp, colors: KeyboardColors, keyShape: RoundedCornerShape) {
     val size = (keyHeight.value * 1.1f).dp
     Box(
         modifier = Modifier
             .defaultMinSize(minWidth = size, minHeight = size)
-            .clip(RoundedCornerShape(topStart = 8.dp, topEnd = 8.dp, bottomEnd = 8.dp, bottomStart = 2.dp))
+            .clip(keyShape)
             .background(colors.keyBg)
             .padding(horizontal = 8.dp, vertical = 2.dp),
         contentAlignment = Alignment.Center
@@ -974,7 +974,7 @@ private fun RowScope.NumberedLetterKey(
         if (pressed) {
             Popup(alignment = Alignment.TopCenter,
                 offset = IntOffset(0, -((keyHeight.value * 1.4f).toInt()))) {
-                KeyPreviewPopup(label = label, keyHeight = keyHeight, colors = colors)
+                KeyPreviewPopup(label = label, keyHeight = keyHeight, colors = colors, keyShape = keyShape)
             }
         }
     }
@@ -1012,7 +1012,7 @@ private fun RowScope.LetterKey(
         if (pressed) {
             Popup(alignment = Alignment.TopCenter,
                 offset = IntOffset(0, -((keyHeight.value * 1.4f).toInt()))) {
-                KeyPreviewPopup(label = label, keyHeight = keyHeight, colors = colors)
+                KeyPreviewPopup(label = label, keyHeight = keyHeight, colors = colors, keyShape = keyShape)
             }
         }
     }
@@ -1138,7 +1138,7 @@ private fun RowScope.SpecialKey(
         if (pressed) {
             Popup(alignment = Alignment.TopCenter,
                 offset = IntOffset(0, -((keyHeight.value * 1.4f).toInt()))) {
-                KeyPreviewPopup(label = label, keyHeight = keyHeight, colors = colors)
+                KeyPreviewPopup(label = label, keyHeight = keyHeight, colors = colors, keyShape = keyShape)
             }
         }
     }
