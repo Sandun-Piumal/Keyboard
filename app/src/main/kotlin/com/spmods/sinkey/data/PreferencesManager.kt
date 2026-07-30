@@ -35,6 +35,10 @@ class PreferencesManager(private val context: Context) {
         // key name (keyboard_font) so existing users' stored default isn't
         // silently reset to NONE by this migration.
         val KEYBOARD_FONT = stringPreferencesKey("keyboard_font")
+        // Mix mode only: when true, finishing a word (space/enter) converts the
+        // typed Latin buffer to its Sinhala transliteration, same as pure "si"
+        // mode. Default OFF — mix mode commits the word as plain typed text.
+        val MIX_AUTO_SINHALA = booleanPreferencesKey("mix_auto_sinhala")
     }
 
     val themeMode: Flow<ThemeMode> = context.dataStore.data.map { prefs ->
@@ -80,6 +84,11 @@ class PreferencesManager(private val context: Context) {
         prefs[Keys.KEYBOARD_FONT] ?: FancyTextStyle.NONE.key
     }
 
+    /** Mix mode: auto-convert the typed word to Sinhala on space/enter. Default off. */
+    val mixAutoSinhala: Flow<Boolean> = context.dataStore.data.map { prefs ->
+        prefs[Keys.MIX_AUTO_SINHALA] ?: false
+    }
+
     /** Emits the most-recently-used emojis list (up to [MAX_RECENT] entries). */
     val recentEmojis: Flow<List<String>> = context.dataStore.data.map { prefs ->
         val raw = prefs[Keys.RECENT_EMOJIS] ?: ""
@@ -121,6 +130,10 @@ class PreferencesManager(private val context: Context) {
 
     suspend fun setKeyboardFont(fontKey: String) {
         context.dataStore.edit { it[Keys.KEYBOARD_FONT] = fontKey }
+    }
+
+    suspend fun setMixAutoSinhala(enabled: Boolean) {
+        context.dataStore.edit { it[Keys.MIX_AUTO_SINHALA] = enabled }
     }
 
     /**
