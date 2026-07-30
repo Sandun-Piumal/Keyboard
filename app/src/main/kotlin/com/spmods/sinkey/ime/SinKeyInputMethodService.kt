@@ -104,6 +104,10 @@ class SinKeyInputMethodService : InputMethodService() {
     // equivalent for Sinhala script, so it's applied only in the "en" branch
     // of handleKey/handleSuggestion below.
     private var cachedFancyTextStyle = com.spmods.sinkey.data.FancyTextStyle.NONE
+    // Mix mode: when true, space/enter converts the typed word to Sinhala
+    // (same as pure "si"); when false (default), it commits the raw typed
+    // Latin text as-is unless the user picked a suggestion.
+    private var cachedMixAutoSinhala = false
 
     // FIX #2: Single reusable SpellCheckerSession — created once, reused across
     // keystrokes. Previous code created a new session per keystroke, leaking OS
@@ -151,6 +155,9 @@ class SinKeyInputMethodService : InputMethodService() {
         }
         serviceScope.launch {
             prefs.keyboardFont.collect { cachedFancyTextStyle = com.spmods.sinkey.data.FancyTextStyle.fromKey(it) }
+        }
+        serviceScope.launch {
+            prefs.mixAutoSinhala.collect { cachedMixAutoSinhala = it }
         }
 
         // FIX #2: Create spell-checker session once for the lifetime of the service.
@@ -503,7 +510,7 @@ class SinKeyInputMethodService : InputMethodService() {
                 } else if (isSinhalaTyping()) {
                     val lower = key.lowercase()
                     wordBuffer.append(lower)
-                    val preview = SinhalaTransliterator.transliterate(wordBuffer.toString())
+                    val preview = renderBuffer()
                     setComposingTextStyled(ic, preview)
                     updateSuggestions()
                     // Consume one-shot shift after first Sinhala letter
@@ -532,7 +539,15 @@ class SinKeyInputMethodService : InputMethodService() {
         shiftState.value = if (shouldShift) ShiftState.ONE_SHOT else ShiftState.OFF
     }
 
-    private fun renderBuffer(): String = SinhalaTransliterator.transliterate(wordBuffer.toString())
+    /**
+     * Composing-preview text for the current buffer. Pure Sinhala mode shows
+     * the live transliteration ("මම"); mix mode shows the raw Latin text
+     * exactly as typed ("mama"), since mix mode types English-looking text
+     * on screen and only offers the Sinhala reading via the suggestion bar.
+     */
+    private fun renderBuffer(): String =
+        if (currentLanguage.value == "mix") wordBuffer.toString()
+        else SinhalaTransliterator.transliterate(wordBuffer.toString())
 
     // Sinhala composing underline — matches the app's DeshGreen accent.
     private val sinhalaUnderlineColor = android.graphics.Color.rgb(0x6E, 0x9A, 0x65)
@@ -596,12 +611,17 @@ class SinKeyInputMethodService : InputMethodService() {
     private fun commitPendingWord() {
         if (wordBuffer.isEmpty()) return
         val ic = currentInputConnection
-        val finalWord = SinhalaTransliterator.transliterate(wordBuffer.toString())
+        val raw = wordBuffer.toString()
+        // Mix mode: commit the raw Latin text as typed unless the user has
+        // turned on "auto-convert to Sinhala" in settings — pure "si" mode
+        // always converts, same as before.
+        val convertToSinhala = currentLanguage.value != "mix" || cachedMixAutoSinhala
+        val finalWord = if (convertToSinhala) SinhalaTransliterator.transliterate(raw) else raw
         ic?.setComposingText("", 1)
         ic?.commitText(finalWord, 1)
         wordBuffer.clear()
         suggestions.value = emptyList()
-        learnWord(finalWord, "si")
+        learnWord(finalWord, if (convertToSinhala) "si" else "en")
     }
 
     /**
