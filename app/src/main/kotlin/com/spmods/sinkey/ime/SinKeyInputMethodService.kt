@@ -649,14 +649,17 @@ class SinKeyInputMethodService : InputMethodService() {
     private fun handleSuggestion(word: String) {
         val ic = currentInputConnection ?: return
         if (isSinhalaTyping()) {
-            ic.setComposingText("", 1)
-            ic.commitText(word, 1)
             // In mix mode the suggestion bar can hold both a Sinhala rendering
             // and the raw-Latin English reading of the same buffer (see
-            // fetchEnglishSuggestionsForMix) — learn each into its matching
-            // dictionary rather than always tagging as Sinhala.
+            // fetchEnglishSuggestionsForMix) — style and learn each into its
+            // matching path rather than always treating it as Sinhala.
             val pickedEnglish = currentLanguage.value == "mix" &&
                 word.equals(mixEnglishQuery, ignoreCase = true)
+            val toCommit = if (pickedEnglish)
+                com.spmods.sinkey.keyboard.FancyTextMapper.apply(word, cachedFancyTextStyle)
+            else word
+            ic.setComposingText("", 1)
+            ic.commitText(toCommit, 1)
             wordBuffer.clear()
             learnWord(word, if (pickedEnglish) "en" else "si")
         } else {
