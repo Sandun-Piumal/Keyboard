@@ -118,7 +118,9 @@ private fun keyboardColors(showKeyBorders: Boolean, isDark: Boolean): KeyboardCo
             keyText        = Color(0xFFE8E8E8),
             specialKeyText = Color(0xFFCCCCCC),
             subText        = Color(0xFF888888),
-            spaceKeyBg     = if (showKeyBorders) Color(0xFF3A3A3A) else Color(0xFF1E1E1E),
+            // Borderless: subtle tint (slightly lighter than bg) so the
+            // space-bar pill stays visible without a full bordered look.
+            spaceKeyBg     = if (showKeyBorders) Color(0xFF3A3A3A) else Color(0xFF2A2A2A),
             spaceKeyText   = Color(0xFF777777),
         )
     } else {
@@ -137,8 +139,9 @@ private fun keyboardColors(showKeyBorders: Boolean, isDark: Boolean): KeyboardCo
             specialKeyText = Color(0xFF444444),
             // subText for number hints
             subText        = Color(0xFF666666),
-            // space bar bg: bordered = white, borderless = flat with keyboard bg
-            spaceKeyBg     = if (showKeyBorders) Color(0xFFFFFFFF) else Color(0xFFE6EAED),
+            // space bar bg: bordered = white, borderless = subtle tint
+            // (slightly darker than keyboard bg) so the pill stays visible
+            spaceKeyBg     = if (showKeyBorders) Color(0xFFFFFFFF) else Color(0xFFDBE0E4),
             // space bar text - medium grey
             spaceKeyText   = Color(0xFF888888),
         )
