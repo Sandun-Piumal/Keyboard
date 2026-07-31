@@ -141,23 +141,6 @@ class SinKeyInputMethodService : InputMethodService() {
             decor.setViewTreeSavedStateRegistryOwner(lifecycleOwner)
             decor.setViewTreeViewModelStoreOwner(lifecycleOwner)
         }
-        // FIX Ghost-Keyboard (WhatsApp header/call-button tap): some host apps
-        // (WhatsApp's call sheet / header controls being the reported case)
-        // trigger a soft-input re-evaluation while the IME window is still
-        // visible. That makes Android re-run onStartInputView/setInputView
-        // while the OLD IME window surface is still mid-way through its own
-        // system enter/exit animation. For a couple of frames the system then
-        // composites both the old window (still animating out at the bottom)
-        // and the new one (measured against the host app's new insets, which
-        // can briefly land near the top) — producing the duplicate/"ghost"
-        // keyboard near the header while the real one is still at the bottom.
-        // Removing the window's enter/exit animation means there is never a
-        // transition frame in which two window surfaces are both partially
-        // visible: the old one disappears immediately and the new one appears
-        // immediately, back to back on the same frame boundary.
-        window?.window?.let { w ->
-            w.setWindowAnimations(0)
-        }
         prefs = PreferencesManager(this)
         wordRepo = WordRepository(this)
         clipRepo = ClipRepository(this)
@@ -341,14 +324,8 @@ class SinKeyInputMethodService : InputMethodService() {
         super.setInputView(view)
     }
 
-    // True while the IME window is currently shown, so onStartInputView can
-    // tell "host app re-evaluated soft input while we were already visible"
-    // (WhatsApp header/call-button case) apart from a normal fresh show.
-    private var isWindowCurrentlyShown = false
-
     override fun onWindowShown() {
         super.onWindowShown()
-        isWindowCurrentlyShown = true
         // Re-apply owners on every show in case the IME window was recreated.
         window?.window?.decorView?.let { decor ->
             decor.setViewTreeLifecycleOwner(lifecycleOwner)
@@ -360,27 +337,12 @@ class SinKeyInputMethodService : InputMethodService() {
 
     override fun onWindowHidden() {
         super.onWindowHidden()
-        isWindowCurrentlyShown = false
         lifecycleOwner.handleLifecycleEvent(Lifecycle.Event.ON_PAUSE)
     }
 
     override fun onStartInputView(info: EditorInfo?, restarting: Boolean) {
         super.onStartInputView(info, restarting)
         // lifecycle ON_RESUME is driven by onWindowShown()
-
-        // FIX Ghost-Keyboard (WhatsApp header/call-button tap): if this fires
-        // while the window is already marked shown (no onWindowHidden in
-        // between), the host app re-evaluated soft input without us ever
-        // fully going away first — the exact precondition for the duplicate
-        // keyboard reported near the header while the real one is still at
-        // the bottom. Forcibly hide the current window synchronously before
-        // continuing, so the new input view always starts from a clean,
-        // fully-hidden state instead of layering on top of whatever surface
-        // was still on screen.
-        if (isWindowCurrentlyShown) {
-            currentInputView?.let { old -> (old.parent as? ViewGroup)?.removeView(old) }
-            window?.window?.let { w -> if (w.isShowing) w.hide() }
-        }
 
         // Bug O4 Fix: Cancel any active composing span on the previous
         // InputConnection before switching fields. Without this, the underlined
