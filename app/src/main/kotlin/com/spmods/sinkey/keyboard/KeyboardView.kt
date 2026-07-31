@@ -295,6 +295,7 @@ fun KeyboardView(
                 currentBoard != Board.STICKER && currentBoard != Board.STICKER_CREATE) {
                 AppsMicBar(
                     colors = colors,
+                    isDark = isDark,
                     suggestions = if (isPhoneInput || currentBoard == Board.SYMBOLS || currentBoard == Board.NUMPAD) emptyList() else suggestions,
                     onSuggestionSelected = onSuggestionSelected,
                     onKey = onKey,
@@ -575,6 +576,7 @@ private fun PhoneDialPadKeys(
 @Composable
 private fun AppsMicBar(
     colors: KeyboardColors,
+    isDark: Boolean = false,
     suggestions: List<String>,
     onSuggestionSelected: (String) -> Unit,
     onKey: (String) -> Unit,
@@ -712,7 +714,12 @@ private fun AppsMicBar(
                     modifier = Modifier
                         .size(36.dp)
                         .clip(RoundedCornerShape(50))
-                        .background(colors.specialKeyBg)
+                        // Mic button keeps its pill background regardless of
+                        // showKeyBorders — it's a distinct action button, not
+                        // a regular key, so it shouldn't go flat/invisible.
+                        .background(
+                            if (isDark) Color(0x1FFFFFFF) else Color(0x14000000)
+                        )
                         .clickable { onKey("TOOL_MIC") },
                     contentAlignment = Alignment.Center
                 ) {
