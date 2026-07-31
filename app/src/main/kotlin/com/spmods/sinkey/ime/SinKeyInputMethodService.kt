@@ -508,8 +508,13 @@ class SinKeyInputMethodService : InputMethodService() {
                     ic.commitText(key, 1)
                     serviceScope.launch { prefs.addRecentEmoji(key) }
                 } else if (isSinhalaTyping()) {
-                    val lower = key.lowercase()
-                    wordBuffer.append(lower)
+                    // Respect shift state instead of always lowercasing —
+                    // Sinhala's phonetic scheme uses case to distinguish
+                    // real letters (e.g. lowercase n=න vs uppercase N=ණ,
+                    // lowercase l=ල vs uppercase L=ළ, "sh"=ශ vs "Sh"=ෂ,
+                    // "th"=ත vs "thh"=ථ), not just cosmetic capitalization.
+                    val typed = if (shiftState.value != ShiftState.OFF) key.uppercase() else key.lowercase()
+                    wordBuffer.append(typed)
                     setComposingTextStyled(ic, renderStyledBuffer())
                     updateSuggestions()
                     // Consume one-shot shift after first Sinhala letter
@@ -936,7 +941,11 @@ class SinKeyInputMethodService : InputMethodService() {
     private fun fetchPersonalSuggestions(prefix: String, language: String, baseList: List<String>) {
         if (prefix.isEmpty()) return
         serviceScope.launch {
-            val learned = wordRepo.suggestionsFor(prefix, language, limit = 5)
+            val learned = if (language == "si") {
+                wordRepo.fuzzySuggestionsFor(prefix, language, limit = 5)
+            } else {
+                wordRepo.suggestionsFor(prefix, language, limit = 5)
+            }
             if (learned.isEmpty()) return@launch
             val merged = (suggestions.value.ifEmpty { baseList } + learned).distinct().take(5)
             suggestions.value = merged
