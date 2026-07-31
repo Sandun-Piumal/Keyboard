@@ -146,6 +146,65 @@ val EnglishRows: List<List<String>> = listOf(
 )
 
 /**
+ * Standard Sinhala Wijesekara keyboard layout, as defined by Sri Lanka
+ * Standard SLS 1134 Revision 2:2004 ("Wijesekara Extended Keyboard").
+ * Unlike phonetic/Singlish mode, this is a direct one-key-to-one-glyph
+ * (or diacritic) hardware-style layout: each QWERTY key position emits a
+ * fixed Sinhala character or combining mark, with a second layer under
+ * Shift. Row shape mirrors [EnglishRows] (10/9/7 keys) so the same
+ * KeyRow/NumberedKeyRow composables can render it directly.
+ *
+ * ZWJ = zero-width joiner (U+200D), used to build conjuncts (rakaransaya,
+ * yansaya) together with the hal kirima (්) key.
+ * ZWNJ = zero-width non-joiner (U+200C), placed on Q, prevents ligature
+ * formation when needed.
+ *
+ * ⚠️ VERIFY BEFORE SHIPPING: [baseRows] was cross-checked directly against
+ * the SLS 1134 reference table and is solid. [shiftRows] and especially
+ * [altGrMap] were reconstructed from a lower-quality source (OCR'd PDF
+ * text with ambiguous line breaks around G/H/J and the AltGr column) and
+ * should be typing-tested key-by-key against an official SLS 1134 chart
+ * or a known-good Wijesekara IME before release — a few positions
+ * (notably ට/ඨ on G, ය/යං on H, ව/¿ on J, ක/ඛ on L) are my best
+ * reconstruction, not a verified transcription.
+ */
+object WijesekaraLayout {
+
+    private const val ZWJ = "\u200D"
+    private const val ZWNJ = "\u200C"
+    private const val HAL = "\u0DCA" // ්
+
+    /** Unshifted (base) layer — matches [EnglishRows] row/column shape. */
+    val baseRows: List<List<String>> = listOf(
+        listOf(ZWNJ, "අ", "ැ", "ර", "එ", "හ", "ම", "ස", "ද", "ච"),
+        listOf("$HAL·", "ා", ZWJ, "ෆ", "ට", "ය", "ව", "න", "ක"),
+        listOf("$HAL" + "ං", ZWJ, "ජ", "ඩ", "ඉ", "බ", "ප")
+    )
+
+    /** Shifted layer — matches [EnglishRows] row/column shape. */
+    val shiftRows: List<List<String>> = listOf(
+        listOf("ෆ්‍ර", "උ", "ෑ", "ඍ", "ඔ", "ශ", "ඹ", "ෂ", "ධ", "ඡ"),
+        listOf("ෟ", "ෘ", ZWJ, "ෆ", "ඨ", "ය" + HAL, "¿", "ණ", "ඛ"),
+        listOf("\"", "'", "ඣ", "ඪ", "ඊ", "භ", "ඵ")
+    )
+
+    /** Additional characters reachable only via AltGr, keyed by base-layer key label. */
+    val altGrMap: Map<String, String> = mapOf(
+        "ච" to "ඥ", // AltGr+P
+        "ක" to "ඛ", // reference only; see shiftRows for the primary ඛ position
+        ZWNJ to "ඤ"
+    )
+
+    /** Punctuation row keys with Wijesekara-specific comma/period glyphs. */
+    val punctuation: Map<String, String> = mapOf(
+        "," to "ළ",
+        "." to "ල",
+        "<" to "ළ",
+        ">" to "ඝ"
+    )
+}
+
+/**
  * Singlish → Sinhala Unicode transliterator.
  *
  * Rules (user-defined):
@@ -195,11 +254,14 @@ object SinhalaTransliterator {
     // ---- Consonant bases, longest key first so digraphs win over single letters ----
     private val consonants = listOf(
         "chh" to "ඡ",
+        "thh" to "ථ", "ddh" to "ධ",
         "kh" to "ඛ", "gh" to "ඝ", "ng" to "ඞ",
         "ch" to "ච", "jh" to "ඣ", "ny" to "ඤ", "gn" to "ඥ",
-        "th" to "ථ", "dh" to "ධ", "sh" to "ශ",
+        "th" to "ත", "sh" to "ශ",
+        "ph" to "ඵ", "bh" to "භ",
         "nd" to "ඳ",
         "Sh" to "ෂ",
+        "TH" to "ඨ", "DH" to "ඪ",
         "N"  to "ණ",
         "T"  to "ත",
         "D"  to "ද",
