@@ -635,7 +635,7 @@ private fun AppsMicBar(
                                 .padding(horizontal = 12.dp, vertical = 6.dp),
                             contentAlignment = Alignment.Center
                         ) {
-                            Text(text = displayWord, fontSize = 17.sp, color = colors.keyText, maxLines = 1)
+                            Text(text = displayWord, fontSize = 19.sp, color = colors.keyText, maxLines = 1)
                         }
                         if (idx < suggestions.size - 1) {
                             Box(
@@ -1204,7 +1204,7 @@ private fun LangToggleKey(
     val isMix = currentLanguage == "mix"
     val indicatorColor = when (currentLanguage) {
         "si" -> DeshGreen
-        "mix" -> Color.Black
+        "mix" -> colors.specialKeyText
         else -> Color.Transparent
     }
     var pressed by remember { mutableStateOf(false) }
