@@ -24,6 +24,16 @@ interface WordDao {
     )
     suspend fun findByPrefix(prefix: String, language: String, limit: Int = 5): List<WordEntity>
 
+    @Query(
+        """
+        SELECT * FROM words
+        WHERE language = :language AND substr(word, 1, 1) = :firstChar
+        ORDER BY frequency DESC, lastUsed DESC
+        LIMIT :limit
+        """
+    )
+    suspend fun findByFirstChar(firstChar: String, language: String, limit: Int = 200): List<WordEntity>
+
     @Query("SELECT * FROM words WHERE word = :word AND language = :language LIMIT 1")
     suspend fun findExact(word: String, language: String): WordEntity?
 
