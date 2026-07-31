@@ -682,7 +682,15 @@ class SinKeyInputMethodService : InputMethodService() {
             wordBuffer.clear()
             learnWord(word, if (pickedEnglish) "en" else "si")
         } else {
-            val len = englishBuffer.length
+            // Delete the length of what's actually on screen (the styled/
+            // fancy text), not the plain-text buffer length — fancy fonts
+            // map many letters to surrogate-pair Unicode glyphs (2 UTF-16
+            // units each), so the two lengths can differ and a raw-length
+            // delete leaves stray fancy characters behind.
+            val committedStyled = com.spmods.sinkey.keyboard.FancyTextMapper.apply(
+                englishBuffer.toString(), cachedFancyTextStyle
+            )
+            val len = committedStyled.length
             if (len > 0) ic.deleteSurroundingText(len, 0)
             val styled = com.spmods.sinkey.keyboard.FancyTextMapper.apply(word, cachedFancyTextStyle)
             ic.commitText(styled, 1)
