@@ -79,6 +79,12 @@ class SinKeyInputMethodService : InputMethodService() {
     // AUTO-SHIFT: enabled at sentence start (after . ! ? or at field open).
     enum class ShiftState { OFF, ONE_SHOT, LOCKED }
     private var shiftState = mutableStateOf(ShiftState.ONE_SHOT) // default: first letter capital
+    // True only when the current ONE_SHOT came from the user tapping SHIFT
+    // themselves, not from auto-capitalize at sentence/field start. Sinhala
+    // mode needs this distinction since case there selects a different
+    // letter rather than just styling one (see the isSinhalaTyping() branch
+    // in handleKey's letter-key case).
+    private var wasExplicitShift = false
 
     // Update banner dismiss state — deliberately in-memory only (NOT
     // DataStore/PreferencesManager), and deliberately at service level (not
@@ -456,9 +462,11 @@ class SinKeyInputMethodService : InputMethodService() {
                     ShiftState.ONE_SHOT -> ShiftState.OFF
                     ShiftState.LOCKED   -> ShiftState.OFF
                 }
+                wasExplicitShift = shiftState.value != ShiftState.OFF
             }
             "SHIFT_LOCK" -> {
                 shiftState.value = if (shiftState.value == ShiftState.LOCKED) ShiftState.OFF else ShiftState.LOCKED
+                wasExplicitShift = shiftState.value != ShiftState.OFF
             }
             "SYMBOLS_SHIFT", "EMOJI", "NUMPAD" -> { /* handled in KeyboardView */ }
             "TOOL_MIC" -> { sendDefaultEditorAction(true) }
@@ -521,17 +529,27 @@ class SinKeyInputMethodService : InputMethodService() {
                     ic.commitText(key, 1)
                     serviceScope.launch { prefs.addRecentEmoji(key) }
                 } else if (isSinhalaTyping()) {
-                    // Respect shift state instead of always lowercasing —
-                    // Sinhala's phonetic scheme uses case to distinguish
-                    // real letters (e.g. lowercase n=න vs uppercase N=ණ,
-                    // lowercase l=ල vs uppercase L=ළ, "sh"=ශ vs "Sh"=ෂ,
-                    // "th"=ත vs "thh"=ථ), not just cosmetic capitalization.
-                    val typed = if (shiftState.value != ShiftState.OFF) key.uppercase() else key.lowercase()
+                    // Sinhala's phonetic scheme uses case to pick between
+                    // real, distinct letters (lowercase n=න vs uppercase
+                    // N=ණ, lowercase l=ල vs uppercase L=ළ, "sh"=ශ vs
+                    // "Sh"=ෂ, "th"=ත vs "thh"=ථ) — it is never cosmetic,
+                    // so auto-capitalize (ONE_SHOT at sentence/field start)
+                    // must NOT apply here the way it does for English.
+                    // Only an explicit, user-pressed Shift (which also
+                    // sets ONE_SHOT, but via the SHIFT key itself) should
+                    // uppercase a Sinhala key — and by the time a letter
+                    // key is pressed we can no longer tell "auto" apart
+                    // from "user pressed shift" using shiftState alone.
+                    // wasExplicitShift tracks only shift presses that
+                    // happened after the current word/field started, so
+                    // auto-capitalize at start-of-sentence is ignored
+                    // while a deliberate double-tap-to-Shift still works.
+                    val typed = if (shiftState.value != ShiftState.OFF && wasExplicitShift) key.uppercase() else key.lowercase()
                     wordBuffer.append(typed)
                     setComposingTextStyled(ic, renderStyledBuffer())
                     updateSuggestions()
                     // Consume one-shot shift after first Sinhala letter
-                    if (shiftState.value == ShiftState.ONE_SHOT) shiftState.value = ShiftState.OFF
+                    if (shiftState.value == ShiftState.ONE_SHOT) { shiftState.value = ShiftState.OFF; wasExplicitShift = false }
                 } else {
                     // Apply shift to English letter
                     val typed = if (shiftState.value != ShiftState.OFF) key.uppercase() else key.lowercase()
