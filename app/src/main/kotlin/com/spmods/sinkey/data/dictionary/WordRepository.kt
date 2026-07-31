@@ -9,6 +9,7 @@ import android.content.Context
  */
 class WordRepository(context: Context) {
     private val dao = WordDatabase.getInstance(context).wordDao()
+    private val bigramDao = WordDatabase.getInstance(context).bigramDao()
 
     /** Record a use of [word] for [language]. Safe to call for every committed word. */
     suspend fun learn(word: String, language: String) {
@@ -18,6 +19,42 @@ class WordRepository(context: Context) {
         if (trimmed.isEmpty() || trimmed.length > 40) return
         if (trimmed.none { it.isLetter() }) return
         dao.learnWord(trimmed, language)
+    }
+
+    /**
+     * Record that [nextWord] was typed right after [previousWord], so the
+     * pair can be used later to predict [nextWord] as soon as [previousWord]
+     * is finished again. Safe to call for every committed word — same
+     * blank/length/letter filtering as [learn], applied to both words.
+     */
+    suspend fun learnBigram(previousWord: String, nextWord: String, language: String) {
+        val prev = previousWord.trim()
+        val next = nextWord.trim()
+        if (prev.isEmpty() || next.isEmpty() || prev.length > 40 || next.length > 40) return
+        if (prev.none { it.isLetter() } || next.none { it.isLetter() }) return
+        bigramDao.learnPair(prev, next, language)
+    }
+
+    /**
+     * Predicts the next word given [previousWord], optionally narrowed to
+     * ones starting with [prefix] once the user has begun typing it.
+     * Most frequent / most recently used pairing wins. Returns an empty
+     * list if [previousWord] is blank or nothing has ever followed it.
+     */
+    suspend fun nextWordSuggestions(
+        previousWord: String,
+        language: String,
+        prefix: String = "",
+        limit: Int = 3
+    ): List<String> {
+        val prev = previousWord.trim()
+        if (prev.isEmpty()) return emptyList()
+        val pairs = if (prefix.isEmpty()) {
+            bigramDao.findByPreviousWord(prev, language, limit)
+        } else {
+            bigramDao.findByPreviousWordAndPrefix(prev, prefix, language, limit)
+        }
+        return pairs.map { it.nextWord }
     }
 
     /** Personal-dictionary matches for [prefix], most used / most recent first. */
