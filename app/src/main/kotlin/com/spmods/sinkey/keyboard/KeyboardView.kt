@@ -1463,9 +1463,6 @@ private fun RowScope.EnterKey(
         }
     }
 }
-        }
-    }
-}
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Symbols Keyboard  (Desh-exact from APK XML analysis)
