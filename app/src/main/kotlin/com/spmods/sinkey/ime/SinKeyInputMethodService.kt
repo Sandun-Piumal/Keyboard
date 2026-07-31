@@ -543,10 +543,24 @@ class SinKeyInputMethodService : InputMethodService() {
      * the live transliteration ("මම"); mix mode shows the raw Latin text
      * exactly as typed ("mama"), since mix mode types English-looking text
      * on screen and only offers the Sinhala reading via the suggestion bar.
+     *
+     * For pure Sinhala mode specifically, the first 1–2 keys of a fresh word
+     * prefer the empirically-weighted [com.spmods.sinkey.keyboard.SinhalaCandidateMap]
+     * (its #1 ranked candidate) over the deterministic rule-based
+     * [SinhalaTransliterator], since the weighted map better reflects what
+     * users actually mean for short, ambiguous prefixes (e.g. "s" alone is
+     * more often ස than ශ). Once the buffer grows past what the map covers,
+     * or for mix mode's own English-Latin preview, this falls back to the
+     * rule-based transliterator as before.
      */
-    private fun renderBuffer(): String =
-        if (currentLanguage.value == "mix") wordBuffer.toString()
-        else SinhalaTransliterator.transliterate(wordBuffer.toString())
+    private fun renderBuffer(): String {
+        if (currentLanguage.value == "mix") return wordBuffer.toString()
+        val raw = wordBuffer.toString()
+        if (raw.length <= 2) {
+            com.spmods.sinkey.keyboard.SinhalaCandidateMap.topCandidateFor(raw)?.let { return it }
+        }
+        return SinhalaTransliterator.transliterate(raw)
+    }
 
     /**
      * Same as [renderBuffer] but with fancy-font styling applied when in mix
@@ -839,12 +853,24 @@ class SinKeyInputMethodService : InputMethodService() {
 
         if (isSinhalaTyping()) {
             val primary = SinhalaTransliterator.transliterate(raw)
-            val list = mutableListOf(primary)
+            val list = mutableListOf<String>()
+
+            // For the first 1–2 keys of a word, prefer the empirically
+            // weighted candidates (top 3–5, already ranked best-first) over
+            // the deterministic rule-based variants below — they reflect
+            // real usage frequency, so e.g. typing "s" surfaces ස before
+            // the rarer ශ/ෂ readings a purely rule-based pass would give
+            // equal footing.
+            val weighted = com.spmods.sinkey.keyboard.SinhalaCandidateMap.candidatesFor(raw)
+            if (weighted.isNotEmpty()) {
+                list.addAll(weighted.take(5))
+            }
+            if (!list.contains(primary)) list.add(primary)
             val withA = SinhalaTransliterator.transliterate("${raw}a")
-            if (withA != primary) list.add(withA)
+            if (!list.contains(withA) && list.size < 5) list.add(withA)
             if (raw.length > 1) {
                 val cap = SinhalaTransliterator.transliterate(raw[0].uppercaseChar() + raw.substring(1))
-                if (cap != primary && cap != withA) list.add(cap)
+                if (!list.contains(cap) && list.size < 5) list.add(cap)
             }
             suggestions.value = list.take(5)
             // Merge in personal-dictionary words the user has typed before that
