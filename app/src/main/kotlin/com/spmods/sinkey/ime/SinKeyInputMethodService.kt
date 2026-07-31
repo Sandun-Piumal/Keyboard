@@ -431,7 +431,20 @@ class SinKeyInputMethodService : InputMethodService() {
             "ENTER" -> {
                 if (isSinhalaTyping()) commitPendingWord()
                 else { learnWord(englishBuffer.toString(), "en"); englishBuffer.clear(); suggestions.value = emptyList() }
-                ic.commitText("\n", 1)
+
+                val editorInfo = currentInputEditorInfo
+                val action = editorInfo?.imeOptions?.and(EditorInfo.IME_MASK_ACTION) ?: EditorInfo.IME_ACTION_NONE
+                val forceMultiline = editorInfo?.inputType
+                    ?.and(android.text.InputType.TYPE_TEXT_FLAG_MULTI_LINE) != 0
+
+                val handledAsAction = action != EditorInfo.IME_ACTION_NONE &&
+                    action != EditorInfo.IME_ACTION_UNSPECIFIED &&
+                    !forceMultiline &&
+                    ic.performEditorAction(action)
+
+                if (!handledAsAction) {
+                    ic.commitText("\n", 1)
+                }
                 // New line = sentence start → auto-shift
                 if (shiftState.value == ShiftState.OFF) shiftState.value = ShiftState.ONE_SHOT
             }
