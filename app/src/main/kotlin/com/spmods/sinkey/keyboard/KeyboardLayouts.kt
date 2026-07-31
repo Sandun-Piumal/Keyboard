@@ -467,3 +467,202 @@ object SinhalaTransliterator {
         return null
     }
 }
+
+/**
+ * Weighted phonetic candidate map for the first 1–2 typed keys, sourced from
+ * sinhala_key_mapping_full.csv (empirical Roman→Sinhala key mapping with
+ * likelihood weights). This complements [SinhalaTransliterator]:
+ *
+ *  - [SinhalaTransliterator] is the deterministic longest-match phonetic
+ *    engine that renders the *whole* typed buffer into Sinhala (used once a
+ *    word is committed, or for buffers longer than this map covers).
+ *  - [SinhalaCandidateMap] instead answers "given the first key (or first
+ *    two keys) the user just pressed, what are the ranked Sinhala
+ *    possibilities?" — used for:
+ *      1. Live composing preview: the #1 (lowest-weight / most likely)
+ *         candidate for the current 1–2 key prefix.
+ *      2. Suggestion strip: the top 3–5 ranked candidates for that same
+ *         prefix, so the user can tap the one they actually meant instead
+ *         of the greedy #1 guess.
+ *
+ * CSV format notes this object reproduces:
+ *  - "Type (Roman)" is one or two lowercase Roman letters joined by '|'
+ *    (e.g. "b", "s|h") — i.e. the first one or two keys the user pressed.
+ *  - "Sinhala Output" candidates are pre-sorted ascending by weight (lower
+ *    weight = more likely), so index 0 is always the top pick.
+ *  - Some outputs contain a literal '|' themselves (e.g. "ක|්") marking a
+ *    base-glyph + trailing sign shown as a two-part preview; these are
+ *    flattened to a single concatenated glyph ("ක්") since Sinhala
+ *    rendering doesn't need the separator.
+ *  - Rows whose output was "_" are placeholders meaning "no candidate yet,
+ *    keep buffering" — they carry no usable glyph and are omitted here.
+ */
+object SinhalaCandidateMap {
+
+    // Auto-generated from sinhala_key_mapping_full.csv — DO NOT hand-edit ordering;
+    // re-run the generator against the CSV if weights change. Each key sequence
+    // (e.g. "b", "s|h") maps to its candidates sorted by ascending weight
+    // (lower = more likely, so index 0 is always the top pick).
+    private val candidateMap: Map<String, List<String>> = mapOf(
+        "a" to listOf("අ", "ඇ", "ආ", "එ", "ඈ"),
+        "a|i" to listOf("ඓ"),
+        "a|u" to listOf("ඖ"),
+        "b" to listOf("බ", "බැ", "බ්‍", "බ්", "බි", "බෙ", "බේ", "බො"),
+        "b|a" to listOf("බෑ", "බා"),
+        "b|e" to listOf("බෙ", "බේ", "බී"),
+        "b|h" to listOf("භා", "භ", "භූ", "භි", "භු", "භේ", "භෝ", "භී", "භො", "භැ"),
+        "b|i" to listOf("බි", "බී"),
+        "b|o" to listOf("බො", "බෝ", "බූ"),
+        "b|u" to listOf("බු", "බූ"),
+        "c" to listOf("ච", "චා", "චැ", "ක", "ක්", "චෑ", "කා"),
+        "c|e" to listOf("චෙ", "චේ", "චී"),
+        "c|h" to listOf("චු", "ච", "චැ", "චා", "චි", "චූ", "චී", "චො", "චෙ", "චෝ", "චේ", "ඡ", "ඡා", "චෑ"),
+        "c|i" to listOf("චි", "චී"),
+        "c|o" to listOf("චො", "චෝ", "චූ", "කො"),
+        "c|u" to listOf("චු", "චූ"),
+        "d" to listOf("ද", "ඩ", "ඩ්", "ද්", "දැ", "ඩෑ", "ඩ්‍", "දෙ", "දේ", "ධ", "ද්‍", "ඩැ", "ඩේ", "දු", "දි", "දො", "ඩු", "දී", "ඩෙ", "දෝ"),
+        "d|a" to listOf("දැ", "දා", "ඩා", "දෑ"),
+        "d|e" to listOf("දෙ", "දේ", "ඩේ", "දී", "ඩෙ", "ඩී"),
+        "d|h" to listOf("ධ", "ධා", "ධි", "ධී", "ධු", "ධෝ", "ධේ", "ධූ", "ඪ", "ධෙ"),
+        "d|i" to listOf("දි", "දී", "ඩි", "ඩී"),
+        "d|o" to listOf("දො", "දෝ", "ඩො", "ඩෝ", "දූ", "ඩූ"),
+        "d|u" to listOf("දු", "ඩු", "දූ", "ඩූ"),
+        "e" to listOf("එ", "ඒ"),
+        "e|e" to listOf("ඊ"),
+        "f" to listOf("ෆ", "ෆ්‍", "ෆැ", "ෆී", "ඵ", "ෆා", "ෆ්", "ෆෑ", "ෆි", "ෆැක", "ෆේ"),
+        "f|e" to listOf("ෆේ", "ෆෙ"),
+        "f|i" to listOf("ෆි"),
+        "f|o" to listOf("ෆො", "ෆෝ", "ෆූ"),
+        "f|u" to listOf("ෆු", "ෆූ"),
+        "g" to listOf("ග", "ගෑ", "ග්‍", "ග්", "ගේ", "ගෙ", "ගි", "ගැ", "ගු", "ගො"),
+        "g|a" to listOf("ගැ", "ගා"),
+        "g|e" to listOf("ගෙ", "ගේ", "ගී"),
+        "g|h" to listOf("ඝ", "ඝා", "ඝෝ", "ඝු", "ඝි"),
+        "g|i" to listOf("ගි", "ගී"),
+        "g|n" to listOf("ඥ", "ඥා", "ඥෝ"),
+        "g|o" to listOf("ගො", "ගූ", "ගෝ"),
+        "g|u" to listOf("ගු", "ගූ"),
+        "h" to listOf("හ", "හැ", "හ‍", "හෑ", "හ්", "ත්", "හි", "ත", "හෙ", "හී", "හො", "හේ", "හු", "ධ", "තෑ"),
+        "h|a" to listOf("හා", "තා"),
+        "h|e" to listOf("හෙ", "හේ", "හී", "තේ", "තෙ"),
+        "h|h" to listOf("ඡ"),
+        "h|i" to listOf("හි", "හී", "ති", "තී", "ර", "රි"),
+        "h|o" to listOf("හො", "හෝ", "හූ", "තො"),
+        "h|u" to listOf("හු", "හූ", "තු", "තූ"),
+        "i" to listOf("ඉ", "ඊ"),
+        "j" to listOf("ජ", "ජ්", "ජැ", "ජෑ", "ජේ", "ජ්‍", "ජෙ"),
+        "j|a" to listOf("ජා"),
+        "j|e" to listOf("ජී", "ජේ", "ජෙ"),
+        "j|i" to listOf("ජි", "ජී"),
+        "j|o" to listOf("ජො", "ජෝ"),
+        "j|u" to listOf("ජු", "ජූ"),
+        "k" to listOf("ක", "ක්", "කී", "ක්‍", "කු", "කි", "කෙ", "කේ", "ඛ", "කො", "කෝ"),
+        "k|a" to listOf("කා", "කැ", "කෑ"),
+        "k|e" to listOf("කෙ", "කේ"),
+        "k|h" to listOf("ඛ", "ඛා", "ඛෙ", "ඛෝ", "ඛි", "ඛේ", "ඛු"),
+        "k|i" to listOf("කි", "කී"),
+        "k|n" to listOf("ඤා", "ඤ", "ඤො", "ඤෝ"),
+        "k|o" to listOf("කො", "කෝ", "කූ"),
+        "k|u" to listOf("කු", "කූ"),
+        "l" to listOf("ල", "ළ", "ල්", "ලි", "ළා", "ළෑ", "ලේ", "ලු", "ලෙ", "ළ්", "ලො"),
+        "l|a" to listOf("ලැ", "ලා", "ලෑ"),
+        "l|e" to listOf("ලෙ", "ලේ", "ලී", "ළේ", "ළෙ"),
+        "l|i" to listOf("ලි", "ලී", "ළි", "ළී"),
+        "l|o" to listOf("ලො", "ලෝ", "ලූ", "ළූ", "ළො", "ළෝ"),
+        "l|u" to listOf("ලු", "ලූ", "ළු", "ළූ"),
+        "m" to listOf("ම", "ම්", "මෑ", "ඹ", "මේ", "මි", "මෙ", "මො", "මු"),
+        "m|a" to listOf("මා", "මැ"),
+        "m|b" to listOf("ඹ", "ඹේ", "ඹු", "ඹි", "ඹෙ", "ඹා", "ඹී"),
+        "m|e" to listOf("මේ", "මෙ", "මී"),
+        "m|i" to listOf("මි", "මී"),
+        "m|o" to listOf("මො", "මෝ", "මූ"),
+        "m|u" to listOf("මු", "මූ"),
+        "n" to listOf("න", "න්", "ණ", "නේ", "ණ්", "න්‍", "නෙ", "නි", "නො", "ඟ", "නු", "ඞ"),
+        "n|a" to listOf("නෑ", "නැ", "නා", "ණා", "ණෑ"),
+        "n|d" to listOf("ඳ", "ඳු", "ඳි", "ඳේ", "ඬ", "ඳා", "ඳී", "ඬේ", "ඬි"),
+        "n|e" to listOf("නේ", "නෙ", "නී", "ණේ", "ණෙ", "ණී"),
+        "n|g" to listOf("ඟ", "ඟී", "ඟු", "ඟේ", "ඟා", "ඟි"),
+        "n|h" to listOf("සි"),
+        "n|i" to listOf("නි", "නී", "ණි", "ණී"),
+        "n|o" to listOf("නො", "නෝ", "නූ", "ණෝ", "ණො"),
+        "n|u" to listOf("නු", "ණු", "නූ", "ණූ"),
+        "o" to listOf("ඔ", "ඕ"),
+        "o|o" to listOf("ඌ"),
+        "o|u" to listOf("ඖ"),
+        "p" to listOf("ප", "ප්‍", "ප්", "පෑ", "පු", "පි", "පේ", "ෆ", "පෙ"),
+        "p|a" to listOf("පා", "පැ"),
+        "p|e" to listOf("පෙ", "පේ", "පී"),
+        "p|h" to listOf("ෆො", "ෆෝ", "ඵ", "ෆ", "ෆි", "ෆු", "ෆා", "ෆී"),
+        "p|i" to listOf("පි", "පී"),
+        "p|o" to listOf("පො", "පෝ", "පූ"),
+        "p|u" to listOf("පු", "පූ"),
+        "q" to listOf("ක", "ක්", "හ"),
+        "q|e" to listOf("කෙ"),
+        "q|i" to listOf("කි"),
+        "q|u" to listOf("කු"),
+        "r" to listOf("ර", "රැ", "ර්", "රු", "රි", "රේ", "රෙ"),
+        "r|a" to listOf("රෑ", "රා"),
+        "r|e" to listOf("රෙ", "රේ", "රී"),
+        "r|i" to listOf("රි", "රී", "ඍ"),
+        "r|o" to listOf("රෝ", "රො", "රූ"),
+        "r|u" to listOf("රු", "රූ"),
+        "s" to listOf("ස", "ස්", "ශ්‍", "සෑ", "ශ", "ෂ", "ශා", "ෂා", "සි", "සෙ", "ස්‌", "සේ"),
+        "s|a" to listOf("සැ", "සා", "ශෑ"),
+        "s|e" to listOf("සෙ", "සේ", "සී", "ශේ", "ෂේ", "ෂෙ", "ශී", "ශෙ"),
+        "s|h" to listOf("ශා", "ශ", "ෂෝ", "ශි", "ෂු", "ශෝ", "ශේ", "ෂෙ", "ෂො", "ෂ", "ෂි", "ෂා", "ශු", "ශෙ", "ශී", "ෂේ", "ෂූ", "ෂී", "ෂැ", "ශො", "ශෑ", "ශූ", "ශැ", "ෂෑ"),
+        "s|i" to listOf("සි", "සී", "ශි", "ෂි", "ශී", "ෂී"),
+        "s|o" to listOf("සො", "සෝ", "සූ", "ෂෝ", "ශෝ", "ෂො"),
+        "s|u" to listOf("සු", "සූ", "ෂු", "ශු"),
+        "t" to listOf("ට", "ත", "තා", "ත්", "ට්", "ටැ", "ටා", "ට්‍", "තැ", "තෑ", "ටෑ"),
+        "t|e" to listOf("තේ", "ටෙ", "තෙ", "ටේ", "වෙ"),
+        "t|h" to listOf("ත", "තා", "තැ", "තෑ", "ථ", "ඨ", "ථා", "ති", "ඨා"),
+        "t|i" to listOf("ටි", "ති", "තී", "වි", "වී"),
+        "t|o" to listOf("ටො", "ටෝ"),
+        "t|u" to listOf("තු", "ටු", "ටූ"),
+        "u" to listOf("උ", "ඌ"),
+        "v" to listOf("ව", "වැ", "ව්", "වෑ", "වේ", "වෙ", "ව්‍"),
+        "v|a" to listOf("වා"),
+        "v|e" to listOf("වෙ", "වේ", "වී"),
+        "v|i" to listOf("වි", "වී"),
+        "v|o" to listOf("වො", "වෝ", "වූ"),
+        "v|u" to listOf("වු", "වූ"),
+        "w" to listOf("ව", "ව්‍", "වෑ", "වෙ", "වේ", "වූ", "වි"),
+        "w|a" to listOf("වැ", "වා"),
+        "w|e" to listOf("වෙ", "වේ", "වී"),
+        "w|i" to listOf("වි", "වී"),
+        "w|o" to listOf("වො", "වෝ", "ඌ"),
+        "w|u" to listOf("වු", "වූ"),
+        "x" to listOf("ෂ්", "ෂා", "ෂ"),
+        "x|e" to listOf("ෂෙ"),
+        "x|i" to listOf("ෂි"),
+        "x|u" to listOf("ෂු"),
+        "y" to listOf("ය", "ය්", "යි", "යෑ", "යී", "යේ", "යෙ", "යු", "යො", "ර"),
+        "y|a" to listOf("යා", "යැ"),
+        "y|e" to listOf("යේ", "යෙ"),
+        "y|i" to listOf("යි", "යී"),
+        "y|o" to listOf("යෝ", "යො", "යූ"),
+        "y|u" to listOf("යු", "යූ"),
+        "z" to listOf("ළ්", "ළ"),
+        "z|o" to listOf("ළූ", "ඌ"),
+    )
+
+    /**
+     * Ranked Sinhala candidates for the first one or two characters of
+     * [buffer] (e.g. buffer "ba..." looks up "b|a"; buffer "b" alone looks
+     * up "b"). Returns an empty list if the prefix isn't in the map (the
+     * caller should fall back to [SinhalaTransliterator] in that case).
+     * Candidates are already ranked best-first (ascending weight).
+     */
+    fun candidatesFor(buffer: String): List<String> {
+        if (buffer.isEmpty()) return emptyList()
+        val first = buffer[0].lowercaseChar()
+        val twoKey = if (buffer.length >= 2) "$first|${buffer[1].lowercaseChar()}" else null
+        if (twoKey != null) {
+            candidateMap[twoKey]?.let { return it }
+        }
+        return candidateMap[first.toString()] ?: emptyList()
+    }
+
+    /** Convenience: the single most likely candidate for [buffer], or null if none. */
+    fun topCandidateFor(buffer: String): String? = candidatesFor(buffer).firstOrNull()
+}
