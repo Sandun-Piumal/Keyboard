@@ -404,7 +404,7 @@ class SinKeyInputMethodService : InputMethodService() {
                         ic.setComposingText("", 1)
                         ic.finishComposingText()
                     } else {
-                        setComposingTextStyled(ic, renderBuffer())
+                        setComposingTextStyled(ic, renderStyledBuffer())
                     }
                 } else {
                     if (englishBuffer.isNotEmpty()) englishBuffer.deleteCharAt(englishBuffer.length - 1)
@@ -510,8 +510,7 @@ class SinKeyInputMethodService : InputMethodService() {
                 } else if (isSinhalaTyping()) {
                     val lower = key.lowercase()
                     wordBuffer.append(lower)
-                    val preview = renderBuffer()
-                    setComposingTextStyled(ic, preview)
+                    setComposingTextStyled(ic, renderStyledBuffer())
                     updateSuggestions()
                     // Consume one-shot shift after first Sinhala letter
                     if (shiftState.value == ShiftState.ONE_SHOT) shiftState.value = ShiftState.OFF
@@ -548,6 +547,18 @@ class SinKeyInputMethodService : InputMethodService() {
     private fun renderBuffer(): String =
         if (currentLanguage.value == "mix") wordBuffer.toString()
         else SinhalaTransliterator.transliterate(wordBuffer.toString())
+
+    /**
+     * Same as [renderBuffer] but with fancy-font styling applied when in mix
+     * mode (which types plain Latin text and should match pure English's
+     * font styling); pure Sinhala mode's transliteration is returned as-is.
+     */
+    private fun renderStyledBuffer(): String {
+        val raw = renderBuffer()
+        return if (currentLanguage.value == "mix")
+            com.spmods.sinkey.keyboard.FancyTextMapper.apply(raw, cachedFancyTextStyle)
+        else raw
+    }
 
     // Sinhala composing underline — matches the app's DeshGreen accent.
     private val sinhalaUnderlineColor = android.graphics.Color.rgb(0x6E, 0x9A, 0x65)
@@ -616,12 +627,17 @@ class SinKeyInputMethodService : InputMethodService() {
         // turned on "auto-convert to Sinhala" in settings — pure "si" mode
         // always converts, same as before.
         val convertToSinhala = currentLanguage.value != "mix" || cachedMixAutoSinhala
-        val finalWord = if (convertToSinhala) SinhalaTransliterator.transliterate(raw) else raw
+        val finalWord = when {
+            convertToSinhala -> SinhalaTransliterator.transliterate(raw)
+            else -> com.spmods.sinkey.keyboard.FancyTextMapper.apply(raw, cachedFancyTextStyle)
+        }
         ic?.setComposingText("", 1)
         ic?.commitText(finalWord, 1)
         wordBuffer.clear()
         suggestions.value = emptyList()
-        learnWord(finalWord, if (convertToSinhala) "si" else "en")
+        // Learn the plain (unstyled) word, not the fancy-font glyphs, so the
+        // personal dictionary and future suggestions stay in normal text.
+        learnWord(if (convertToSinhala) finalWord else raw, if (convertToSinhala) "si" else "en")
     }
 
     /**
