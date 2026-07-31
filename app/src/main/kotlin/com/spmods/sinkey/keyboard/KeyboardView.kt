@@ -124,8 +124,9 @@ private fun keyboardColors(showKeyBorders: Boolean, isDark: Boolean): KeyboardCo
         KeyboardColors(
             // keyboard_background_light_bordered = #E6EAED
             bg             = Color(0xFFE6EAED),
-            // Bordered: primaryContainer = White
-            keyBg          = Color(0xFFFFFFFF),
+            // Bordered: primaryContainer = White. Borderless: same as keyboard
+            // bg so keys appear "flat/floating" (mirrors the dark theme fix).
+            keyBg          = if (showKeyBorders) Color(0xFFFFFFFF) else Color(0xFFE6EAED),
             // secondaryContainer (functional keys) = #335f9154 overlay on bg
             specialKeyBg   = Color(0xFFC5CDD5),
             // onPrimaryContainer = black
@@ -134,8 +135,8 @@ private fun keyboardColors(showKeyBorders: Boolean, isDark: Boolean): KeyboardCo
             specialKeyText = Color(0xFF444444),
             // subText for number hints
             subText        = Color(0xFF666666),
-            // space bar bg same as key bg (white/light)
-            spaceKeyBg     = Color(0xFFFFFFFF),
+            // space bar bg: bordered = white, borderless = flat with keyboard bg
+            spaceKeyBg     = if (showKeyBorders) Color(0xFFFFFFFF) else Color(0xFFE6EAED),
             // space bar text - medium grey
             spaceKeyText   = Color(0xFF888888),
         )
