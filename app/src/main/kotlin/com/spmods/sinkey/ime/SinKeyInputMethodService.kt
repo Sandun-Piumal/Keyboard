@@ -58,6 +58,12 @@ class SinKeyInputMethodService : InputMethodService() {
 
     private var wordBuffer = StringBuilder()
     private var englishBuffer = StringBuilder()
+    // The most recently committed word and the language it was committed in,
+    // used as context for next-word prediction (see learnWordWithContext /
+    // updateSuggestions). Reset whenever the cursor moves or the field
+    // changes so a prediction never carries over from unrelated text.
+    private var lastCommittedWord: String = ""
+    private var lastCommittedLanguage: String = ""
     // "si" = pure Sinhala, "en" = pure English, "mix" = default mode — types
     // Sinhala phonetically same as "si" (LANG_TOGGLE still switches to "en"
     // mid-message), but is visually distinguished by a black composing
@@ -355,6 +361,11 @@ class SinKeyInputMethodService : InputMethodService() {
         englishBuffer.clear()
         suggestions.value = emptyList()
         currentInputTypeState.value = info?.inputType ?: 0
+        // Moving to a different field (or restarting the same one) means the
+        // text before the cursor may no longer be what we last committed —
+        // don't carry stale next-word context across the switch.
+        lastCommittedWord = ""
+        lastCommittedLanguage = ""
 
         // Update-banner dismissal is undone on every keyboard show (not
         // gated by `restarting` like the board-reset below) — see the field
@@ -429,10 +440,13 @@ class SinKeyInputMethodService : InputMethodService() {
             }
             "SPACE" -> {
                 if (isSinhalaTyping()) commitPendingWord()
-                else { learnWord(englishBuffer.toString(), "en"); englishBuffer.clear(); suggestions.value = emptyList() }
+                else { learnWord(englishBuffer.toString(), "en"); englishBuffer.clear() }
                 ic.commitText(" ", 1)
                 // After space, check if previous char was sentence-ending punctuation
                 updateAutoShift(ic)
+                // Word just finished — offer a next-word prediction instead of
+                // leaving the suggestion bar empty.
+                updateSuggestions()
             }
             "ENTER" -> {
                 if (isSinhalaTyping()) commitPendingWord()
@@ -730,14 +744,33 @@ class SinKeyInputMethodService : InputMethodService() {
         }
         // Auto-space after applying a suggestion.
         ic.commitText(" ", 1)
-        suggestions.value = emptyList()
         updateAutoShift(ic)
+        // Word just finished — offer a next-word prediction instead of
+        // leaving the suggestion bar empty.
+        updateSuggestions()
     }
 
-    /** Persist [word] into the personal dictionary (Room) so it can be suggested later. */
+    /**
+     * Persist [word] into the personal dictionary (Room) so it can be
+     * suggested later. Also learns the (previous word -> this word) pair
+     * for next-word prediction, provided the previous word was committed
+     * in the same language — mixing languages mid-pair would only ever
+     * produce noise, never a useful prediction. The pair is learned before
+     * [lastCommittedWord] is updated, so it always reflects "what came
+     * before this word", not itself.
+     */
     private fun learnWord(word: String, language: String) {
         if (word.isBlank()) return
-        serviceScope.launch { wordRepo.learn(word, language) }
+        val prev = lastCommittedWord
+        val prevLanguage = lastCommittedLanguage
+        serviceScope.launch {
+            wordRepo.learn(word, language)
+            if (prev.isNotBlank() && prevLanguage == language) {
+                wordRepo.learnBigram(prev, word, language)
+            }
+        }
+        lastCommittedWord = word
+        lastCommittedLanguage = language
     }
 
     /**
@@ -893,7 +926,20 @@ class SinKeyInputMethodService : InputMethodService() {
 
     private fun updateSuggestions() {
         val raw = if (isSinhalaTyping()) wordBuffer.toString() else englishBuffer.toString()
-        if (raw.isEmpty()) { suggestions.value = emptyList(); return }
+        if (raw.isEmpty()) {
+            // Nothing typed yet for the next word — if we know what word
+            // came before the cursor, offer next-word predictions instead of
+            // clearing the bar. isSinhalaTyping() picks the language bucket
+            // to predict in ("si" also covers mix-mode Sinhala typing), which
+            // matches how learnWord records the pair in the first place.
+            val predictLanguage = if (isSinhalaTyping()) "si" else "en"
+            if (lastCommittedWord.isNotBlank() && lastCommittedLanguage == predictLanguage) {
+                fetchNextWordSuggestions(lastCommittedWord, predictLanguage)
+            } else {
+                suggestions.value = emptyList()
+            }
+            return
+        }
 
         if (isSinhalaTyping()) {
             val primary = SinhalaTransliterator.transliterate(raw)
@@ -977,6 +1023,27 @@ class SinKeyInputMethodService : InputMethodService() {
      * list once they arrive, without disturbing suggestions already shown
      * (spell-checker results / transliteration variants stay first).
      */
+    /**
+     * Predicts the word likely to follow [previousWord] (the last word
+     * committed) and shows it in the suggestion bar before the user has
+     * typed anything of the next word. Async like [fetchPersonalSuggestions]
+     * since it's a Room query; shows nothing while waiting rather than
+     * flashing stale suggestions, since there's no typed text to fall back to.
+     */
+    private fun fetchNextWordSuggestions(previousWord: String, language: String) {
+        suggestions.value = emptyList()
+        serviceScope.launch {
+            val predicted = wordRepo.nextWordSuggestions(previousWord, language, limit = 3)
+            // Guard against a stale async reply landing after the user has
+            // since started typing the next word or moved on entirely.
+            val stillRelevant = lastCommittedWord == previousWord &&
+                (if (isSinhalaTyping()) wordBuffer else englishBuffer).isEmpty()
+            if (stillRelevant && predicted.isNotEmpty()) {
+                suggestions.value = predicted
+            }
+        }
+    }
+
     private fun fetchPersonalSuggestions(prefix: String, language: String, baseList: List<String>) {
         if (prefix.isEmpty()) return
         serviceScope.launch {
