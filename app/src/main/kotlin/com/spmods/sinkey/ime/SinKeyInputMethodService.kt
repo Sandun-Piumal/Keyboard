@@ -404,6 +404,21 @@ class SinKeyInputMethodService : InputMethodService() {
         super.onDestroy()
     }
 
+    /**
+     * Roman letters whose case changes which Sinhala consonant they map to
+     * in [com.spmods.sinkey.keyboard.SinhalaTransliterator] (n/N, l/L, t/T,
+     * d/D, sh/Sh, th/TH, dh/DH). For these, an uppercase letter must only
+     * come from an explicit user Shift press — never from auto-capitalize —
+     * or the wrong Sinhala letter gets typed. Every other Roman letter
+     * (vowels, k/g/j/p/b/m/y/r/v/w/s/h/f, etc.) has no case-meaning, so it's
+     * safe to let auto-shift capitalize it like a normal English keyboard.
+     * The keyboard sends single characters here, so "sh"/"th"/"dh" show up
+     * as separate keystrokes — checking the leading consonant ('s', 't',
+     * 'd', plus 'n' and 'l') covers all of them.
+     */
+    private fun isCaseSensitiveSinhalaLetter(key: String): Boolean =
+        key.lowercase() in setOf("n", "l", "t", "d", "s")
+
     private fun handleKey(key: String) {
         maybeFeedback()
         val ic = currentInputConnection ?: return
@@ -544,21 +559,24 @@ class SinKeyInputMethodService : InputMethodService() {
                     serviceScope.launch { prefs.addRecentEmoji(key) }
                 } else if (isSinhalaTyping()) {
                     // Sinhala's phonetic scheme uses case to pick between
-                    // real, distinct letters (lowercase n=න vs uppercase
-                    // N=ණ, lowercase l=ල vs uppercase L=ළ, "sh"=ශ vs
-                    // "Sh"=ෂ, "th"=ත vs "thh"=ථ) — it is never cosmetic,
-                    // so auto-capitalize (ONE_SHOT at sentence/field start)
-                    // must NOT apply here the way it does for English.
-                    // Only an explicit, user-pressed Shift (which also
-                    // sets ONE_SHOT, but via the SHIFT key itself) should
-                    // uppercase a Sinhala key — and by the time a letter
-                    // key is pressed we can no longer tell "auto" apart
-                    // from "user pressed shift" using shiftState alone.
-                    // wasExplicitShift tracks only shift presses that
-                    // happened after the current word/field started, so
-                    // auto-capitalize at start-of-sentence is ignored
-                    // while a deliberate double-tap-to-Shift still works.
-                    val typed = if (shiftState.value != ShiftState.OFF && wasExplicitShift) key.uppercase() else key.lowercase()
+                    // real, distinct letters for a specific subset of keys
+                    // (lowercase n=න vs uppercase N=ණ, l=ල vs L=ළ, t=ට vs
+                    // T=ත, d=ද vs D=ද, "sh"=ශ vs "Sh"=ෂ, "th"=ත vs "TH"=ඨ) —
+                    // for those, case is never cosmetic, so auto-capitalize
+                    // (ONE_SHOT at sentence/field start) must NOT apply the
+                    // way it does for English; only an explicit user Shift
+                    // press should uppercase them. wasExplicitShift tracks
+                    // shift presses that happened after the current
+                    // word/field started, distinguishing that from auto.
+                    //
+                    // Every other letter (vowels, k/g/j/p/b/m/y/r/v/w/h/f)
+                    // has no alternate meaning by case, so it's free to
+                    // follow normal shift/auto-capitalize behaviour like an
+                    // English keyboard — this is what mix mode users expect
+                    // when a word starts a sentence.
+                    val allowShiftHere = shiftState.value != ShiftState.OFF &&
+                        (wasExplicitShift || !isCaseSensitiveSinhalaLetter(key))
+                    val typed = if (allowShiftHere) key.uppercase() else key.lowercase()
                     wordBuffer.append(typed)
                     setComposingTextStyled(ic, renderStyledBuffer())
                     updateSuggestions()
