@@ -83,6 +83,7 @@ import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.filled.Check
 
 // Number labels for top row keys
 private val topRowNumbers = listOf("1","2","3","4","5","6","7","8","9","0")
@@ -113,11 +114,11 @@ private fun keyboardColors(showKeyBorders: Boolean, isDark: Boolean): KeyboardCo
         KeyboardColors(
             bg             = Color(0xFF1E1E1E),
             keyBg          = if (showKeyBorders) Color(0xFF3A3A3A) else Color(0xFF1E1E1E),
-            specialKeyBg   = Color(0xFF2C2C2C),
+            specialKeyBg   = if (showKeyBorders) Color(0xFF2C2C2C) else Color(0xFF1E1E1E),
             keyText        = Color(0xFFE8E8E8),
             specialKeyText = Color(0xFFCCCCCC),
             subText        = Color(0xFF888888),
-            spaceKeyBg     = if (showKeyBorders) Color(0xFF3A3A3A) else Color(0xFF2A2A2A),
+            spaceKeyBg     = if (showKeyBorders) Color(0xFF3A3A3A) else Color(0xFF1E1E1E),
             spaceKeyText   = Color(0xFF777777),
         )
     } else {
@@ -127,8 +128,9 @@ private fun keyboardColors(showKeyBorders: Boolean, isDark: Boolean): KeyboardCo
             // Bordered: primaryContainer = White. Borderless: same as keyboard
             // bg so keys appear "flat/floating" (mirrors the dark theme fix).
             keyBg          = if (showKeyBorders) Color(0xFFFFFFFF) else Color(0xFFE6EAED),
-            // secondaryContainer (functional keys) = #335f9154 overlay on bg
-            specialKeyBg   = Color(0xFFC5CDD5),
+            // secondaryContainer (functional keys) = #335f9154 overlay on bg.
+            // Borderless: flat with keyboard bg, same as keyBg above.
+            specialKeyBg   = if (showKeyBorders) Color(0xFFC5CDD5) else Color(0xFFE6EAED),
             // onPrimaryContainer = black
             keyText        = Color(0xFF000000),
             // specialKeyText - dark grey
@@ -424,6 +426,7 @@ fun KeyboardView(
                         onShiftStateChange = onShiftStateChange,
                         keyHeight = keyHeight, keyShape = keyShape,
                         bottomPadding = bottomPadding, colors = colors,
+                        showKeyBorders = showKeyBorders,
                         onKey = onKey,
                         onSymbols = { pushBoard(Board.SYMBOLS) },
                         onEmojiPicker = { pushBoard(Board.EMOJI) },
@@ -468,6 +471,7 @@ internal fun MainKeyboardKeys(
     keyShape: RoundedCornerShape,
     bottomPadding: Dp,
     colors: KeyboardColors,
+    showKeyBorders: Boolean = true,
     onKey: (String) -> Unit,
     onSymbols: () -> Unit,
     onEmojiPicker: () -> Unit,
@@ -518,10 +522,13 @@ internal fun MainKeyboardKeys(
                     onTap = { onKey("LANG_TOGGLE"); onLangTooltip() })
             }
             SpaceKey(weight = 5.5f, keyHeight = keyHeight, colors = colors, keyShape = keyShape,
+                showKeyBorders = showKeyBorders,
                 onTap = { onKey("SPACE") }, onLongPress = { onKey("SWITCH_KEYBOARD") })
             SpecialKey(label = ".", weight = 0.8f, keyHeight = keyHeight, colors = colors, keyShape = keyShape) { onKey(".") }
             // FIX #8: Pass imeAction so the Enter key label reflects the current field action.
-            EnterKey(weight = 2.0f, keyHeight = keyHeight, keyShape = keyShape, imeAction = imeAction) { onKey("ENTER") }
+            EnterKey(weight = 2.0f, keyHeight = keyHeight, keyShape = keyShape,
+                colors = colors, showKeyBorders = showKeyBorders,
+                imeAction = imeAction) { onKey("ENTER") }
         }
     }
 }
@@ -1289,13 +1296,17 @@ private fun RowScope.EmojiKey(
 private fun RowScope.SpaceKey(
     weight: Float,
     keyHeight: Dp, colors: KeyboardColors, keyShape: RoundedCornerShape,
+    showKeyBorders: Boolean = true,
     onTap: () -> Unit, onLongPress: () -> Unit
 ) {
     var pressed by remember { mutableStateOf(false) }
+    // Desh-style pill shape only when borders are hidden; bordered mode keeps
+    // the standard key corner radius like every other key.
+    val spaceShape = if (showKeyBorders) keyShape else RoundedCornerShape(keyHeight / 2)
     Box(
         modifier = Modifier
             .height(keyHeight).weight(weight)
-            .clip(keyShape)
+            .clip(spaceShape)
             .background(if (pressed) colors.spaceKeyBg.copy(alpha = 0.6f) else colors.spaceKeyBg)
             .combinedClickable(onClick = { onTap() }, onLongClick = { onLongPress() })
             .pointerInput(Unit) {
@@ -1330,11 +1341,79 @@ private fun RowScope.EnterKey(
     weight: Float,
     keyHeight: Dp,
     keyShape: RoundedCornerShape,
+    colors: KeyboardColors? = null,
+    showKeyBorders: Boolean = true,
     imeAction: Int = android.view.inputmethod.EditorInfo.IME_ACTION_NONE,
     onTap: () -> Unit
 ) {
     var pressed by remember { mutableStateOf(false) }
     val bumpScale = rememberKeyBumpScale(pressed)
+
+    if (!showKeyBorders) {
+        // Desh-style enter key (borders hidden): filled circle with a
+        // checkmark icon for the default action.
+        val circleSize = keyHeight * 0.72f
+        Box(
+            modifier = Modifier
+                .height(keyHeight).weight(weight),
+            contentAlignment = Alignment.Center
+        ) {
+            Box(
+                modifier = Modifier
+                    .size(circleSize)
+                    .scale(bumpScale)
+                    .clip(androidx.compose.foundation.shape.CircleShape)
+                    .background(if (pressed) DeshGreen.copy(alpha = 0.8f) else DeshGreen)
+                    .clickable { onTap() }
+                    .pointerInput(Unit) {
+                        awaitEachGesture {
+                            awaitFirstDown(requireUnconsumed = false)
+                            pressed = true
+                            waitForUpOrCancellation()
+                            pressed = false
+                        }
+                    },
+                contentAlignment = Alignment.Center
+            ) {
+                when (imeAction and android.view.inputmethod.EditorInfo.IME_MASK_ACTION) {
+                    android.view.inputmethod.EditorInfo.IME_ACTION_SEARCH -> Icon(
+                        imageVector = Icons.Filled.Search,
+                        contentDescription = "Search",
+                        modifier = Modifier.size(22.dp),
+                        tint = Color.White
+                    )
+                    android.view.inputmethod.EditorInfo.IME_ACTION_SEND -> Text(
+                        "Send", fontSize = 11.sp, color = Color.White,
+                        fontWeight = androidx.compose.ui.text.font.FontWeight.SemiBold
+                    )
+                    android.view.inputmethod.EditorInfo.IME_ACTION_GO -> Text(
+                        "Go", fontSize = 11.sp, color = Color.White,
+                        fontWeight = androidx.compose.ui.text.font.FontWeight.SemiBold
+                    )
+                    android.view.inputmethod.EditorInfo.IME_ACTION_NEXT -> Text(
+                        "Next", fontSize = 11.sp, color = Color.White,
+                        fontWeight = androidx.compose.ui.text.font.FontWeight.SemiBold
+                    )
+                    android.view.inputmethod.EditorInfo.IME_ACTION_DONE -> Icon(
+                        imageVector = Icons.Filled.Check,
+                        contentDescription = "Done",
+                        modifier = Modifier.size(22.dp),
+                        tint = Color.White
+                    )
+                    else -> Icon(
+                        imageVector = Icons.Filled.Check,
+                        contentDescription = "Enter",
+                        modifier = Modifier.size(22.dp),
+                        tint = Color.White
+                    )
+                }
+            }
+        }
+        return
+    }
+
+    // Original bordered-mode enter key: rounded-square key shape, filled
+    // green, generic enter/action icon or label.
     Box(
         modifier = Modifier
             .height(keyHeight).weight(weight)
@@ -1381,6 +1460,9 @@ private fun RowScope.EnterKey(
                 modifier = Modifier.size(26.dp),
                 tint = Color.White
             )
+        }
+    }
+}
         }
     }
 }
