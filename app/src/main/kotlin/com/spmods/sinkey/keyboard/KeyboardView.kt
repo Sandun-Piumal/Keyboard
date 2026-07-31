@@ -294,7 +294,8 @@ fun KeyboardView(
                     onKey = onKey,
                     onClipboardOpen = { pushBoard(Board.CLIPBOARD) },
                     onFontOpen = { pushBoard(Board.FONT) },
-                    onStickerOpen = { pushBoard(Board.STICKER) }
+                    onStickerOpen = { pushBoard(Board.STICKER) },
+                    selectedFontStyle = FancyTextStyle.fromKey(selectedFontKey)
                 )
             }
 
@@ -568,7 +569,8 @@ private fun AppsMicBar(
     onKey: (String) -> Unit,
     onClipboardOpen: () -> Unit,
     onFontOpen: () -> Unit,
-    onStickerOpen: () -> Unit
+    onStickerOpen: () -> Unit,
+    selectedFontStyle: FancyTextStyle = FancyTextStyle.NONE
 ) {
     val isTyping = suggestions.isNotEmpty()
 
@@ -617,6 +619,15 @@ private fun AppsMicBar(
                 ) {
                     items(suggestions.size) { idx ->
                         val word = suggestions[idx]
+                        // Fancy-font styling is applied to the suggestion chip's
+                        // display text too, not just to committed text — otherwise
+                        // a user with e.g. Bold font selected never sees that a
+                        // chip like the raw-English "mix mode" word ("ba") will
+                        // actually commit as its styled form ("𝐛𝐚") until after
+                        // they've already tapped it. FancyTextMapper only maps
+                        // a-z/A-Z/0-9, so Sinhala suggestion chips pass through
+                        // completely unchanged — safe to apply unconditionally.
+                        val displayWord = FancyTextMapper.apply(word, selectedFontStyle)
                         Box(
                             modifier = Modifier
                                 .clip(RoundedCornerShape(4.dp))
@@ -624,7 +635,7 @@ private fun AppsMicBar(
                                 .padding(horizontal = 12.dp, vertical = 6.dp),
                             contentAlignment = Alignment.Center
                         ) {
-                            Text(text = word, fontSize = 17.sp, color = colors.keyText, maxLines = 1)
+                            Text(text = displayWord, fontSize = 17.sp, color = colors.keyText, maxLines = 1)
                         }
                         if (idx < suggestions.size - 1) {
                             Box(
