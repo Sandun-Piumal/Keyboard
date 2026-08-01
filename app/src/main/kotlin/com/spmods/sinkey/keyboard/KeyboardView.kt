@@ -116,7 +116,7 @@ internal data class KeyboardColors(
 )
 
 @Composable
-private fun keyboardColors(showKeyBorders: Boolean, isDark: Boolean): KeyboardColors {
+internal fun keyboardColors(showKeyBorders: Boolean, isDark: Boolean): KeyboardColors {
     return if (isDark) {
         // FIX #12: Dark theme previously had almost no visible difference between
         // bordered (0xFF2E2E2E) and borderless (0xFF262626) key backgrounds.
