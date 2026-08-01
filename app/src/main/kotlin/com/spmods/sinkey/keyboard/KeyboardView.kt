@@ -186,7 +186,7 @@ private fun stepToBottomPadding(step: Float): Dp = when (Math.round(step)) {
 // Replaces the previous ad-hoc boolean flags (showSymbols, showEmojiPicker)
 // which had no memory of which board opened them, so back always went to MAIN.
 // Must be internal (not private) so SinKeyInputMethodService can reference it.
-enum class Board { MAIN, SYMBOLS, NUMPAD, EMOJI, CLIPBOARD, FONT, STICKER, STICKER_CREATE }
+enum class Board { MAIN, SYMBOLS, NUMPAD, EMOJI, CLIPBOARD, FONT, STICKER, STICKER_CREATE, STICKER_EDIT }
 
 @Composable
 fun KeyboardView(
@@ -223,7 +223,15 @@ fun KeyboardView(
     // Triggers the system gallery picker for Board.STICKER_CREATE's Image
     // Sticker option — wired to SinKeyInputMethodService.pickImageForSticker,
     // since only the service can start the trampoline Activity needed here.
-    onPickStickerImage: () -> Unit = {}
+    onPickStickerImage: () -> Unit = {},
+    // Board.STICKER_EDIT state: the temp file path of the image most
+    // recently picked via onPickStickerImage, hoisted in the service (same
+    // reasoning as boardStack — must survive hide/show while the editor is
+    // open). Null when no image sticker is currently being edited.
+    pendingStickerImagePath: String? = null,
+    // Called when the user taps "Add to stickers" on Board.STICKER_EDIT,
+    // wired to SinKeyInputMethodService.saveEditedImageSticker.
+    onSaveImageSticker: (ImageStickerDraft) -> Unit = {}
 ) {
     val colors = keyboardColors(showKeyBorders, isDark)
     val keyHeight = stepToKeyHeight(keyboardHeight)
@@ -440,6 +448,34 @@ fun KeyboardView(
                     },
                     onBack = { popBoard() }
                 )
+                currentBoard == Board.STICKER_EDIT -> {
+                    // Decoded once per picked file path (not on every
+                    // recomposition/drag event) — pendingStickerImagePath
+                    // only changes when a new image is picked, so this key
+                    // correctly skips re-decoding while the user is just
+                    // dragging/zooming inside the editor.
+                    val previewBitmap = remember(pendingStickerImagePath) {
+                        pendingStickerImagePath?.let { path ->
+                            com.spmods.sinkey.data.sticker.StickerFileStore.decodePreviewBitmap(java.io.File(path))
+                        }
+                    }
+                    if (previewBitmap != null) {
+                        StickerImageEditorView(
+                            colors = colors,
+                            bottomPadding = bottomPadding,
+                            targetContentHeight = measuredMainContentHeight + 48.dp +
+                                (if (!isPhoneInput && (showUpdateBanner || recentEmojis.isNotEmpty())) 44.dp else 0.dp),
+                            imageBitmap = previewBitmap,
+                            onSave = { draft -> onSaveImageSticker(draft) },
+                            onBack = { popBoard() }
+                        )
+                    } else {
+                        // Source file unreadable/gone — nothing to edit, so
+                        // just back out to Board.STICKER_CREATE instead of
+                        // showing a blank/broken editor screen.
+                        popBoard()
+                    }
+                }
                 else -> Box {
                     MainKeyboardKeys(
                         currentLanguage = currentLanguage,
