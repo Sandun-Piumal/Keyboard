@@ -8,7 +8,6 @@ import android.graphics.Color
 import android.graphics.Paint
 import android.graphics.Rect
 import android.graphics.RectF
-import android.net.Uri
 import java.io.File
 import java.io.FileOutputStream
 import java.util.UUID
@@ -33,18 +32,25 @@ object StickerFileStore {
         File(context.filesDir, DIR_NAME).apply { if (!exists()) mkdirs() }
 
     /**
-     * Decodes the image at [sourceUri] (e.g. from a gallery picker result),
-     * downscales it to fit within [MAX_DIMENSION_PX] on its longest side
-     * (stickers are shown small — no reason to keep multi-megapixel photos
-     * around), and saves it as a new PNG. Returns the absolute file path, or
-     * null if the image couldn't be read.
+     * Decodes the image at [sourceFile] (a temp file StickerPickerActivity
+     * writes immediately after picking — see that class's doc comment for
+     * why a Uri isn't used here), downscales it to fit within
+     * [MAX_DIMENSION_PX] on its longest side (stickers are shown small — no
+     * reason to keep multi-megapixel photos around), and saves it as a new
+     * PNG. Deletes [sourceFile] afterwards either way, since it's a
+     * throwaway temp copy. Returns the absolute path of the new sticker
+     * PNG, or null if the image couldn't be decoded.
      */
-    fun saveFromImageUri(context: Context, sourceUri: Uri): String? {
-        val bitmap = decodeScaledBitmap(context, sourceUri) ?: return null
+    fun saveFromImageFile(context: Context, sourceFile: File): String? {
         return try {
-            writeBitmap(context, bitmap)
+            val bitmap = decodeScaledBitmap(sourceFile) ?: return null
+            try {
+                writeBitmap(context, bitmap)
+            } finally {
+                bitmap.recycle()
+            }
         } finally {
-            bitmap.recycle()
+            runCatching { sourceFile.delete() }
         }
     }
 
@@ -115,27 +121,15 @@ object StickerFileStore {
         runCatching { File(webpPathFor(filePath)).delete() }
     }
 
-    private fun decodeScaledBitmap(context: Context, uri: Uri): Bitmap? {
-        val resolver = context.contentResolver
+    private fun decodeScaledBitmap(file: File): Bitmap? {
+        if (!file.exists()) return null
 
         // First pass: read dimensions only (inJustDecodeBounds), so we can
         // pick a sample size and never fully decode a huge original bitmap
         // into memory just to immediately downscale it.
         val boundsOptions = BitmapFactory.Options().apply { inJustDecodeBounds = true }
-        try {
-            resolver.openInputStream(uri)?.use { stream ->
-                BitmapFactory.decodeStream(stream, null, boundsOptions)
-            } ?: return null
-        } catch (e: Exception) {
-            // Most commonly a SecurityException (URI permission no longer
-            // valid — see StickerPickerActivity's persistable-permission
-            // fix) or an IOException from a provider that's since deleted
-            // the underlying file. Either way, surfacing this as "can't
-            // read the image" (return null) is correct; logging it keeps
-            // the real cause diagnosable instead of a silent failure.
-            android.util.Log.w("SinKey", "Couldn't read sticker source image bounds", e)
-            return null
-        }
+        BitmapFactory.decodeFile(file.absolutePath, boundsOptions)
+        if (boundsOptions.outWidth <= 0 || boundsOptions.outHeight <= 0) return null
 
         var sampleSize = 1
         val longestSide = maxOf(boundsOptions.outWidth, boundsOptions.outHeight)
@@ -144,14 +138,7 @@ object StickerFileStore {
         }
 
         val decodeOptions = BitmapFactory.Options().apply { inSampleSize = sampleSize }
-        val decoded = try {
-            resolver.openInputStream(uri)?.use { stream ->
-                BitmapFactory.decodeStream(stream, null, decodeOptions)
-            } ?: return null
-        } catch (e: Exception) {
-            android.util.Log.w("SinKey", "Couldn't read sticker source image", e)
-            return null
-        }
+        val decoded = BitmapFactory.decodeFile(file.absolutePath, decodeOptions) ?: return null
 
         // Center-crop to a square, then scale to exactly MAX_DIMENSION_PX —
         // keeps every sticker's aspect ratio consistent in the grid.
