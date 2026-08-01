@@ -30,6 +30,30 @@ class StickerPickerActivity : ComponentActivity() {
     }
 
     private val pickImage = registerForActivityResult(ActivityResultContracts.GetContent()) { uri ->
+        // GetContent()'s URI grant is transient and scoped to this Activity
+        // — it is not guaranteed to still be valid once this Activity has
+        // finished and a different component (SinKeyInputMethodService, a
+        // Service) tries to read it later via contentResolver. Without
+        // this, decodeScaledBitmap's openInputStream() calls can fail with
+        // a SecurityException (surfaced to the user as "Couldn't read that
+        // image") depending on timing. Taking a persistable read grant here
+        // — before finish() — keeps the Uri readable for as long as this
+        // app needs it, regardless of which component reads it or when.
+        if (uri != null) {
+            try {
+                contentResolver.takePersistableUriPermission(
+                    uri,
+                    android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION
+                )
+            } catch (e: SecurityException) {
+                // Some providers (e.g. certain OEM galleries, or the modern
+                // Photo Picker's synthetic com.android.providers.media.photopicker
+                // Uris) don't support persistable grants — the transient
+                // grant from GetContent() usually still covers a same-process,
+                // immediate read in that case, so this is not fatal; only
+                // an actual read failure downstream should surface an error.
+            }
+        }
         onImagePicked?.invoke(uri)
         onImagePicked = null
         finish()
