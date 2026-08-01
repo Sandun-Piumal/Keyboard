@@ -75,12 +75,24 @@ class WordRepository(context: Context) {
      * [maxDistance] caps how many single-character edits (insert/delete/
      * substitute) are tolerated; 2 is a reasonable default for short-to-
      * medium words without matching things that aren't actually related.
+     *
+     * Every committed word is still learned (via [learn]) after just one
+     * use — that part is unchanged, so a word can start climbing frequency
+     * immediately. But a word typed only once is exactly as likely to be a
+     * typo as a real word the user wants remembered, and typos are what
+     * fuzzy matching is most likely to surface (they're "close" to lots of
+     * things by definition). So the *fuzzy* half of this search — not the
+     * exact-prefix half, which reflects what's actually being typed right
+     * now — requires frequency >= [minFuzzyTrust] before a word counts as
+     * "confirmed" enough to suggest via edit-distance. A word graduates
+     * into fuzzy-eligibility the moment it's typed a second time.</br>
      */
     suspend fun fuzzySuggestionsFor(
         typed: String,
         language: String,
         limit: Int = 5,
-        maxDistance: Int = 2
+        maxDistance: Int = 2,
+        minFuzzyTrust: Int = 2
     ): List<String> {
         if (typed.isEmpty()) return emptyList()
 
@@ -91,7 +103,7 @@ class WordRepository(context: Context) {
         val candidates = dao.findByFirstChar(firstChar, language, limit = 200)
 
         val scored = candidates
-            .filter { it.word !in prefixHits }
+            .filter { it.word !in prefixHits && it.frequency >= minFuzzyTrust }
             .map { entity ->
                 val distance = levenshtein(typed, entity.word)
                 Triple(entity.word, distance, entity.frequency)
