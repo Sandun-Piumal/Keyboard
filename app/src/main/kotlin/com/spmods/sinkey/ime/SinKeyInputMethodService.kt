@@ -80,6 +80,13 @@ class SinKeyInputMethodService : InputMethodService() {
     // MAIN every time the user dismisses and reopens the keyboard.
     private var boardStack = mutableStateOf(listOf(Board.MAIN))
 
+    // Set right before pushing Board.STICKER_EDIT (via pickImageForSticker's
+    // callback) and read by KeyboardView to render StickerImageEditorView's
+    // preview. Hoisted here rather than kept as remember{} state inside
+    // KeyboardView for the same reason boardStack is: it must survive the
+    // keyboard's hide/show recomposition cycles while the editor is open.
+    private var pendingStickerImagePath = mutableStateOf<String?>(null)
+
     // Shift has 3 states: OFF, ONE_SHOT (next letter only), LOCKED (caps lock).
     // Stored at service level so it survives hide/show cycles.
     // AUTO-SHIFT: enabled at sentence start (after . ! ? or at field open).
@@ -308,7 +315,28 @@ class SinKeyInputMethodService : InputMethodService() {
                         dismissedUpdateVersionCode = dismissedUpdateVersionCode.value,
                         onDismissedUpdateVersionCodeChange = { dismissedUpdateVersionCode.value = it },
                         onStickerSend = { filePath, mimeType -> onStickerSelected(filePath, mimeType) },
-                        onPickStickerImage = { pickImageForSticker() }
+                        onPickStickerImage = { pickImageForSticker() },
+                        pendingStickerImagePath = pendingStickerImagePath.value,
+                        onSaveImageSticker = { draft ->
+                            saveEditedImageSticker(
+                                imageScale = draft.imageScale,
+                                imageOffsetXFraction = draft.imageOffsetXFraction,
+                                imageOffsetYFraction = draft.imageOffsetYFraction,
+                                text = draft.text,
+                                textColor = draft.textColor,
+                                textSizeFraction = draft.textSizeFraction,
+                                textXFraction = draft.textXFraction,
+                                textYFraction = draft.textYFraction,
+                                fontTypeface = when (draft.fontStyle) {
+                                    com.spmods.sinkey.keyboard.StickerFontStyle.BOLD -> android.graphics.Typeface.DEFAULT_BOLD
+                                    com.spmods.sinkey.keyboard.StickerFontStyle.CLASSIC -> android.graphics.Typeface.create(android.graphics.Typeface.SERIF, android.graphics.Typeface.BOLD)
+                                    com.spmods.sinkey.keyboard.StickerFontStyle.TYPEWRITER -> android.graphics.Typeface.create(android.graphics.Typeface.MONOSPACE, android.graphics.Typeface.BOLD)
+                                    com.spmods.sinkey.keyboard.StickerFontStyle.HANDWRITTEN -> android.graphics.Typeface.create("cursive", android.graphics.Typeface.NORMAL)
+                                    com.spmods.sinkey.keyboard.StickerFontStyle.CLEAN -> android.graphics.Typeface.create(android.graphics.Typeface.SANS_SERIF, android.graphics.Typeface.NORMAL)
+                                },
+                                outlineEnabled = draft.outlineEnabled
+                            )
+                        }
                     )
                 }
         }
@@ -809,24 +837,25 @@ class SinKeyInputMethodService : InputMethodService() {
      * Launches the system gallery picker (via StickerPickerActivity, since
      * this Service can't host an ActivityResultLauncher itself — see that
      * class's doc comment) for Board.STICKER_CREATE's "Image Sticker"
-     * option. On completion the picked image is decoded, downscaled, and
-     * saved as a new sticker by StickerRepository.createFromImage.
+     * option. On completion the picked image's temp file path is stored in
+     * [pendingStickerImagePath] and Board.STICKER_EDIT is pushed, so the
+     * user can crop/zoom the photo and add a text caption (matching
+     * WhatsApp's own sticker maker) before it's actually saved as a
+     * sticker — see StickerImageEditorView and
+     * SinKeyInputMethodService.saveEditedImageSticker for the rest of that
+     * flow.
      */
     fun pickImageForSticker() {
         com.spmods.sinkey.ime.StickerPickerActivity.onImagePicked = { tempPath ->
             if (tempPath != null) {
-                serviceScope.launch {
-                    val created = stickerRepo.createFromImage(java.io.File(tempPath))
-                    if (!created) {
-                        android.widget.Toast.makeText(
-                            this@SinKeyInputMethodService,
-                            "Couldn't read that image",
-                            android.widget.Toast.LENGTH_SHORT
-                        ).show()
-                    } else if (boardStack.value.lastOrNull() == com.spmods.sinkey.keyboard.Board.STICKER_CREATE) {
-                        boardStack.value = boardStack.value.dropLast(1)
-                    }
-                }
+                pendingStickerImagePath.value = tempPath
+                boardStack.value = boardStack.value + com.spmods.sinkey.keyboard.Board.STICKER_EDIT
+            } else {
+                android.widget.Toast.makeText(
+                    this@SinKeyInputMethodService,
+                    "Couldn't read that image",
+                    android.widget.Toast.LENGTH_SHORT
+                ).show()
             }
         }
         val intent = android.content.Intent(this, com.spmods.sinkey.ime.StickerPickerActivity::class.java).apply {
@@ -847,6 +876,64 @@ class SinKeyInputMethodService : InputMethodService() {
                 "Couldn't open the picker — try again",
                 android.widget.Toast.LENGTH_SHORT
             ).show()
+        }
+    }
+
+    /**
+     * Called from KeyboardView when the user taps "Add to stickers" on
+     * Board.STICKER_EDIT. Composites [pendingStickerImagePath]'s image with
+     * the crop/zoom/text the editor collected, saves it as a sticker, then
+     * pops back to Board.STICKER. [fontTypeface] is resolved here (an
+     * Android framework type) from the editor's UI-layer StickerFontStyle
+     * enum, keeping StickerRepository/StickerFileStore free of any Compose
+     * dependency.
+     */
+    fun saveEditedImageSticker(
+        imageScale: Float,
+        imageOffsetXFraction: Float,
+        imageOffsetYFraction: Float,
+        text: String,
+        textColor: Int,
+        textSizeFraction: Float,
+        textXFraction: Float,
+        textYFraction: Float,
+        fontTypeface: android.graphics.Typeface,
+        outlineEnabled: Boolean
+    ) {
+        val tempPath = pendingStickerImagePath.value ?: return
+        pendingStickerImagePath.value = null
+        serviceScope.launch {
+            val created = stickerRepo.createFromImageEdit(
+                sourceFile = java.io.File(tempPath),
+                imageScale = imageScale,
+                imageOffsetXFraction = imageOffsetXFraction,
+                imageOffsetYFraction = imageOffsetYFraction,
+                text = text,
+                textColor = textColor,
+                textSizeFraction = textSizeFraction,
+                textXFraction = textXFraction,
+                textYFraction = textYFraction,
+                fontTypeface = fontTypeface,
+                outlineEnabled = outlineEnabled
+            )
+            if (!created) {
+                android.widget.Toast.makeText(
+                    this@SinKeyInputMethodService,
+                    "Couldn't save that sticker",
+                    android.widget.Toast.LENGTH_SHORT
+                ).show()
+            }
+            // Pop both STICKER_EDIT and STICKER_CREATE, landing back on the
+            // sticker tray (Board.STICKER) where the new sticker now shows up.
+            val stack = boardStack.value
+            boardStack.value = if (stack.size >= 2 &&
+                stack.last() == com.spmods.sinkey.keyboard.Board.STICKER_EDIT &&
+                stack[stack.size - 2] == com.spmods.sinkey.keyboard.Board.STICKER_CREATE
+            ) {
+                stack.dropLast(2)
+            } else {
+                stack.dropLast(1)
+            }
         }
     }
 
