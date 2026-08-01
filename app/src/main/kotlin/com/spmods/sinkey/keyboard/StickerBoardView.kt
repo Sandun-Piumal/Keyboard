@@ -218,7 +218,10 @@ private fun StickerSendConfirmation(
                 modifier = Modifier
                     .size(84.dp)
                     .clip(RoundedCornerShape(10.dp))
-                    .background(colors.keyBg)
+                    // Same reasoning as OwnStickerGrid's tile background —
+                    // neutral grey so white (or any colour) sticker text
+                    // stays visible regardless of light/dark theme.
+                    .background(Color(0xFF808080))
             ) {
                 StickerImage(
                     source = filePath,
@@ -300,7 +303,19 @@ private fun OwnStickerGrid(
                 modifier = Modifier
                     .aspectRatio(1f)
                     .clip(RoundedCornerShape(8.dp))
-                    .background(colors.cardBg)
+                    // Deliberately NOT colors.cardBg: a text sticker is a
+                    // transparent PNG with just coloured text drawn on it
+                    // (see StickerFileStore.saveFromText), and its colour is
+                    // chosen against a neutral preview background (see
+                    // StickerCreateView), not against this keyboard's own
+                    // theme. In light mode colors.cardBg is pure white,
+                    // which made white-text stickers (a common choice, and
+                    // the default) invisible here even though they render
+                    // fine once actually sent into a chat. A fixed neutral
+                    // grey — same tone used by the text-sticker preview box
+                    // — keeps stickers of any text colour visible in both
+                    // light and dark mode.
+                    .background(Color(0xFF808080))
                     .clickable { onSend(sticker.filePath) }
             ) {
                 StickerImage(
