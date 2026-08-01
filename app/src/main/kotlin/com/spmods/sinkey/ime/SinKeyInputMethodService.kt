@@ -308,8 +308,7 @@ class SinKeyInputMethodService : InputMethodService() {
                         dismissedUpdateVersionCode = dismissedUpdateVersionCode.value,
                         onDismissedUpdateVersionCodeChange = { dismissedUpdateVersionCode.value = it },
                         onStickerSend = { filePath, mimeType -> onStickerSelected(filePath, mimeType) },
-                        onPickStickerImage = { pickImageForSticker() },
-                        onAddToWhatsApp = { sendToWhatsApp() }
+                        onPickStickerImage = { pickImageForSticker() }
                     )
                 }
         }
@@ -805,43 +804,6 @@ class SinKeyInputMethodService : InputMethodService() {
             "$packageName.stickerprovider",
             java.io.File(filePath)
         )
-
-    /**
-     * Triggers WhatsApp's "Add to WhatsApp" flow for this app's full
-     * sticker pack (via StickerPickerActivity in MODE_ADD_TO_WHATSAPP,
-     * since this Service can't call startActivityForResult itself — same
-     * trampoline reasoning as [pickImageForSticker]). Replaces the old
-     * per-sticker commitContent send, which WhatsApp's chat compose field
-     * never actually accepted as a sticker (only as a generic image, which
-     * is why "This field doesn't support stickers" showed up there) — this
-     * instead uses WhatsApp's real third-party sticker pack API
-     * (see WhatsAppStickerContentProvider), the same mechanism any
-     * published WhatsApp sticker app uses.
-     */
-    fun sendToWhatsApp() {
-        com.spmods.sinkey.ime.StickerPickerActivity.onAddToWhatsAppResult = { launched ->
-            if (!launched) {
-                android.widget.Toast.makeText(
-                    this@SinKeyInputMethodService,
-                    "WhatsApp isn't installed, or has no stickers to add yet",
-                    android.widget.Toast.LENGTH_SHORT
-                ).show()
-            }
-        }
-        val intent = android.content.Intent(this, com.spmods.sinkey.ime.StickerPickerActivity::class.java).apply {
-            putExtra(com.spmods.sinkey.ime.StickerPickerActivity.EXTRA_MODE, com.spmods.sinkey.ime.StickerPickerActivity.MODE_ADD_TO_WHATSAPP)
-            addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
-        }
-        try {
-            startActivity(intent)
-        } catch (e: Exception) {
-            android.widget.Toast.makeText(
-                this,
-                "Couldn't open WhatsApp — try again",
-                android.widget.Toast.LENGTH_SHORT
-            ).show()
-        }
-    }
 
     /**
      * Launches the system gallery picker (via StickerPickerActivity, since
