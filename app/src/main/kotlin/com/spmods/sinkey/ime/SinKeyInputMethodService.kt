@@ -404,19 +404,7 @@ class SinKeyInputMethodService : InputMethodService() {
         // Reset board to MAIN when the user moves to a different input field
         // (not on simple hide/show of the same field). restarting=true means
         // the same field re-focused, so we keep the current board in that case.
-        //
-        // Bug fix: launching StickerPickerActivity (see pickImageForSticker)
-        // hides this IME's window while the picker is in the foreground.
-        // When the picker finishes and the host app's field regains focus,
-        // Android calls onStartInputView again — often with restarting=false
-        // even though it's the *same* field, because the InputConnection was
-        // torn down while our window was hidden. That used to force
-        // boardStack back to [MAIN] here, which raced with (and always won
-        // against) pickImageForSticker's callback pushing Board.STICKER_EDIT
-        // right before the trampoline Activity finished — so the picked
-        // image's editor never actually showed up. Skip the reset whenever a
-        // sticker image pick is pending/just landed, so that push survives.
-        if (!restarting && pendingStickerImagePath.value == null && Board.STICKER_EDIT !in boardStack.value) {
+        if (!restarting) {
             boardStack.value = listOf(Board.MAIN)
             shiftState.value = ShiftState.ONE_SHOT // auto-shift: capitalize first letter of new field
         }
@@ -849,19 +837,30 @@ class SinKeyInputMethodService : InputMethodService() {
      * Launches the system gallery picker (via StickerPickerActivity, since
      * this Service can't host an ActivityResultLauncher itself — see that
      * class's doc comment) for Board.STICKER_CREATE's "Image Sticker"
-     * option. On completion the picked image's temp file path is stored in
-     * [pendingStickerImagePath] and Board.STICKER_EDIT is pushed, so the
-     * user can crop/zoom the photo and add a text caption (matching
-     * WhatsApp's own sticker maker) before it's actually saved as a
-     * sticker — see StickerImageEditorView and
-     * SinKeyInputMethodService.saveEditedImageSticker for the rest of that
-     * flow.
+     * option. On completion the picked image's temp file path is handed to
+     * StickerEditActivity, a full-screen Activity of its own — not rendered
+     * inline inside the keyboard's Compose tree — so the user can crop/zoom
+     * the photo and add a text caption (matching WhatsApp's own sticker
+     * maker) on a screen that isn't constrained to the keyboard's docked
+     * panel size. See StickerEditActivity's doc comment for why this needs
+     * to be its own Activity rather than a pushed Board state.
      */
     fun pickImageForSticker() {
         com.spmods.sinkey.ime.StickerPickerActivity.onImagePicked = { tempPath ->
             if (tempPath != null) {
-                pendingStickerImagePath.value = tempPath
-                boardStack.value = boardStack.value + com.spmods.sinkey.keyboard.Board.STICKER_EDIT
+                val editIntent = android.content.Intent(this, com.spmods.sinkey.ime.StickerEditActivity::class.java).apply {
+                    putExtra(com.spmods.sinkey.ime.StickerEditActivity.EXTRA_IMAGE_PATH, tempPath)
+                    addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
+                }
+                try {
+                    startActivity(editIntent)
+                } catch (e: Exception) {
+                    android.widget.Toast.makeText(
+                        this@SinKeyInputMethodService,
+                        "Couldn't open the sticker editor — try again",
+                        android.widget.Toast.LENGTH_SHORT
+                    ).show()
+                }
             } else {
                 android.widget.Toast.makeText(
                     this@SinKeyInputMethodService,
