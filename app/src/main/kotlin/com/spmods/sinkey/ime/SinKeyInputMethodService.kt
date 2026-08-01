@@ -969,11 +969,28 @@ class SinKeyInputMethodService : InputMethodService() {
             // real usage frequency, so e.g. typing "s" surfaces ස before
             // the rarer ශ/ෂ readings a purely rule-based pass would give
             // equal footing.
+            //
+            // But once raw is long enough to plausibly be a finished (or
+            // near-finished) word — 3+ characters — the user almost always
+            // wants the full-word transliteration itself (e.g. "sinhal" ->
+            // සිංහල) shown, not just short weighted syllable fragments like
+            // සි/සී/ශි left over from when the prefix was 1-2 chars. So
+            // for longer input, put `primary` first and only fill the
+            // remaining slots with weighted candidates, instead of letting
+            // weighted candidates fill all 5 slots and crowd primary out.
             val weighted = com.spmods.sinkey.keyboard.SinhalaCandidateMap.candidatesFor(raw)
-            if (weighted.isNotEmpty()) {
-                list.addAll(weighted.take(5))
+            if (raw.length >= 3) {
+                list.add(primary)
+                for (w in weighted) {
+                    if (list.size >= 5) break
+                    if (!list.contains(w)) list.add(w)
+                }
+            } else {
+                if (weighted.isNotEmpty()) {
+                    list.addAll(weighted.take(5))
+                }
+                if (!list.contains(primary)) list.add(primary)
             }
-            if (!list.contains(primary)) list.add(primary)
             val withA = SinhalaTransliterator.transliterate("${raw}a")
             if (!list.contains(withA) && list.size < 5) list.add(withA)
             if (raw.length > 1) {
@@ -1071,7 +1088,15 @@ class SinKeyInputMethodService : InputMethodService() {
                 wordRepo.suggestionsFor(prefix, language, limit = 5)
             }
             if (learned.isEmpty()) return@launch
-            val merged = (suggestions.value.ifEmpty { baseList } + learned).distinct().take(5)
+            // Personal-dictionary words are the user's own real, previously
+            // typed vocabulary — a much stronger signal than the generic
+            // transliteration/weighted-candidate guesses in baseList. Put
+            // `learned` first so it can't get crowded out of the 5 slots by
+            // a baseList that's already full (which happens for any 3+
+            // char word since the transliteration fix above), then fill
+            // any remaining room with baseList entries not already present.
+            val current = suggestions.value.ifEmpty { baseList }
+            val merged = (learned + current).distinct().take(5)
             suggestions.value = merged
         }
     }
