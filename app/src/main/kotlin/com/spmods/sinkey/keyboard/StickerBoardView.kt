@@ -300,7 +300,7 @@ private fun OwnStickerGrid(
                 modifier = Modifier
                     .aspectRatio(1f)
                     .clip(RoundedCornerShape(8.dp))
-                    .background(colors.keyBg)
+                    .background(colors.cardBg)
                     .clickable { onSend(sticker.filePath) }
             ) {
                 StickerImage(
