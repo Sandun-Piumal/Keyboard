@@ -309,8 +309,46 @@ object SinhalaTransliterator {
      * Transliterates a romanized Singlish string into Sinhala Unicode
      * following the longest-match, context-aware ruleset.
      */
-    fun transliterate(input: String): String {
-        if (input.isEmpty()) return ""
+    /**
+     * Lowercases [input] except where an uppercase letter is part of one of
+     * the scheme's deliberately case-sensitive tokens: the digraphs "Sh",
+     * "TH", "DH" (checked longest-first so they don't get shadowed by the
+     * single-letter "T"/"D" rule below), and the single letters "N", "T",
+     * "D", "L" when not followed by lowercase letters that would make them
+     * part of a different, already-lowercase word/digraph. Everything else
+     * — including a capital first letter from auto-capitalize, or ALL-CAPS
+     * typing — is folded to lowercase so it reaches the normal consonant
+     * table instead of falling through unmatched.
+     */
+    private fun normalizeCaseForTransliteration(input: String): String {
+        val out = StringBuilder(input.length)
+        var i = 0
+        while (i < input.length) {
+            when {
+                input.startsWith("Sh", i) -> { out.append("Sh"); i += 2 }
+                input.startsWith("TH", i) -> { out.append("TH"); i += 2 }
+                input.startsWith("DH", i) -> { out.append("DH"); i += 2 }
+                input[i] in "NTDL" -> { out.append(input[i]); i += 1 }
+                else -> { out.append(input[i].lowercaseChar()); i += 1 }
+            }
+        }
+        return out.toString()
+    }
+
+    fun transliterate(rawInput: String): String {
+
+        if (rawInput.isEmpty()) return ""
+        // Normalize case first: only a specific, deliberate set of letters
+        // carries case-meaning in this scheme — N/T/D/L as single letters
+        // (ණ/ත/ද/ළ vs n/t/d/l -> න/ට/ද/ල) and the Sh/TH/DH digraphs (ෂ/ඨ/ඪ
+        // vs sh/th/dh -> ශ/ත/ධ). Any other uppercase letter reaching this
+        // function (e.g. from auto-capitalize at the start of a sentence,
+        // or a user just typing with caps lock on for emphasis) has no
+        // separate mapping in `consonants` and would otherwise fall
+        // through unmatched, corrupting the output. So: lowercase
+        // everything by default, then restore case only where one of the
+        // known case-sensitive digraphs/letters actually appears.
+        val input = normalizeCaseForTransliteration(rawInput)
         val out = StringBuilder()
         var i = 0
 
