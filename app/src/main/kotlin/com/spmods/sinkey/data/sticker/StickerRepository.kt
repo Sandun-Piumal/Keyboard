@@ -25,9 +25,51 @@ class StickerRepository(private val context: Context) {
      * hands back a plain File, since the picked Uri's read grant isn't
      * reliably valid by the time this suspend function actually runs).
      * Returns true on success.
+     *
+     * Used directly only as a fallback; the normal Image Sticker flow goes
+     * through [createFromImageEdit] via Board.STICKER_EDIT so the user can
+     * crop/zoom and add a text caption first.
      */
     suspend fun createFromImage(sourceFile: File): Boolean {
         val path = StickerFileStore.saveFromImageFile(context, sourceFile) ?: return false
+        dao.insert(StickerEntity(filePath = path, source = StickerEntity.SOURCE_IMAGE))
+        return true
+    }
+
+    /**
+     * Creates a sticker from the Board.STICKER_EDIT screen's result: the
+     * picked photo (cropped/zoomed as the user positioned it) plus an
+     * optional text caption (colour/size/position/font/outline all as
+     * chosen there). See StickerFileStore.compositeImageSticker for how
+     * these are rendered together. Returns true on success.
+     */
+    suspend fun createFromImageEdit(
+        sourceFile: File,
+        imageScale: Float,
+        imageOffsetXFraction: Float,
+        imageOffsetYFraction: Float,
+        text: String,
+        textColor: Int,
+        textSizeFraction: Float,
+        textXFraction: Float,
+        textYFraction: Float,
+        fontTypeface: android.graphics.Typeface,
+        outlineEnabled: Boolean
+    ): Boolean {
+        val path = StickerFileStore.compositeImageSticker(
+            context = context,
+            sourceFile = sourceFile,
+            imageScale = imageScale,
+            imageOffsetXFraction = imageOffsetXFraction,
+            imageOffsetYFraction = imageOffsetYFraction,
+            text = text,
+            textColor = textColor,
+            textSizeFraction = textSizeFraction,
+            textXFraction = textXFraction,
+            textYFraction = textYFraction,
+            fontTypeface = fontTypeface,
+            outlineEnabled = outlineEnabled
+        ) ?: return false
         dao.insert(StickerEntity(filePath = path, source = StickerEntity.SOURCE_IMAGE))
         return true
     }
