@@ -66,6 +66,21 @@
             android:launchMode="standard" />
 
         <!--
+            Full-screen Activity that hosts the "adjust image + add text"
+            sticker editor after an image is picked (see
+            StickerEditActivity's class doc for why this needs to be a real
+            Activity rather than rendered inline inside the keyboard's own
+            docked panel).
+        -->
+        <activity
+            android:name=".ime.StickerEditActivity"
+            android:exported="false"
+            android:theme="@style/Theme.SinKey"
+            android:excludeFromRecents="true"
+            android:launchMode="standard"
+            android:windowSoftInputMode="adjustResize" />
+
+        <!--
             Exposes app-private sticker PNGs (files/stickers/) as
             content:// Uris so they can be sent to other apps via
             InputConnection#commitContent (see
