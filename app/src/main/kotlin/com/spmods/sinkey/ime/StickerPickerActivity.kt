@@ -36,13 +36,33 @@ class StickerPickerActivity : ComponentActivity() {
     companion object {
         const val EXTRA_MODE = "mode"
         const val MODE_IMAGE = "image"
+        private const val STATE_PICKER_LAUNCHED = "picker_launched"
 
         /** Set by the IME service right before starting this Activity; cleared after use. */
         var onImagePicked: ((String?) -> Unit)? = null
     }
 
+    // True once pickImage.launch() has actually been called for this
+    // Activity *instance*. Needed because the system Photo Picker (and
+    // some OEM gallery apps) run as a separate, heavier process; while
+    // it's in the foreground, Android can reclaim this invisible,
+    // excludeFromRecents trampoline and later recreate a *new*
+    // StickerPickerActivity instance to deliver the pending
+    // ActivityResult. Without this guard, that fresh instance's
+    // onCreate() would see MODE_IMAGE again and call pickImage.launch()
+    // a second time — reopening the picker instead of delivering the
+    // result the user already picked, which is exactly the "picker
+    // opens, I pick an image, and then nothing happens" symptom.
+    private var pickerLaunched = false
+
     private val pickImage = registerForActivityResult(ActivityResultContracts.GetContent()) { uri ->
         val savedPath = uri?.let { readAndCacheImage(it) }
+        // onImagePicked is a plain static var, so it does NOT survive
+        // process death — only in-process recreation (e.g. rotation).
+        // If this process was killed and restarted purely to deliver the
+        // result, the callback will already be null here and there is
+        // nothing to hand the image to. Fail silently rather than crash;
+        // the user can just retry.
         onImagePicked?.invoke(savedPath)
         onImagePicked = null
         finish()
@@ -50,10 +70,26 @@ class StickerPickerActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        pickerLaunched = savedInstanceState?.getBoolean(STATE_PICKER_LAUNCHED) ?: false
+        if (pickerLaunched) {
+            // We're a recreated instance whose picker request is already
+            // in flight. Do NOT call pickImage.launch() again — just wait
+            // for the ActivityResultRegistry to redeliver the pending
+            // result to our callback above.
+            return
+        }
         when (intent?.getStringExtra(EXTRA_MODE)) {
-            MODE_IMAGE -> pickImage.launch("image/*")
+            MODE_IMAGE -> {
+                pickerLaunched = true
+                pickImage.launch("image/*")
+            }
             else -> finish()
         }
+    }
+
+    override fun onSaveInstanceState(outState: Bundle) {
+        super.onSaveInstanceState(outState)
+        outState.putBoolean(STATE_PICKER_LAUNCHED, pickerLaunched)
     }
 
     /**
