@@ -11,6 +11,8 @@ import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
 import androidx.compose.ui.draw.scale
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -102,6 +104,15 @@ internal data class KeyboardColors(
     val subText: Color,
     val spaceKeyBg: Color,
     val spaceKeyText: Color,
+    // Surface colour for card/tile UI that lives *inside* a board — sticker
+    // grid tiles, clipboard item cards, font-style preview cards. Unlike
+    // keyBg (which intentionally collapses to the same colour as `bg` when
+    // showKeyBorders is off, so letter keys read as flat/floating), these
+    // cards need a background that's always visibly distinct from the
+    // board's own bg, borders-off or not — otherwise the tiles disappear
+    // and only their icons/text float on the page. Kept independent of
+    // showKeyBorders on purpose.
+    val cardBg: Color,
 )
 
 @Composable
@@ -122,6 +133,9 @@ private fun keyboardColors(showKeyBorders: Boolean, isDark: Boolean): KeyboardCo
             // space-bar pill stays visible without a full bordered look.
             spaceKeyBg     = if (showKeyBorders) Color(0xFF3A3A3A) else Color(0xFF2A2A2A),
             spaceKeyText   = Color(0xFF777777),
+            // Always the same lighter slab used by bordered keys, regardless
+            // of showKeyBorders — cards need to stay visible against bg.
+            cardBg         = Color(0xFF3A3A3A),
         )
     } else {
         KeyboardColors(
@@ -144,6 +158,9 @@ private fun keyboardColors(showKeyBorders: Boolean, isDark: Boolean): KeyboardCo
             spaceKeyBg     = if (showKeyBorders) Color(0xFFFFFFFF) else Color(0xFFDBE0E4),
             // space bar text - medium grey
             spaceKeyText   = Color(0xFF888888),
+            // Always white, regardless of showKeyBorders — cards need to
+            // stay visible against bg.
+            cardBg         = Color(0xFFFFFFFF),
         )
     }
 }
@@ -958,8 +975,39 @@ private fun rememberKeyBumpScale(pressed: Boolean): Float {
 @Composable
 private fun KeyPreviewPopup(label: String, keyHeight: Dp, colors: KeyboardColors, keyShape: RoundedCornerShape) {
     val size = (keyHeight.value * 1.1f).dp
+    // Real keyboards (Gboard/SwiftKey) pop this bubble in with a quick
+    // scale+fade rather than having it snap fully-formed into place, which
+    // reads as more "alive"/responsive even though the key itself already
+    // has its own bump animation. Animate from freshly-composed (this
+    // popup is created and destroyed each press, so `remember`ing false
+    // and flipping true right after first composition via LaunchedEffect
+    // is what actually triggers the transition — starting `true`
+    // immediately would skip it, since animateFloatAsState only animates
+    // on subsequent target changes).
+    var shown by remember { mutableStateOf(false) }
+    LaunchedEffect(Unit) { shown = true }
+    val animScale by animateFloatAsState(
+        targetValue = if (shown) 1f else 0.4f,
+        animationSpec = spring(dampingRatio = Spring.DampingRatioMediumBouncy, stiffness = Spring.StiffnessHigh),
+        label = "keyPreviewScale"
+    )
+    val animAlpha by animateFloatAsState(
+        targetValue = if (shown) 1f else 0f,
+        animationSpec = spring(stiffness = Spring.StiffnessHigh),
+        label = "keyPreviewAlpha"
+    )
     Box(
         modifier = Modifier
+            .graphicsLayer {
+                scaleX = animScale
+                scaleY = animScale
+                alpha = animAlpha
+                // Scale from the bottom edge (closest to the key/finger)
+                // rather than dead-center, so the bubble reads as growing
+                // up out of the key instead of expanding from its own
+                // middle — matches how real keyboard preview bubbles move.
+                transformOrigin = TransformOrigin(0.5f, 1f)
+            }
             .defaultMinSize(minWidth = size, minHeight = size)
             .clip(keyShape)
             .background(colors.keyBg)
@@ -1894,7 +1942,7 @@ private fun ClipRow(
             .fillMaxWidth()
             .padding(vertical = 3.dp)
             .clip(RoundedCornerShape(8.dp))
-            .background(colors.keyBg)
+            .background(colors.cardBg)
             .clickable { onPaste(clip.text) }
             .padding(horizontal = 10.dp, vertical = 8.dp),
         verticalAlignment = Alignment.CenterVertically
@@ -2029,7 +2077,7 @@ private fun FontRow(
             .fillMaxWidth()
             .padding(vertical = 3.dp)
             .clip(RoundedCornerShape(8.dp))
-            .background(if (selected) DeshGreen.copy(alpha = 0.15f) else colors.keyBg)
+            .background(if (selected) DeshGreen.copy(alpha = 0.15f) else colors.cardBg)
             .clickable { onSelect() }
             .padding(horizontal = 12.dp, vertical = 10.dp),
         verticalAlignment = Alignment.CenterVertically
