@@ -404,7 +404,19 @@ class SinKeyInputMethodService : InputMethodService() {
         // Reset board to MAIN when the user moves to a different input field
         // (not on simple hide/show of the same field). restarting=true means
         // the same field re-focused, so we keep the current board in that case.
-        if (!restarting) {
+        //
+        // Bug fix: launching StickerPickerActivity (see pickImageForSticker)
+        // hides this IME's window while the picker is in the foreground.
+        // When the picker finishes and the host app's field regains focus,
+        // Android calls onStartInputView again — often with restarting=false
+        // even though it's the *same* field, because the InputConnection was
+        // torn down while our window was hidden. That used to force
+        // boardStack back to [MAIN] here, which raced with (and always won
+        // against) pickImageForSticker's callback pushing Board.STICKER_EDIT
+        // right before the trampoline Activity finished — so the picked
+        // image's editor never actually showed up. Skip the reset whenever a
+        // sticker image pick is pending/just landed, so that push survives.
+        if (!restarting && pendingStickerImagePath.value == null && Board.STICKER_EDIT !in boardStack.value) {
             boardStack.value = listOf(Board.MAIN)
             shiftState.value = ShiftState.ONE_SHOT // auto-shift: capitalize first letter of new field
         }
