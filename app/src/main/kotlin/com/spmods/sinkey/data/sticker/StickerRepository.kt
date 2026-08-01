@@ -1,7 +1,7 @@
 package com.spmods.sinkey.data.sticker
 
 import android.content.Context
-import android.net.Uri
+import java.io.File
 import kotlinx.coroutines.flow.Flow
 
 /**
@@ -19,9 +19,15 @@ class StickerRepository(private val context: Context) {
     val all: Flow<List<StickerEntity>> = dao.observeAll()
     val favourites: Flow<List<StickerEntity>> = dao.observeFavourites()
 
-    /** Creates a sticker from a picked gallery image. Returns true on success. */
-    suspend fun createFromImage(sourceUri: Uri): Boolean {
-        val path = StickerFileStore.saveFromImageUri(context, sourceUri) ?: return false
+    /**
+     * Creates a sticker from an image already saved to a local temp file
+     * (see StickerPickerActivity — it reads the picked Uri itself and
+     * hands back a plain File, since the picked Uri's read grant isn't
+     * reliably valid by the time this suspend function actually runs).
+     * Returns true on success.
+     */
+    suspend fun createFromImage(sourceFile: File): Boolean {
+        val path = StickerFileStore.saveFromImageFile(context, sourceFile) ?: return false
         dao.insert(StickerEntity(filePath = path, source = StickerEntity.SOURCE_IMAGE))
         return true
     }
