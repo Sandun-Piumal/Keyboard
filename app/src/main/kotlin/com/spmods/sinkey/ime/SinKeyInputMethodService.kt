@@ -308,7 +308,8 @@ class SinKeyInputMethodService : InputMethodService() {
                         dismissedUpdateVersionCode = dismissedUpdateVersionCode.value,
                         onDismissedUpdateVersionCodeChange = { dismissedUpdateVersionCode.value = it },
                         onStickerSend = { filePath, mimeType -> onStickerSelected(filePath, mimeType) },
-                        onPickStickerImage = { pickImageForSticker() }
+                        onPickStickerImage = { pickImageForSticker() },
+                        onAddToWhatsApp = { sendToWhatsApp() }
                     )
                 }
         }
@@ -806,6 +807,43 @@ class SinKeyInputMethodService : InputMethodService() {
         )
 
     /**
+     * Triggers WhatsApp's "Add to WhatsApp" flow for this app's full
+     * sticker pack (via StickerPickerActivity in MODE_ADD_TO_WHATSAPP,
+     * since this Service can't call startActivityForResult itself — same
+     * trampoline reasoning as [pickImageForSticker]). Replaces the old
+     * per-sticker commitContent send, which WhatsApp's chat compose field
+     * never actually accepted as a sticker (only as a generic image, which
+     * is why "This field doesn't support stickers" showed up there) — this
+     * instead uses WhatsApp's real third-party sticker pack API
+     * (see WhatsAppStickerContentProvider), the same mechanism any
+     * published WhatsApp sticker app uses.
+     */
+    fun sendToWhatsApp() {
+        com.spmods.sinkey.ime.StickerPickerActivity.onAddToWhatsAppResult = { launched ->
+            if (!launched) {
+                android.widget.Toast.makeText(
+                    this@SinKeyInputMethodService,
+                    "WhatsApp isn't installed, or has no stickers to add yet",
+                    android.widget.Toast.LENGTH_SHORT
+                ).show()
+            }
+        }
+        val intent = android.content.Intent(this, com.spmods.sinkey.ime.StickerPickerActivity::class.java).apply {
+            putExtra(com.spmods.sinkey.ime.StickerPickerActivity.EXTRA_MODE, com.spmods.sinkey.ime.StickerPickerActivity.MODE_ADD_TO_WHATSAPP)
+            addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
+        }
+        try {
+            startActivity(intent)
+        } catch (e: Exception) {
+            android.widget.Toast.makeText(
+                this,
+                "Couldn't open WhatsApp — try again",
+                android.widget.Toast.LENGTH_SHORT
+            ).show()
+        }
+    }
+
+    /**
      * Launches the system gallery picker (via StickerPickerActivity, since
      * this Service can't host an ActivityResultLauncher itself — see that
      * class's doc comment) for Board.STICKER_CREATE's "Image Sticker"
@@ -855,17 +893,36 @@ class SinKeyInputMethodService : InputMethodService() {
      * sending it. [filePath] is the app-private PNG sticker file path
      * (StickerEntity.filePath).
      *
+     * Tries commitContent first (works in apps like Telegram that accept
+     * inline sticker content on their compose field), then falls back to
+     * launching an ACTION_SEND intent targeted directly at WhatsApp. This
+     * second path is what actually gets a sticker into an open WhatsApp
+     * chat: WhatsApp's chat compose field doesn't accept commitContent as a
+     * "sticker" (see this method's git history / the earlier "This field
+     * doesn't support stickers" bug) — but it *does* accept a plain
+     * ACTION_SEND image share the same way any other app's "Share to
+     * WhatsApp" button would, and forwarding that same intent explicitly to
+     * WhatsApp/WhatsApp Business skips the system share sheet entirely, so
+     * from the user's perspective the sticker just appears in the chat
+     * (WhatsApp opens directly onto the currently active conversation when
+     * launched this way while its keyboard/IME originated the share).
+     *
+     * Caveat: unlike commitContent (which delivers silently into the exact
+     * field the user was typing in), ACTION_SEND is fundamentally "hand off
+     * to WhatsApp and let WhatsApp decide" — on most devices/WhatsApp
+     * versions it does land directly in the conversation that's currently
+     * open (foreground activity), but this isn't a hard platform guarantee
+     * the way commitContent's target field is, so on some device/WhatsApp
+     * combinations the user may briefly see WhatsApp's own recipient/chat
+     * picker instead of an instant send. There is no other public API that
+     * gives a stronger guarantee for delivering into a specific already-
+     * open chat from outside WhatsApp.
+     *
      * Sends the sticker's WhatsApp-ready WebP sibling file (see
-     * StickerFileStore.writeWhatsAppWebp) via commitContent with mime type
-     * image/webp, rather than the PNG. Chat apps that implement the sticker
-     * side of the Commit Content API (WhatsApp, Telegram, etc.) key off the
-     * WebP format + exact 512x512 size + sub-100KB filesize to decide
-     * whether to treat incoming content as a real sticker versus a generic
-     * photo attachment; a PNG (or an oversized/wrong-size WebP) gets treated
-     * as a photo, which triggers that app's own send/preview sheet instead
-     * of delivering instantly. No sticker-pack registration is involved —
-     * this is a plain one-off commitContent per send, same as SinKey's own
-     * emoji/text.
+     * StickerFileStore.writeWhatsAppWebp) as image/webp rather than the
+     * PNG — this is the same asset the Sticker Pack integration uses, and
+     * WhatsApp treats a 512x512, sub-100KB WebP as a sticker rather than a
+     * regular photo attachment even via plain ACTION_SEND.
      */
     fun onStickerSelected(filePath: String, mimeType: String) {
         val webpPath = com.spmods.sinkey.data.sticker.StickerFileStore.webpPathFor(filePath)
@@ -878,14 +935,53 @@ class SinKeyInputMethodService : InputMethodService() {
         val webpExists = java.io.File(webpPath).exists()
         val sendPath = if (webpExists) webpPath else filePath
         val sendMime = if (webpExists) "image/webp" else mimeType
+        val sendUri = stickerContentUri(sendPath)
 
-        val sent = sendSticker(stickerContentUri(sendPath), sendMime)
-        if (!sent) {
+        val sentViaCommitContent = sendSticker(sendUri, sendMime)
+        if (sentViaCommitContent) return
+
+        val sentViaShare = shareStickerToWhatsApp(sendUri, sendMime)
+        if (!sentViaShare) {
             android.widget.Toast.makeText(
                 this,
-                "This field doesn't support stickers",
+                "WhatsApp isn't installed, or this field doesn't support stickers",
                 android.widget.Toast.LENGTH_SHORT
             ).show()
+        }
+    }
+
+    /**
+     * Launches ACTION_SEND for [uri] targeted directly at whichever of
+     * WhatsApp / WhatsApp Business is installed (checked in that order;
+     * the first one found wins — most devices only have one). Skips the
+     * system share sheet by setting the package explicitly, so the user
+     * goes straight into WhatsApp instead of picking it from a chooser.
+     * Returns false if neither is installed.
+     */
+    private fun shareStickerToWhatsApp(uri: android.net.Uri, mimeType: String): Boolean {
+        val targetPackage = listOf("com.whatsapp", "com.whatsapp.w4b").firstOrNull { pkg ->
+            try {
+                packageManager.getPackageInfo(pkg, 0)
+                true
+            } catch (e: android.content.pm.PackageManager.NameNotFoundException) {
+                false
+            }
+        } ?: return false
+
+        grantUriPermission(targetPackage, uri, android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION)
+
+        val intent = android.content.Intent(android.content.Intent.ACTION_SEND).apply {
+            type = mimeType
+            putExtra(android.content.Intent.EXTRA_STREAM, uri)
+            setPackage(targetPackage)
+            addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
+            addFlags(android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION)
+        }
+        return try {
+            startActivity(intent)
+            true
+        } catch (e: android.content.ActivityNotFoundException) {
+            false
         }
     }
 
