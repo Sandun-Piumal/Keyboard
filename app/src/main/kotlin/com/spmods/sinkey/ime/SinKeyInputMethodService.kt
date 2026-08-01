@@ -813,10 +813,10 @@ class SinKeyInputMethodService : InputMethodService() {
      * saved as a new sticker by StickerRepository.createFromImage.
      */
     fun pickImageForSticker() {
-        com.spmods.sinkey.ime.StickerPickerActivity.onImagePicked = { uri ->
-            if (uri != null) {
+        com.spmods.sinkey.ime.StickerPickerActivity.onImagePicked = { tempPath ->
+            if (tempPath != null) {
                 serviceScope.launch {
-                    val created = stickerRepo.createFromImage(uri)
+                    val created = stickerRepo.createFromImage(java.io.File(tempPath))
                     if (!created) {
                         android.widget.Toast.makeText(
                             this@SinKeyInputMethodService,
