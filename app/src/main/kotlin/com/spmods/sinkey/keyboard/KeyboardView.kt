@@ -434,8 +434,8 @@ fun KeyboardView(
                     targetContentHeight = measuredMainContentHeight + 48.dp +
                         (if (!isPhoneInput && (showUpdateBanner || recentEmojis.isNotEmpty())) 44.dp else 0.dp),
                     onPickImageRequested = onPickStickerImage,
-                    onTextSubmitted = { text ->
-                        coroutineScope.launch { stickerRepository.createFromText(text) }
+                    onTextSubmitted = { text, textColor ->
+                        coroutineScope.launch { stickerRepository.createFromText(text, textColor) }
                         popBoard()
                     },
                     onBack = { popBoard() }
