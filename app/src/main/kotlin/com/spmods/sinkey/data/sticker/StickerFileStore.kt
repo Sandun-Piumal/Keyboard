@@ -122,9 +122,20 @@ object StickerFileStore {
         // pick a sample size and never fully decode a huge original bitmap
         // into memory just to immediately downscale it.
         val boundsOptions = BitmapFactory.Options().apply { inJustDecodeBounds = true }
-        resolver.openInputStream(uri)?.use { stream ->
-            BitmapFactory.decodeStream(stream, null, boundsOptions)
-        } ?: return null
+        try {
+            resolver.openInputStream(uri)?.use { stream ->
+                BitmapFactory.decodeStream(stream, null, boundsOptions)
+            } ?: return null
+        } catch (e: Exception) {
+            // Most commonly a SecurityException (URI permission no longer
+            // valid — see StickerPickerActivity's persistable-permission
+            // fix) or an IOException from a provider that's since deleted
+            // the underlying file. Either way, surfacing this as "can't
+            // read the image" (return null) is correct; logging it keeps
+            // the real cause diagnosable instead of a silent failure.
+            android.util.Log.w("SinKey", "Couldn't read sticker source image bounds", e)
+            return null
+        }
 
         var sampleSize = 1
         val longestSide = maxOf(boundsOptions.outWidth, boundsOptions.outHeight)
@@ -133,9 +144,14 @@ object StickerFileStore {
         }
 
         val decodeOptions = BitmapFactory.Options().apply { inSampleSize = sampleSize }
-        val decoded = resolver.openInputStream(uri)?.use { stream ->
-            BitmapFactory.decodeStream(stream, null, decodeOptions)
-        } ?: return null
+        val decoded = try {
+            resolver.openInputStream(uri)?.use { stream ->
+                BitmapFactory.decodeStream(stream, null, decodeOptions)
+            } ?: return null
+        } catch (e: Exception) {
+            android.util.Log.w("SinKey", "Couldn't read sticker source image", e)
+            return null
+        }
 
         // Center-crop to a square, then scale to exactly MAX_DIMENSION_PX —
         // keeps every sticker's aspect ratio consistent in the grid.
