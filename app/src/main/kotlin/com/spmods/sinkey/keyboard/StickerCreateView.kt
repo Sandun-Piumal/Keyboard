@@ -26,6 +26,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Dp
@@ -63,7 +64,7 @@ internal fun StickerCreateView(
     bottomPadding: Dp,
     targetContentHeight: Dp,
     onPickImageRequested: () -> Unit,
-    onTextSubmitted: (String) -> Unit,
+    onTextSubmitted: (String, Int) -> Unit,
     onBack: () -> Unit
 ) {
     var mode by remember { mutableStateOf(StickerCreateMode.CHOOSE) }
@@ -184,11 +185,25 @@ private fun StickerTextComposeView(
     keyHeight: Dp,
     bottomPadding: Dp,
     targetContentHeight: Dp,
-    onSubmit: (String) -> Unit,
+    onSubmit: (String, Int) -> Unit,
     onBack: () -> Unit
 ) {
     var draft by remember { mutableStateOf("") }
     var shift by remember { mutableStateOf(true) }
+    // Sticker text colour, independent of the keyboard's own light/dark
+    // theme (colors.keyText) — a text sticker is composited over whatever
+    // chat wallpaper it's sent into, so the user needs to choose a colour
+    // that will actually be visible there, not just one that matches this
+    // picker UI. White is the sanest default (readable on most chat
+    // wallpapers), but previously the renderer only ever produced white
+    // text with no way to change it.
+    var textColor by remember { mutableStateOf(Color.White) }
+    val swatches = remember {
+        listOf(
+            Color.White, Color.Black, Color(0xFFE53935), Color(0xFFFFB300),
+            Color(0xFF43A047), Color(0xFF1E88E5), Color(0xFF8E24AA), Color(0xFFFF6F00)
+        )
+    }
 
     val previewHeight = 90.dp
     val headerHeight = 44.dp
@@ -223,7 +238,9 @@ private fun StickerTextComposeView(
                 modifier = Modifier
                     .clip(RoundedCornerShape(6.dp))
                     .background(if (draft.isNotBlank()) DeshGreen else colors.keyBg)
-                    .clickable(enabled = draft.isNotBlank()) { onSubmit(draft) }
+                    .clickable(enabled = draft.isNotBlank()) {
+                        onSubmit(draft, textColor.toArgb())
+                    }
                     .padding(horizontal = 14.dp, vertical = 6.dp)
             ) {
                 Text(
@@ -235,22 +252,60 @@ private fun StickerTextComposeView(
             }
         }
 
+        // Preview background is deliberately NOT colors.bg/colors.cardBg —
+        // this box stands in for "the chat wallpaper behind the sticker",
+        // which is unrelated to the keyboard's own light/dark theme. It was
+        // previously hardcoded to a dark tile regardless of theme, which
+        // (a) looked broken/unthemed in light mode, since it never matched
+        // anything else on screen, and (b) made light-colored text (the
+        // only option, since color was hardcoded white) genuinely hard to
+        // preview. A neutral mid-grey checkerboard-ish tone here keeps both
+        // light and dark text readable during preview without implying
+        // either the keyboard's theme or any specific real chat wallpaper.
         Box(
             modifier = Modifier
                 .fillMaxWidth()
                 .height(previewHeight)
                 .padding(12.dp)
                 .clip(RoundedCornerShape(10.dp))
-                .background(Color(0xFF2B2B2B)),
+                .background(Color(0xFF808080)),
             contentAlignment = Alignment.Center
         ) {
             Text(
                 text = draft.ifBlank { "Type your sticker text…" },
                 fontSize = 20.sp,
                 fontWeight = FontWeight.Bold,
-                color = if (draft.isBlank()) Color(0xFF888888) else Color.White,
+                color = if (draft.isBlank()) Color(0xFFCCCCCC) else textColor,
                 maxLines = 2
             )
+        }
+
+        // Colour swatches — tap to change the sticker's text colour. Kept
+        // to a small fixed palette rather than a full colour wheel since
+        // this has to fit comfortably above the on-screen keyboard.
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 6.dp),
+            horizontalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
+            swatches.forEach { swatch ->
+                Box(
+                    modifier = Modifier
+                        .size(26.dp)
+                        .clip(RoundedCornerShape(50))
+                        .background(swatch)
+                        .clickable { textColor = swatch },
+                    contentAlignment = Alignment.Center
+                ) {
+                    if (swatch == textColor) {
+                        Icon(
+                            painter = painterResource(id = android.R.drawable.checkbox_on_background),
+                            contentDescription = "Selected",
+                            modifier = Modifier.size(14.dp),
+                            tint = if (swatch == Color.White || swatch == Color(0xFFFFB300)) Color.Black else Color.White
+                        )
+                    }
+                }
+            }
         }
 
         // Reuses the real keyboard layout, but routes keys into the local
@@ -271,7 +326,7 @@ private fun StickerTextComposeView(
                 when (key) {
                     "BACKSPACE" -> if (draft.isNotEmpty()) draft = draft.dropLast(1)
                     "SPACE" -> draft += " "
-                    "ENTER" -> if (draft.isNotBlank()) onSubmit(draft)
+                    "ENTER" -> if (draft.isNotBlank()) onSubmit(draft, textColor.toArgb())
                     "SWITCH_KEYBOARD", "SYMBOLS", "ABC" -> Unit // not meaningful in this compose-only context
                     else -> if (key.codePointCount(0, key.length) == 1) {
                         draft += if (shift) key.uppercase() else key.lowercase()
