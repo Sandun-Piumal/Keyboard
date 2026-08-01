@@ -189,7 +189,7 @@ private fun stepToBottomPadding(step: Float): Dp = when (Math.round(step)) {
 enum class Board { MAIN, SYMBOLS, NUMPAD, EMOJI, CLIPBOARD, FONT, STICKER, STICKER_CREATE, STICKER_EDIT }
 
 @Composable
-fun KeyboardView(
+internal fun KeyboardView(
     currentLanguage: String,
     keyboardHeight: Float = 2f,
     bottomSpaceEnabled: Boolean = true,
