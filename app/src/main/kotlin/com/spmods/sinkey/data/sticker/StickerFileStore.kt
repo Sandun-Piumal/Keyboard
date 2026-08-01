@@ -99,10 +99,127 @@ object StickerFileStore {
     }
 
     /**
-     * Decodes an existing PNG sticker (one created before WebP export was
-     * added) and writes its missing sibling WebP file. Returns false if the
-     * PNG itself can't be read.
+     * Renders the final Image Sticker: the picked photo, cropped/zoomed/
+     * positioned exactly as previewed in StickerImageEditorView, with an
+     * optional text caption drawn on top at the position/size/colour/font
+     * the user chose there. All positioning inputs are fractions of the
+     * square preview box (see ImageStickerDraft), so this reproduces that
+     * on-screen preview independent of whatever pixel size the editor
+     * screen actually rendered at.
+     *
+     * [sourceFile] is the temp file StickerPickerActivity wrote when the
+     * image was picked (same file the editor screen decoded to show its
+     * preview) — deleted afterwards either way, same as saveFromImageFile.
      */
+    fun compositeImageSticker(
+        context: Context,
+        sourceFile: File,
+        imageScale: Float,
+        imageOffsetXFraction: Float,
+        imageOffsetYFraction: Float,
+        text: String,
+        textColor: Int,
+        textSizeFraction: Float,
+        textXFraction: Float,
+        textYFraction: Float,
+        fontTypeface: android.graphics.Typeface,
+        outlineEnabled: Boolean
+    ): String? {
+        return try {
+            val decoded = BitmapFactory.decodeFile(sourceFile.absolutePath) ?: return null
+            val size = MAX_DIMENSION_PX
+            val output = Bitmap.createBitmap(size, size, Bitmap.Config.ARGB_8888)
+            val canvas = Canvas(output)
+            canvas.drawColor(Color.TRANSPARENT)
+
+            // Center-crop the source to a square first (same baseline as
+            // ContentScale.Crop in the editor's preview Image composable),
+            // then apply the user's additional pinch-zoom/drag on top —
+            // this mirrors exactly what ContentScale.Crop + graphicsLayer
+            // scale/translation produced on screen.
+            val baseCropSize = minOf(decoded.width, decoded.height)
+            val baseLeft = (decoded.width - baseCropSize) / 2
+            val baseTop = (decoded.height - baseCropSize) / 2
+            val squared = Bitmap.createBitmap(decoded, baseLeft, baseTop, baseCropSize, baseCropSize)
+            if (squared !== decoded) decoded.recycle()
+
+            val destSize = size.toFloat()
+            val drawSize = destSize * imageScale
+            // Editor offsets are in on-screen px within a `previewSize`-sized
+            // box; re-expressing them as fractions of that same box (done by
+            // the caller before this function runs) makes them resolution-
+            // independent, so multiplying by this function's own destSize
+            // reproduces the same *relative* position at full sticker res.
+            val drawLeft = (destSize - drawSize) / 2f + imageOffsetXFraction * destSize
+            val drawTop = (destSize - drawSize) / 2f + imageOffsetYFraction * destSize
+            val destRect = RectF(drawLeft, drawTop, drawLeft + drawSize, drawTop + drawSize)
+
+            // Clip to the canvas bounds so an offset/zoomed image can't paint
+            // outside the sticker's square (would otherwise be invisible
+            // anyway since the canvas itself is size x size, but clipping
+            // keeps the source decode/draw cheap and predictable).
+            canvas.save()
+            canvas.clipRect(0f, 0f, destSize, destSize)
+            canvas.drawBitmap(squared, null, destRect, Paint(Paint.FILTER_BITMAP_FLAG))
+            canvas.restore()
+            squared.recycle()
+
+            if (text.isNotBlank()) {
+                val fillPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+                    color = textColor
+                    typeface = fontTypeface
+                    textAlign = Paint.Align.CENTER
+                    textSize = destSize * textSizeFraction
+                }
+                val cx = destSize / 2f + textXFraction * destSize
+                val cy = destSize / 2f + textYFraction * destSize
+                val textBounds = Rect()
+                fillPaint.getTextBounds(text, 0, text.length, textBounds)
+                val baselineY = cy - (fillPaint.descent() + fillPaint.ascent()) / 2f
+
+                if (outlineEnabled) {
+                    val outlinePaint = Paint(fillPaint).apply {
+                        style = Paint.Style.STROKE
+                        strokeWidth = destSize * textSizeFraction * 0.08f
+                        color = if (isLightColor(textColor)) Color.BLACK else Color.WHITE
+                    }
+                    canvas.drawText(text, cx, baselineY, outlinePaint)
+                }
+                canvas.drawText(text, cx, baselineY, fillPaint)
+            }
+
+            try {
+                writeBitmap(context, output)
+            } finally {
+                output.recycle()
+            }
+        } finally {
+            runCatching { sourceFile.delete() }
+        }
+    }
+
+    /** Simple luminance check used to pick a contrasting outline colour for text (dark outline on light text, light outline on dark text). */
+    private fun isLightColor(color: Int): Boolean {
+        val r = Color.red(color)
+        val g = Color.green(color)
+        val b = Color.blue(color)
+        val luminance = (0.299 * r + 0.587 * g + 0.114 * b) / 255.0
+        return luminance > 0.6
+    }
+
+    /**
+     * Decodes the image at [sourceFile] purely for preview purposes — used
+     * by Board.STICKER_EDIT to show the picked photo in the editor before
+     * any crop/zoom/text has been applied. Downscaled the same way the
+     * final sticker is, so the preview and the saved output share the same
+     * effective resolution. Unlike [saveFromImageFile] / [compositeImageSticker],
+     * this does NOT delete [sourceFile] — the editor screen needs it to
+     * still exist when the user taps "Add to stickers", which is what
+     * finally calls [compositeImageSticker] and deletes it then.
+     */
+    fun decodePreviewBitmap(sourceFile: File): Bitmap? = decodeScaledBitmap(sourceFile)
+
+
     fun backfillWebp(pngPath: String): Boolean {
         val pngFile = File(pngPath)
         if (!pngFile.exists()) return false
