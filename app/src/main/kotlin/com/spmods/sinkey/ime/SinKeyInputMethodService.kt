@@ -851,40 +851,20 @@ class SinKeyInputMethodService : InputMethodService() {
     }
 
     /**
-     * Called from KeyboardView when the user taps a sticker and confirms
-     * sending it. [filePath] is the app-private PNG sticker file path
-     * (StickerEntity.filePath).
+     * Called from KeyboardView when the user taps a sticker.
      *
-     * Tries commitContent first (works in apps like Telegram that accept
-     * inline sticker content on their compose field), then falls back to
-     * launching an ACTION_SEND intent targeted directly at WhatsApp. This
-     * second path is what actually gets a sticker into an open WhatsApp
-     * chat: WhatsApp's chat compose field doesn't accept commitContent as a
-     * "sticker" (see this method's git history / the earlier "This field
-     * doesn't support stickers" bug) — but it *does* accept a plain
-     * ACTION_SEND image share the same way any other app's "Share to
-     * WhatsApp" button would, and forwarding that same intent explicitly to
-     * WhatsApp/WhatsApp Business skips the system share sheet entirely, so
-     * from the user's perspective the sticker just appears in the chat
-     * (WhatsApp opens directly onto the currently active conversation when
-     * launched this way while its keyboard/IME originated the share).
-     *
-     * Caveat: unlike commitContent (which delivers silently into the exact
-     * field the user was typing in), ACTION_SEND is fundamentally "hand off
-     * to WhatsApp and let WhatsApp decide" — on most devices/WhatsApp
-     * versions it does land directly in the conversation that's currently
-     * open (foreground activity), but this isn't a hard platform guarantee
-     * the way commitContent's target field is, so on some device/WhatsApp
-     * combinations the user may briefly see WhatsApp's own recipient/chat
-     * picker instead of an instant send. There is no other public API that
-     * gives a stronger guarantee for delivering into a specific already-
-     * open chat from outside WhatsApp.
-     *
-     * Sends the sticker's WhatsApp-ready WebP sibling file (see
-     * StickerFileStore.writeWhatsAppWebp) as image/webp rather than the
-     * PNG — this is the same asset the Sticker Pack integration uses, and
-     * WhatsApp treats a 512x512, sub-100KB WebP as a sticker rather than a
-     * regular photo attachment even via plain ACTION_SEND.
+     * Sends via commitContent using WhatsApp's special sticker mime type
+     * "image/webp.wasticker" (not plain "image/webp" — WhatsApp's compose
+     * field specifically declares support for the ".wasticker" suffixed
+     * type, confirmed by WhatsApp's own sticker API maintainers, and is
+     * how Gboard/Bobble/other keyboards deliver stickers straight into an
+     * open WhatsApp chat with no picker screen: see
+     * https://github.com/WhatsApp/stickers/issues/619). For apps that
+     * don't recognise that exact mime type but do support commitContent
+     * generally (Telegram, SMS/Messages, etc.), falls back to plain
+     * "image/webp". If neither is accepted, falls back further to
+     * ACTION_SEND targeted directly at WhatsApp/WhatsApp Business, which
+     * opens WhatsApp's own chat picker with the sticker pre-attached.
      */
     fun onStickerSelected(filePath: String, mimeType: String) {
         val webpPath = com.spmods.sinkey.data.sticker.StickerFileStore.webpPathFor(filePath)
@@ -896,9 +876,17 @@ class SinKeyInputMethodService : InputMethodService() {
         }
         val webpExists = java.io.File(webpPath).exists()
         val sendPath = if (webpExists) webpPath else filePath
-        val sendMime = if (webpExists) "image/webp" else mimeType
         val sendUri = stickerContentUri(sendPath)
 
+        if (webpExists) {
+            // WhatsApp's own sticker mime type — this is what makes the
+            // send land silently in the open chat instead of falling
+            // through to a picker.
+            val sentAsWhatsAppSticker = sendSticker(sendUri, "image/webp.wasticker")
+            if (sentAsWhatsAppSticker) return
+        }
+
+        val sendMime = if (webpExists) "image/webp" else mimeType
         val sentViaCommitContent = sendSticker(sendUri, sendMime)
         if (sentViaCommitContent) return
 
@@ -917,7 +905,8 @@ class SinKeyInputMethodService : InputMethodService() {
      * WhatsApp / WhatsApp Business is installed (checked in that order;
      * the first one found wins — most devices only have one). Skips the
      * system share sheet by setting the package explicitly, so the user
-     * goes straight into WhatsApp instead of picking it from a chooser.
+     * goes straight into WhatsApp's own chat picker with the sticker
+     * pre-attached, instead of picking WhatsApp from a chooser first.
      * Returns false if neither is installed.
      */
     private fun shareStickerToWhatsApp(uri: android.net.Uri, mimeType: String): Boolean {
