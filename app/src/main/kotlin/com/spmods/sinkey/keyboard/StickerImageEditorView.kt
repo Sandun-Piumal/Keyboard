@@ -1,0 +1,430 @@
+package com.spmods.sinkey.keyboard
+
+import androidx.compose.foundation.Image
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectDragGestures
+import androidx.compose.foundation.gestures.detectTransformGestures
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.aspectRatio
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.FormatColorText
+import androidx.compose.material.icons.filled.TextFields
+import androidx.compose.material3.Icon
+import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.painter.BitmapPainter
+import androidx.compose.ui.graphics.toArgb
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.IntSize
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import com.spmods.sinkey.R
+import kotlin.math.max
+
+/** One of a small fixed set of distinct-looking font families for sticker text — Compose's built-in generic families render distinctly enough without needing bundled font files. */
+internal enum class StickerFontStyle(val label: String, val fontFamily: FontFamily, val fontWeight: FontWeight) {
+    BOLD("Bold", FontFamily.Default, FontWeight.Black),
+    CLASSIC("Classic", FontFamily.Serif, FontWeight.Bold),
+    TYPEWRITER("Mono", FontFamily.Monospace, FontWeight.Bold),
+    HANDWRITTEN("Script", FontFamily.Cursive, FontWeight.Normal),
+    CLEAN("Clean", FontFamily.SansSerif, FontWeight.Medium)
+}
+
+/**
+ * Everything needed to (re)draw the sticker exactly as previewed — handed
+ * to StickerFileStore.compositeImageSticker on save so the rendered PNG
+ * matches this screen pixel-for-pixel (same square canvas, same relative
+ * image transform and text position, both expressed as fractions of the
+ * canvas so they're independent of this screen's actual on-device size).
+ */
+internal data class ImageStickerDraft(
+    val imageScale: Float,
+    val imageOffsetXFraction: Float,
+    val imageOffsetYFraction: Float,
+    val text: String,
+    val textColor: Int,
+    val textSizeFraction: Float,
+    val textXFraction: Float,
+    val textYFraction: Float,
+    val fontStyle: StickerFontStyle,
+    val outlineEnabled: Boolean
+)
+
+/**
+ * Board.STICKER_EDIT — the "adjust image + add text" screen shown after an
+ * image is picked for Image Sticker, matching WhatsApp's own sticker-maker
+ * flow (pinch/drag to reposition the photo, tap Text to add a caption you
+ * can drag into place, pick its colour/font/size, then Add to stickers).
+ *
+ * All position/scale state here is screen-size-independent (stored as
+ * fractions of the square preview box), so [onSave] can hand off a draft
+ * that [StickerFileStore.compositeImageSticker] re-renders at full sticker
+ * resolution (512x512) without any of this composable's own pixel
+ * measurements leaking into the saved file.
+ */
+@Composable
+internal fun StickerImageEditorView(
+    colors: KeyboardColors,
+    bottomPadding: Dp,
+    targetContentHeight: Dp,
+    imageBitmap: android.graphics.Bitmap,
+    onSave: (ImageStickerDraft) -> Unit,
+    onBack: () -> Unit
+) {
+    val headerHeight = 44.dp
+    val previewSize = 220.dp
+
+    var imageScale by remember { mutableFloatStateOf(1f) }
+    var imageOffset by remember { mutableStateOf(Offset.Zero) } // in px, within the preview box
+    var previewBoxPx by remember { mutableStateOf(IntSize.Zero) }
+
+    var showTextEditor by remember { mutableStateOf(false) }
+    var text by remember { mutableStateOf("") }
+    var textColor by remember { mutableStateOf(Color.White) }
+    var textSizeFraction by remember { mutableFloatStateOf(0.14f) } // relative to canvas size
+    var textOffset by remember { mutableStateOf(Offset.Zero) } // in px, within the preview box, relative to center
+    var fontStyle by remember { mutableStateOf(StickerFontStyle.BOLD) }
+    var outlineEnabled by remember { mutableStateOf(true) }
+
+    val swatches = remember {
+        listOf(
+            Color.White, Color.Black, Color(0xFFE53935), Color(0xFFFFB300),
+            Color(0xFF43A047), Color(0xFF1E88E5), Color(0xFF8E24AA), Color(0xFFFF6F00)
+        )
+    }
+
+    val painter = remember(imageBitmap) { BitmapPainter(imageBitmap.asImageBitmap()) }
+
+    Column(modifier = Modifier.fillMaxWidth().height(targetContentHeight).background(colors.bg)) {
+        Row(
+            modifier = Modifier.fillMaxWidth().height(headerHeight).padding(horizontal = 8.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Box(
+                modifier = Modifier
+                    .size(32.dp)
+                    .clip(RoundedCornerShape(6.dp))
+                    .clickable { onBack() },
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    painter = painterResource(id = R.drawable.ic_back_to_keyboard),
+                    contentDescription = "Back",
+                    modifier = Modifier.size(20.dp),
+                    tint = colors.subText
+                )
+            }
+            Text(
+                text = "Adjust Sticker",
+                fontSize = 15.sp,
+                fontWeight = FontWeight.Medium,
+                color = colors.keyText,
+                modifier = Modifier.weight(1f).padding(start = 4.dp)
+            )
+            Box(
+                modifier = Modifier
+                    .clip(RoundedCornerShape(6.dp))
+                    .background(DeshGreen)
+                    .clickable {
+                        onSave(
+                            ImageStickerDraft(
+                                imageScale = imageScale,
+                                imageOffsetXFraction = if (previewBoxPx.width > 0) imageOffset.x / previewBoxPx.width else 0f,
+                                imageOffsetYFraction = if (previewBoxPx.height > 0) imageOffset.y / previewBoxPx.height else 0f,
+                                text = text,
+                                textColor = textColor.toArgb(),
+                                textSizeFraction = textSizeFraction,
+                                textXFraction = if (previewBoxPx.width > 0) textOffset.x / previewBoxPx.width else 0f,
+                                textYFraction = if (previewBoxPx.height > 0) textOffset.y / previewBoxPx.height else 0f,
+                                fontStyle = fontStyle,
+                                outlineEnabled = outlineEnabled
+                            )
+                        )
+                    }
+                    .padding(horizontal = 14.dp, vertical = 6.dp)
+            ) {
+                Text(text = "Add to stickers", fontSize = 13.sp, fontWeight = FontWeight.Medium, color = Color.White)
+            }
+        }
+
+        Box(modifier = Modifier.fillMaxWidth().weight(1f), contentAlignment = Alignment.TopCenter) {
+            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                // Square preview canvas — pinch to zoom / drag to reposition the
+                // photo, and (if text has been added) drag the text independently.
+                Box(
+                    modifier = Modifier
+                        .padding(top = 10.dp)
+                        .size(previewSize)
+                        .clip(RoundedCornerShape(12.dp))
+                        .background(Color(0xFF2B2B2B))
+                        .onSizeChanged { previewBoxPx = it }
+                        .pointerInput(Unit) {
+                            detectTransformGestures { _, pan, zoom, _ ->
+                                imageScale = (imageScale * zoom).coerceIn(1f, 4f)
+                                imageOffset += pan
+                            }
+                        },
+                    contentAlignment = Alignment.Center
+                ) {
+                    Image(
+                        painter = painter,
+                        contentDescription = "Sticker image",
+                        contentScale = ContentScale.Crop,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .aspectRatio(1f)
+                            .clip(RoundedCornerShape(12.dp))
+                            .graphicsLayer(
+                                scaleX = imageScale,
+                                scaleY = imageScale,
+                                translationX = imageOffset.x,
+                                translationY = imageOffset.y
+                            )
+                    )
+
+                    if (text.isNotBlank()) {
+                        Text(
+                            text = text,
+                            color = textColor,
+                            fontFamily = fontStyle.fontFamily,
+                            fontWeight = fontStyle.fontWeight,
+                            fontSize = (previewSize.value * textSizeFraction).sp,
+                            maxLines = 2,
+                            modifier = Modifier
+                                .align(Alignment.Center)
+                                .pointerInput(Unit) {
+                                    detectDragGestures { change, dragAmount ->
+                                        change.consume()
+                                        textOffset += dragAmount
+                                    }
+                                }
+                                .padding(4.dp)
+                                .graphicsLayer(translationX = textOffset.x, translationY = textOffset.y)
+                        )
+                    }
+                }
+
+                Text(
+                    text = if (text.isBlank()) "Pinch to zoom, drag to move the photo" else "Drag the text to position it",
+                    fontSize = 11.sp,
+                    color = colors.subText,
+                    modifier = Modifier.padding(top = 6.dp)
+                )
+
+                Spacer(modifier = Modifier.height(10.dp))
+
+                if (!showTextEditor && text.isBlank()) {
+                    Row(
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(8.dp))
+                            .background(colors.keyBg)
+                            .clickable { showTextEditor = true }
+                            .padding(horizontal = 16.dp, vertical = 8.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        Icon(imageVector = Icons.Filled.TextFields, contentDescription = null, tint = DeshGreen, modifier = Modifier.size(16.dp))
+                        Text(text = "Add Text", fontSize = 13.sp, color = colors.keyText, fontWeight = FontWeight.Medium)
+                    }
+                } else {
+                    StickerTextControls(
+                        colors = colors,
+                        text = text,
+                        onTextChange = { text = it },
+                        textColor = textColor,
+                        onColorChange = { textColor = it },
+                        swatches = swatches,
+                        fontStyle = fontStyle,
+                        onFontChange = { fontStyle = it },
+                        textSizeFraction = textSizeFraction,
+                        onTextSizeChange = { textSizeFraction = it },
+                        outlineEnabled = outlineEnabled,
+                        onOutlineChange = { outlineEnabled = it }
+                    )
+                }
+            }
+        }
+
+        Spacer(modifier = Modifier.height(bottomPadding))
+    }
+}
+
+/**
+ * Text style controls shown once "Add Text" is tapped: a lightweight text
+ * entry field (still not the real InputConnection — see
+ * StickerCreateView's top-level doc comment for why — reusing the same
+ * approach isn't practical here alongside drag gestures on the preview, so
+ * this uses a real Compose BasicTextField instead, which is safe here
+ * because unlike StickerCreateView this whole screen is never the active
+ * IME input target itself), font family chooser, colour swatches, a size
+ * slider, and an outline/shadow toggle for legibility over busy photos.
+ */
+@Composable
+private fun StickerTextControls(
+    colors: KeyboardColors,
+    text: String,
+    onTextChange: (String) -> Unit,
+    textColor: Color,
+    onColorChange: (Color) -> Unit,
+    swatches: List<Color>,
+    fontStyle: StickerFontStyle,
+    onFontChange: (StickerFontStyle) -> Unit,
+    textSizeFraction: Float,
+    onTextSizeChange: (Float) -> Unit,
+    outlineEnabled: Boolean,
+    onOutlineChange: (Boolean) -> Unit
+) {
+    Column(modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp)) {
+        androidx.compose.foundation.text.BasicTextField(
+            value = text,
+            onValueChange = { new -> if (new.length <= 40) onTextChange(new) },
+            textStyle = androidx.compose.ui.text.TextStyle(color = colors.keyText, fontSize = 14.sp),
+            cursorBrush = androidx.compose.ui.graphics.SolidColor(DeshGreen),
+            singleLine = true,
+            modifier = Modifier
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(8.dp))
+                .background(colors.keyBg)
+                .padding(horizontal = 12.dp, vertical = 10.dp),
+            decorationBox = { inner ->
+                if (text.isEmpty()) {
+                    Text(text = "Type sticker text…", fontSize = 14.sp, color = colors.subText)
+                }
+                inner()
+            }
+        )
+
+        Spacer(modifier = Modifier.height(8.dp))
+
+        // Font family chooser — horizontally scrollable chip row.
+        Row(
+            modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            StickerFontStyle.values().forEach { style ->
+                val selected = style == fontStyle
+                Box(
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(8.dp))
+                        .background(if (selected) DeshGreen else colors.keyBg)
+                        .clickable { onFontChange(style) }
+                        .padding(horizontal = 12.dp, vertical = 6.dp)
+                ) {
+                    Text(
+                        text = style.label,
+                        fontSize = 12.sp,
+                        fontFamily = style.fontFamily,
+                        fontWeight = style.fontWeight,
+                        color = if (selected) Color.White else colors.keyText
+                    )
+                }
+            }
+        }
+
+        Spacer(modifier = Modifier.height(8.dp))
+
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            swatches.forEach { swatch ->
+                Box(
+                    modifier = Modifier
+                        .size(24.dp)
+                        .clip(CircleShape)
+                        .background(swatch)
+                        .clickable { onColorChange(swatch) },
+                    contentAlignment = Alignment.Center
+                ) {
+                    if (swatch == textColor) {
+                        Icon(
+                            imageVector = Icons.Filled.FormatColorText,
+                            contentDescription = "Selected",
+                            modifier = Modifier.size(12.dp),
+                            tint = if (swatch == Color.White || swatch == Color(0xFFFFB300)) Color.Black else Color.White
+                        )
+                    }
+                }
+            }
+
+            Spacer(modifier = Modifier.width(4.dp))
+
+            // Outline toggle — helps legibility over busy/light photo areas.
+            Box(
+                modifier = Modifier
+                    .clip(RoundedCornerShape(8.dp))
+                    .background(if (outlineEnabled) DeshGreen else colors.keyBg)
+                    .clickable { onOutlineChange(!outlineEnabled) }
+                    .padding(horizontal = 10.dp, vertical = 6.dp)
+            ) {
+                Text(
+                    text = "Outline",
+                    fontSize = 11.sp,
+                    color = if (outlineEnabled) Color.White else colors.keyText,
+                    fontWeight = FontWeight.Medium
+                )
+            }
+        }
+
+        Spacer(modifier = Modifier.height(6.dp))
+
+        // Size slider (compact, no Material Slider dependency assumptions —
+        // a simple draggable row keeps this consistent with the rest of the
+        // keyboard's minimal-dependency custom controls).
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text(text = "Size", fontSize = 11.sp, color = colors.subText, modifier = Modifier.width(32.dp))
+            Box(
+                modifier = Modifier
+                    .weight(1f)
+                    .height(24.dp)
+                    .clip(RoundedCornerShape(12.dp))
+                    .background(colors.keyBg)
+                    .pointerInput(Unit) {
+                        detectDragGestures { change, _ ->
+                            val fraction = (change.position.x / size.width.toFloat()).coerceIn(0f, 1f)
+                            onTextSizeChange(0.06f + fraction * (0.28f - 0.06f))
+                        }
+                    }
+            ) {
+                val knobFraction = ((textSizeFraction - 0.06f) / (0.28f - 0.06f)).coerceIn(0f, 1f)
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth(max(0.04f, knobFraction))
+                        .height(24.dp)
+                        .clip(RoundedCornerShape(12.dp))
+                        .background(DeshGreen)
+                )
+            }
+        }
+    }
+}
+
