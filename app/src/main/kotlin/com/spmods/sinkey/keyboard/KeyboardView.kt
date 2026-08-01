@@ -188,6 +188,12 @@ private fun stepToBottomPadding(step: Float): Dp = when (Math.round(step)) {
 // Must be internal (not private) so SinKeyInputMethodService can reference it.
 enum class Board { MAIN, SYMBOLS, NUMPAD, EMOJI, CLIPBOARD, FONT, STICKER, STICKER_CREATE, STICKER_EDIT }
 
+/** Result of Board.STICKER_EDIT's async preview-image decode — see that branch in KeyboardView's content `when`. */
+private sealed class StickerEditDecodeResult {
+    data class Ok(val bitmap: android.graphics.Bitmap) : StickerEditDecodeResult()
+    object Failed : StickerEditDecodeResult()
+}
+
 @Composable
 internal fun KeyboardView(
     currentLanguage: String,
@@ -449,31 +455,86 @@ internal fun KeyboardView(
                     onBack = { popBoard() }
                 )
                 currentBoard == Board.STICKER_EDIT -> {
-                    // Decoded once per picked file path (not on every
-                    // recomposition/drag event) — pendingStickerImagePath
-                    // only changes when a new image is picked, so this key
-                    // correctly skips re-decoding while the user is just
-                    // dragging/zooming inside the editor.
-                    val previewBitmap = remember(pendingStickerImagePath) {
-                        pendingStickerImagePath?.let { path ->
-                            com.spmods.sinkey.data.sticker.StickerFileStore.decodePreviewBitmap(java.io.File(path))
+                    // Decoding a picked photo (even downscaled) is real I/O +
+                    // CPU work — doing it synchronously inside remember{}
+                    // blocks Compose's composition phase on the UI thread,
+                    // which can freeze the keyboard badly enough to look
+                    // exactly like "selecting an image does nothing" (no
+                    // crash, no toast, just a stuck/unresponsive picker).
+                    // produceState runs the decode in a coroutine instead,
+                    // so composition itself stays fast and a loading state
+                    // can be shown while it works.
+                    //
+                    // Three distinct states are tracked (not just "bitmap or
+                    // null") so a genuine decode failure can show feedback
+                    // and a way back, instead of either an infinite spinner
+                    // or a silent pop that looks like nothing happened:
+                    //   null    == still decoding (or not started)
+                    //   Ok      == decoded successfully
+                    //   Failed  == decode finished and returned null
+                    val previewState = androidx.compose.runtime.produceState<StickerEditDecodeResult?>(
+                        initialValue = null,
+                        key1 = pendingStickerImagePath
+                    ) {
+                        val path = pendingStickerImagePath
+                        value = if (path == null) {
+                            null
+                        } else {
+                            val bitmap = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                                com.spmods.sinkey.data.sticker.StickerFileStore.decodePreviewBitmap(java.io.File(path))
+                            }
+                            if (bitmap != null) StickerEditDecodeResult.Ok(bitmap) else StickerEditDecodeResult.Failed
                         }
                     }
-                    if (previewBitmap != null) {
-                        StickerImageEditorView(
+                    val editHeight = measuredMainContentHeight + 48.dp +
+                        (if (!isPhoneInput && (showUpdateBanner || recentEmojis.isNotEmpty())) 44.dp else 0.dp)
+
+                    when (val result = previewState.value) {
+                        is StickerEditDecodeResult.Ok -> StickerImageEditorView(
                             colors = colors,
                             bottomPadding = bottomPadding,
-                            targetContentHeight = measuredMainContentHeight + 48.dp +
-                                (if (!isPhoneInput && (showUpdateBanner || recentEmojis.isNotEmpty())) 44.dp else 0.dp),
-                            imageBitmap = previewBitmap,
+                            targetContentHeight = editHeight,
+                            imageBitmap = result.bitmap,
                             onSave = { draft -> onSaveImageSticker(draft) },
                             onBack = { popBoard() }
                         )
-                    } else {
-                        // Source file unreadable/gone — nothing to edit, so
-                        // just back out to Board.STICKER_CREATE instead of
-                        // showing a blank/broken editor screen.
-                        popBoard()
+                        StickerEditDecodeResult.Failed -> Box(
+                            modifier = Modifier.fillMaxWidth().height(editHeight).background(colors.bg),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                Text(
+                                    text = "Couldn't read that image",
+                                    fontSize = 13.sp,
+                                    color = colors.subText
+                                )
+                                Spacer(modifier = Modifier.height(10.dp))
+                                Box(
+                                    modifier = Modifier
+                                        .clip(RoundedCornerShape(8.dp))
+                                        .background(colors.keyBg)
+                                        .clickable { popBoard() }
+                                        .padding(horizontal = 16.dp, vertical = 8.dp)
+                                ) {
+                                    Text(text = "Go back", fontSize = 13.sp, color = colors.keyText)
+                                }
+                            }
+                        }
+                        null -> if (pendingStickerImagePath == null) {
+                            // Nothing to edit at all (shouldn't normally
+                            // happen — STICKER_EDIT is only ever pushed
+                            // together with setting this) — back out safely
+                            // instead of showing a permanently blank board.
+                            LaunchedEffect(Unit) { popBoard() }
+                        } else {
+                            // Genuinely still decoding.
+                            Box(
+                                modifier = Modifier.fillMaxWidth().height(editHeight).background(colors.bg),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                androidx.compose.material3.CircularProgressIndicator(color = DeshGreen)
+                            }
+                        }
                     }
                 }
                 else -> Box {
