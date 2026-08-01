@@ -1,9 +1,11 @@
 package com.spmods.sinkey.ime
 
-import android.net.Uri
+import android.graphics.BitmapFactory
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.result.contract.ActivityResultContracts
+import java.io.File
+import java.io.FileOutputStream
 
 /**
  * A soft keyboard (InputMethodService) is not an Activity and therefore
@@ -13,11 +15,21 @@ import androidx.activity.result.contract.ActivityResultContracts
  * (Theme.SinKey.Transparent) trampoline: SinKeyInputMethodService.
  * pickImageForSticker() starts it with FLAG_ACTIVITY_NEW_TASK, it
  * immediately launches the system gallery picker, and on result it hands
- * the picked Uri back to the *running* IME service instance via the static
- * callback below before finishing itself. If the IME isn't currently
- * running (e.g. it was killed while this Activity was in the foreground),
- * the callback is simply null and the result is dropped — there's nothing
- * else to hand it to.
+ * the picked image back to the *running* IME service instance via the
+ * static callback below before finishing itself. If the IME isn't
+ * currently running (e.g. it was killed while this Activity was in the
+ * foreground), the callback is simply null and the result is dropped —
+ * there's nothing else to hand it to.
+ *
+ * IMPORTANT: this hands back a file path, not the picked Uri. The Uri
+ * returned by GetContent() (including the modern system Photo Picker) only
+ * carries a *transient*, Activity-scoped read grant — it is not guaranteed
+ * to still be readable once this Activity has called finish() and control
+ * has passed to a different component (SinKeyInputMethodService, a
+ * Service, reading it later from inside a coroutine). That race is exactly
+ * what caused "Couldn't read that image" to show up intermittently.
+ * Decoding + saving the bytes here, synchronously, while this Activity and
+ * its Uri grant definitely still exist, removes that race entirely.
  */
 class StickerPickerActivity : ComponentActivity() {
 
@@ -26,35 +38,12 @@ class StickerPickerActivity : ComponentActivity() {
         const val MODE_IMAGE = "image"
 
         /** Set by the IME service right before starting this Activity; cleared after use. */
-        var onImagePicked: ((Uri?) -> Unit)? = null
+        var onImagePicked: ((String?) -> Unit)? = null
     }
 
     private val pickImage = registerForActivityResult(ActivityResultContracts.GetContent()) { uri ->
-        // GetContent()'s URI grant is transient and scoped to this Activity
-        // — it is not guaranteed to still be valid once this Activity has
-        // finished and a different component (SinKeyInputMethodService, a
-        // Service) tries to read it later via contentResolver. Without
-        // this, decodeScaledBitmap's openInputStream() calls can fail with
-        // a SecurityException (surfaced to the user as "Couldn't read that
-        // image") depending on timing. Taking a persistable read grant here
-        // — before finish() — keeps the Uri readable for as long as this
-        // app needs it, regardless of which component reads it or when.
-        if (uri != null) {
-            try {
-                contentResolver.takePersistableUriPermission(
-                    uri,
-                    android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION
-                )
-            } catch (e: SecurityException) {
-                // Some providers (e.g. certain OEM galleries, or the modern
-                // Photo Picker's synthetic com.android.providers.media.photopicker
-                // Uris) don't support persistable grants — the transient
-                // grant from GetContent() usually still covers a same-process,
-                // immediate read in that case, so this is not fatal; only
-                // an actual read failure downstream should surface an error.
-            }
-        }
-        onImagePicked?.invoke(uri)
+        val savedPath = uri?.let { readAndCacheImage(it) }
+        onImagePicked?.invoke(savedPath)
         onImagePicked = null
         finish()
     }
@@ -64,6 +53,35 @@ class StickerPickerActivity : ComponentActivity() {
         when (intent?.getStringExtra(EXTRA_MODE)) {
             MODE_IMAGE -> pickImage.launch("image/*")
             else -> finish()
+        }
+    }
+
+    /**
+     * Reads [uri] right now (while its read grant is still guaranteed
+     * valid) and writes the raw bytes to a temp file in the app's cache
+     * dir, returning that file's absolute path. StickerRepository picks
+     * this file up, decodes/downscales/saves it as the actual sticker, and
+     * the temp file is cleaned up afterwards (see
+     * StickerFileStore.saveFromImageFile). Returns null if the image
+     * couldn't be read at all — e.g. the source was deleted between being
+     * picked and this call.
+     */
+    private fun readAndCacheImage(uri: android.net.Uri): String? {
+        return try {
+            contentResolver.openInputStream(uri)?.use { input ->
+                // Quick sanity check that this is actually decodable image
+                // data before committing it to disk — avoids saving garbage
+                // for a Uri that resolves but isn't a real image.
+                val bytes = input.readBytes()
+                if (BitmapFactory.decodeByteArray(bytes, 0, bytes.size) == null) return null
+
+                val tempFile = File(cacheDir, "sticker_pick_${System.currentTimeMillis()}.tmp")
+                FileOutputStream(tempFile).use { out -> out.write(bytes) }
+                tempFile.absolutePath
+            }
+        } catch (e: Exception) {
+            android.util.Log.w("SinKey", "Couldn't read picked sticker image", e)
+            null
         }
     }
 }
