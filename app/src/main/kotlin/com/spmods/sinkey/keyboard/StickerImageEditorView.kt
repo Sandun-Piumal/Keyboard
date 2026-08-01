@@ -14,10 +14,12 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -103,8 +105,10 @@ internal fun StickerImageEditorView(
     onSave: (ImageStickerDraft) -> Unit,
     onBack: () -> Unit
 ) {
-    val headerHeight = 44.dp
-    val previewSize = 220.dp
+    // previewSize is derived from targetContentHeight (not a fixed value)
+    // so the circular preview scales with the actual screen height instead
+    // of overflowing on short screens or looking tiny on tall ones.
+    val previewSize = (targetContentHeight.value * 0.42f).coerceIn(150f, 260f).dp
 
     var imageScale by remember { mutableFloatStateOf(1f) }
     var imageOffset by remember { mutableStateOf(Offset.Zero) } // in px, within the preview box
@@ -127,157 +131,167 @@ internal fun StickerImageEditorView(
 
     val painter = remember(imageBitmap) { BitmapPainter(imageBitmap.asImageBitmap()) }
 
-    Column(modifier = Modifier.fillMaxWidth().height(targetContentHeight).background(colors.bg)) {
-        Row(
-            modifier = Modifier.fillMaxWidth().height(headerHeight).padding(horizontal = 8.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
+    fun save() {
+        onSave(
+            ImageStickerDraft(
+                imageScale = imageScale,
+                imageOffsetXFraction = if (previewBoxPx.width > 0) imageOffset.x / previewBoxPx.width else 0f,
+                imageOffsetYFraction = if (previewBoxPx.height > 0) imageOffset.y / previewBoxPx.height else 0f,
+                text = text,
+                textColor = textColor.toArgb(),
+                textSizeFraction = textSizeFraction,
+                textXFraction = if (previewBoxPx.width > 0) textOffset.x / previewBoxPx.width else 0f,
+                textYFraction = if (previewBoxPx.height > 0) textOffset.y / previewBoxPx.height else 0f,
+                fontStyle = fontStyle,
+                outlineEnabled = outlineEnabled
+            )
+        )
+    }
+
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .heightIn(max = targetContentHeight)
+            .background(colors.bg)
+            .verticalScroll(rememberScrollState())
+            .padding(bottom = bottomPadding)
+    ) {
+        // Close (X) button, top-right.
+        Box(modifier = Modifier.fillMaxWidth().padding(top = 14.dp, end = 14.dp)) {
             Box(
                 modifier = Modifier
+                    .align(Alignment.CenterEnd)
                     .size(32.dp)
-                    .clip(RoundedCornerShape(6.dp))
+                    .clip(CircleShape)
+                    .background(Color(0x33FFFFFF))
                     .clickable { onBack() },
                 contentAlignment = Alignment.Center
             ) {
                 Icon(
                     painter = painterResource(id = R.drawable.ic_back_to_keyboard),
-                    contentDescription = "Back",
-                    modifier = Modifier.size(20.dp),
-                    tint = colors.subText
+                    contentDescription = "Close",
+                    modifier = Modifier.size(16.dp),
+                    tint = Color.White
                 )
             }
-            Text(
-                text = "Adjust Sticker",
-                fontSize = 15.sp,
-                fontWeight = FontWeight.Medium,
-                color = colors.keyText,
-                modifier = Modifier.weight(1f).padding(start = 4.dp)
-            )
+        }
+
+        Column(
+            horizontalAlignment = Alignment.CenterHorizontally,
+            modifier = Modifier.padding(horizontal = 16.dp)
+        ) {
+            // Circular preview canvas — pinch to zoom / drag to reposition
+            // the photo, and (if text has been added) drag the text
+            // independently.
             Box(
                 modifier = Modifier
-                    .clip(RoundedCornerShape(6.dp))
-                    .background(DeshGreen)
-                    .clickable {
-                        onSave(
-                            ImageStickerDraft(
-                                imageScale = imageScale,
-                                imageOffsetXFraction = if (previewBoxPx.width > 0) imageOffset.x / previewBoxPx.width else 0f,
-                                imageOffsetYFraction = if (previewBoxPx.height > 0) imageOffset.y / previewBoxPx.height else 0f,
-                                text = text,
-                                textColor = textColor.toArgb(),
-                                textSizeFraction = textSizeFraction,
-                                textXFraction = if (previewBoxPx.width > 0) textOffset.x / previewBoxPx.width else 0f,
-                                textYFraction = if (previewBoxPx.height > 0) textOffset.y / previewBoxPx.height else 0f,
-                                fontStyle = fontStyle,
-                                outlineEnabled = outlineEnabled
-                            )
-                        )
-                    }
-                    .padding(horizontal = 14.dp, vertical = 6.dp)
+                    .padding(top = 6.dp)
+                    .size(previewSize)
+                    .clip(CircleShape)
+                    .background(Color(0xFF2B2B2B))
+                    .onSizeChanged { previewBoxPx = it }
+                    .pointerInput(Unit) {
+                        detectTransformGestures { _, pan, zoom, _ ->
+                            imageScale = (imageScale * zoom).coerceIn(1f, 4f)
+                            imageOffset += pan
+                        }
+                    },
+                contentAlignment = Alignment.Center
             ) {
-                Text(text = "Add to stickers", fontSize = 13.sp, fontWeight = FontWeight.Medium, color = Color.White)
-            }
-        }
-
-        Box(modifier = Modifier.fillMaxWidth().weight(1f), contentAlignment = Alignment.TopCenter) {
-            Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                // Square preview canvas — pinch to zoom / drag to reposition the
-                // photo, and (if text has been added) drag the text independently.
-                Box(
+                Image(
+                    painter = painter,
+                    contentDescription = "Sticker image",
+                    contentScale = ContentScale.Crop,
                     modifier = Modifier
-                        .padding(top = 10.dp)
-                        .size(previewSize)
-                        .clip(RoundedCornerShape(12.dp))
-                        .background(Color(0xFF2B2B2B))
-                        .onSizeChanged { previewBoxPx = it }
-                        .pointerInput(Unit) {
-                            detectTransformGestures { _, pan, zoom, _ ->
-                                imageScale = (imageScale * zoom).coerceIn(1f, 4f)
-                                imageOffset += pan
-                            }
-                        },
-                    contentAlignment = Alignment.Center
-                ) {
-                    Image(
-                        painter = painter,
-                        contentDescription = "Sticker image",
-                        contentScale = ContentScale.Crop,
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .aspectRatio(1f)
-                            .clip(RoundedCornerShape(12.dp))
-                            .graphicsLayer(
-                                scaleX = imageScale,
-                                scaleY = imageScale,
-                                translationX = imageOffset.x,
-                                translationY = imageOffset.y
-                            )
-                    )
-
-                    if (text.isNotBlank()) {
-                        Text(
-                            text = text,
-                            color = textColor,
-                            fontFamily = fontStyle.fontFamily,
-                            fontWeight = fontStyle.fontWeight,
-                            fontSize = (previewSize.value * textSizeFraction).sp,
-                            maxLines = 2,
-                            modifier = Modifier
-                                .align(Alignment.Center)
-                                .pointerInput(Unit) {
-                                    detectDragGestures { change, dragAmount ->
-                                        change.consume()
-                                        textOffset += dragAmount
-                                    }
-                                }
-                                .padding(4.dp)
-                                .graphicsLayer(translationX = textOffset.x, translationY = textOffset.y)
+                        .fillMaxWidth()
+                        .aspectRatio(1f)
+                        .clip(CircleShape)
+                        .graphicsLayer(
+                            scaleX = imageScale,
+                            scaleY = imageScale,
+                            translationX = imageOffset.x,
+                            translationY = imageOffset.y
                         )
-                    }
-                }
-
-                Text(
-                    text = if (text.isBlank()) "Pinch to zoom, drag to move the photo" else "Drag the text to position it",
-                    fontSize = 11.sp,
-                    color = colors.subText,
-                    modifier = Modifier.padding(top = 6.dp)
                 )
 
-                Spacer(modifier = Modifier.height(10.dp))
-
-                if (!showTextEditor && text.isBlank()) {
-                    Row(
-                        modifier = Modifier
-                            .clip(RoundedCornerShape(8.dp))
-                            .background(colors.keyBg)
-                            .clickable { showTextEditor = true }
-                            .padding(horizontal = 16.dp, vertical = 8.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(6.dp)
-                    ) {
-                        Icon(imageVector = Icons.Filled.TextFields, contentDescription = null, tint = DeshGreen, modifier = Modifier.size(16.dp))
-                        Text(text = "Add Text", fontSize = 13.sp, color = colors.keyText, fontWeight = FontWeight.Medium)
-                    }
-                } else {
-                    StickerTextControls(
-                        colors = colors,
+                if (text.isNotBlank()) {
+                    Text(
                         text = text,
-                        onTextChange = { text = it },
-                        textColor = textColor,
-                        onColorChange = { textColor = it },
-                        swatches = swatches,
-                        fontStyle = fontStyle,
-                        onFontChange = { fontStyle = it },
-                        textSizeFraction = textSizeFraction,
-                        onTextSizeChange = { textSizeFraction = it },
-                        outlineEnabled = outlineEnabled,
-                        onOutlineChange = { outlineEnabled = it }
+                        color = textColor,
+                        fontFamily = fontStyle.fontFamily,
+                        fontWeight = fontStyle.fontWeight,
+                        fontSize = (previewSize.value * textSizeFraction).sp,
+                        maxLines = 2,
+                        modifier = Modifier
+                            .align(Alignment.Center)
+                            .pointerInput(Unit) {
+                                detectDragGestures { change, dragAmount ->
+                                    change.consume()
+                                    textOffset += dragAmount
+                                }
+                            }
+                            .padding(4.dp)
+                            .graphicsLayer(translationX = textOffset.x, translationY = textOffset.y)
                     )
                 }
             }
-        }
 
-        Spacer(modifier = Modifier.height(bottomPadding))
+            Text(
+                text = if (text.isBlank()) "Pinch to zoom, drag to move the photo" else "Drag the text to position it",
+                fontSize = 11.sp,
+                color = colors.subText,
+                modifier = Modifier.padding(top = 6.dp)
+            )
+
+            Spacer(modifier = Modifier.height(10.dp))
+
+            if (!showTextEditor && text.isBlank()) {
+                Row(
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(8.dp))
+                        .background(colors.keyBg)
+                        .clickable { showTextEditor = true }
+                        .padding(horizontal = 16.dp, vertical = 8.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    Icon(imageVector = Icons.Filled.TextFields, contentDescription = null, tint = DeshGreen, modifier = Modifier.size(16.dp))
+                    Text(text = "Add Text", fontSize = 13.sp, color = colors.keyText, fontWeight = FontWeight.Medium)
+                }
+            } else {
+                StickerTextControls(
+                    colors = colors,
+                    text = text,
+                    onTextChange = { text = it },
+                    textColor = textColor,
+                    onColorChange = { textColor = it },
+                    swatches = swatches,
+                    fontStyle = fontStyle,
+                    onFontChange = { fontStyle = it },
+                    textSizeFraction = textSizeFraction,
+                    onTextSizeChange = { textSizeFraction = it },
+                    outlineEnabled = outlineEnabled,
+                    onOutlineChange = { outlineEnabled = it }
+                )
+            }
+
+            Spacer(modifier = Modifier.height(12.dp))
+
+            // "Add to stickers" — full-width primary action.
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(12.dp))
+                    .background(DeshGreen)
+                    .clickable { save() }
+                    .padding(vertical = 12.dp),
+                contentAlignment = Alignment.Center
+            ) {
+                Text(text = "Add to stickers", fontSize = 14.sp, fontWeight = FontWeight.Medium, color = Color.White)
+            }
+
+            Spacer(modifier = Modifier.height(6.dp))
+        }
     }
 }
 
