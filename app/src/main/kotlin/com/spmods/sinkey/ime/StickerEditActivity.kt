@@ -69,6 +69,24 @@ class StickerEditActivity : ComponentActivity() {
         const val EXTRA_IMAGE_PATH = "image_path"
     }
 
+    // Theme.SinKey.FloatingCard only makes the window translucent and dims
+    // the background; it can't size/position the window itself since that
+    // depends on the actual display metrics. Setting this from onCreate()
+    // (before the window's decor view is attached — that only happens once
+    // setContent()'s first frame is laid out) gets silently ignored and the
+    // window falls back to full-screen. onResume() runs after attachment,
+    // so the resize actually takes effect here. It's also re-applied on
+    // every resume (e.g. after a config change) since some OEM skins reset
+    // floating-window bounds to full-screen on rotation.
+    override fun onResume() {
+        super.onResume()
+        window.setLayout(
+            (resources.displayMetrics.widthPixels * 0.92f).toInt(),
+            (resources.displayMetrics.heightPixels * 0.88f).toInt()
+        )
+        window.setGravity(android.view.Gravity.CENTER)
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
@@ -77,16 +95,6 @@ class StickerEditActivity : ComponentActivity() {
             finish()
             return
         }
-
-        // Theme.SinKey.FloatingCard only makes the window translucent and
-        // dims the background; it can't size/position the window itself
-        // since that depends on the actual display metrics. Do that here:
-        // ~92% width, ~88% height, centered — a card, not the full screen.
-        window.setLayout(
-            (resources.displayMetrics.widthPixels * 0.92f).toInt(),
-            (resources.displayMetrics.heightPixels * 0.88f).toInt()
-        )
-        window.setGravity(android.view.Gravity.CENTER)
 
         val stickerRepo = StickerRepository(applicationContext)
 
