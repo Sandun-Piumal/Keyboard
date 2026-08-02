@@ -100,7 +100,9 @@ object StickerFileStore {
 
     /**
      * Renders the final Image Sticker: the picked photo, cropped/zoomed/
-     * positioned exactly as previewed in StickerImageEditorView, with an
+     * positioned exactly as previewed in StickerImageEditorView, masked to
+     * [shape] (Circle / Rounded / Square, chosen via the Crop button —
+     * mirrors the same clip applied to the on-screen preview), with an
      * optional text caption drawn on top at the position/size/colour/font
      * the user chose there. All positioning inputs are fractions of the
      * square preview box (see ImageStickerDraft), so this reproduces that
@@ -117,6 +119,7 @@ object StickerFileStore {
         imageScale: Float,
         imageOffsetXFraction: Float,
         imageOffsetYFraction: Float,
+        shape: com.spmods.sinkey.keyboard.StickerShape,
         text: String,
         textColor: Int,
         textSizeFraction: Float,
@@ -154,12 +157,25 @@ object StickerFileStore {
             val drawTop = (destSize - drawSize) / 2f + imageOffsetYFraction * destSize
             val destRect = RectF(drawLeft, drawTop, drawLeft + drawSize, drawTop + drawSize)
 
-            // Clip to the canvas bounds so an offset/zoomed image can't paint
-            // outside the sticker's square (would otherwise be invisible
-            // anyway since the canvas itself is size x size, but clipping
-            // keeps the source decode/draw cheap and predictable).
+            // Clip to the chosen shape (same shape the user picked via the
+            // Crop button, mirrored exactly from the editor's preview clip
+            // — see StickerImageEditorView's previewShape) instead of the
+            // full square canvas, so the saved PNG's transparent-background
+            // mask matches what was previewed.
+            val clipPath = android.graphics.Path().apply {
+                when (shape) {
+                    com.spmods.sinkey.keyboard.StickerShape.CIRCLE ->
+                        addCircle(destSize / 2f, destSize / 2f, destSize / 2f, android.graphics.Path.Direction.CW)
+                    com.spmods.sinkey.keyboard.StickerShape.SQUARE ->
+                        addRect(0f, 0f, destSize, destSize, android.graphics.Path.Direction.CW)
+                    com.spmods.sinkey.keyboard.StickerShape.ROUNDED_SQUARE -> {
+                        val radius = destSize * shape.cornerFraction
+                        addRoundRect(0f, 0f, destSize, destSize, radius, radius, android.graphics.Path.Direction.CW)
+                    }
+                }
+            }
             canvas.save()
-            canvas.clipRect(0f, 0f, destSize, destSize)
+            canvas.clipPath(clipPath)
             canvas.drawBitmap(squared, null, destRect, Paint(Paint.FILTER_BITMAP_FLAG))
             canvas.restore()
             squared.recycle()
