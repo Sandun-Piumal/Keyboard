@@ -7,7 +7,8 @@ import androidx.activity.compose.setContent
 import androidx.compose.foundation.background
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.wrapContentHeight
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -129,9 +130,19 @@ class StickerEditActivity : ComponentActivity() {
 
             BackHandler(enabled = !saving) { finish() }
 
+            // Note: fillMaxSize() here would force this black card to be
+            // exactly the window's size (92%/88% of the screen, set in
+            // applyCardWindowBounds()). But StickerImageEditorView's own
+            // root Column only wraps its intrinsic content height (see its
+            // .heightIn(max = ...) — a ceiling, not a fixed height), so
+            // fillMaxSize() left empty black space above/below the actual
+            // editor content once that content was shorter than 88% of the
+            // screen. fillMaxWidth() + wrapContentHeight() makes the card
+            // exactly hug its content instead.
             Box(
                 modifier = Modifier
-                    .fillMaxSize()
+                    .fillMaxWidth()
+                    .wrapContentHeight()
                     .clip(androidx.compose.foundation.shape.RoundedCornerShape(20.dp))
                     .background(Color.Black),
                 contentAlignment = Alignment.Center
