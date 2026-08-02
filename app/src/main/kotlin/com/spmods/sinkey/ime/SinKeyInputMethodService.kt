@@ -32,6 +32,12 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 
+// Caps how many distinct words a single clipboard copy can add to the
+// personal dictionary in one go — see learnWordsFromClipboard(). Keeps one
+// large paste from flooding the dictionary; a genuine "copied a couple of
+// words" case is well under this.
+private const val MAX_CLIPBOARD_WORDS_PER_COPY = 12
+
 /**
  * The keyboard engine itself. Android binds this service whenever SinKey is
  * the active input method; [onCreateInputView] returns the Compose UI that
@@ -73,6 +79,12 @@ class SinKeyInputMethodService : InputMethodService() {
     /** True when the buffer typing engine should run in Sinhala/phonetic mode ("si" or "mix"). */
     private fun isSinhalaTyping(): Boolean = currentLanguage.value != "en"
     private var suggestions = mutableStateOf<List<String>>(emptyList())
+    // Set right after an autocorrect silently swaps what the user typed for
+    // a dictionary/spell-checker word at SPACE — holds the original typed
+    // word so the "Undo" chip (rendered by KeyboardView whenever this is
+    // non-null, see AutocorrectUndo) can put it back if tapped. Cleared on
+    // the next keystroke/suggestion tap/field switch — see clearAutocorrectUndo().
+    private var autocorrectUndo = mutableStateOf<AutocorrectUndo?>(null)
     private var currentInputTypeState = mutableStateOf(0)
 
     // Board state lives at service level — NOT inside the Composable — so it
@@ -91,6 +103,21 @@ class SinKeyInputMethodService : InputMethodService() {
     // Stored at service level so it survives hide/show cycles.
     // AUTO-SHIFT: enabled at sentence start (after . ! ? or at field open).
     enum class ShiftState { OFF, ONE_SHOT, LOCKED }
+
+    /**
+     * What a silent autocorrect swapped, so the undo chip can put it back
+     * exactly: [correctedWord] is what's currently committed in the field
+     * (what tapping undo needs to delete), [originalTyped] is what the user
+     * actually typed (what undo re-commits), and [hadTrailingSpace] records
+     * whether the autocorrect's own auto-space-after-word should be undone
+     * too — reverting should restore the exact text state from right before
+     * the correction, not leave an extra space autocorrect added.
+     */
+    data class AutocorrectUndo(
+        val originalTyped: String,
+        val correctedWord: String,
+        val hadTrailingSpace: Boolean
+    )
     private var shiftState = mutableStateOf(ShiftState.ONE_SHOT) // default: first letter capital
     // True only when the current ONE_SHOT came from the user tapping SHIFT
     // themselves, not from auto-capitalize at sentence/field start. Sinhala
@@ -137,6 +164,13 @@ class SinKeyInputMethodService : InputMethodService() {
     // mode, so the async onGetSuggestions callback above knows what it's
     // answering (mix mode reuses wordBuffer, not englishBuffer, for typing).
     private var mixEnglishQuery: String = ""
+
+    // Tracks where WE expect the cursor to be after our own edits (typing,
+    // backspace, committing a suggestion, etc.) — see onUpdateSelection.
+    // -1 means "unknown / just switched fields", which suppresses the first
+    // check after onStartInputView so that call doesn't spuriously look like
+    // an external cursor jump.
+    private var expectedCursorPosition = -1
 
     override fun onEvaluateFullscreenMode(): Boolean = false
 
@@ -219,12 +253,117 @@ class SinKeyInputMethodService : InputMethodService() {
                 val text = clip.getItemAt(0).coerceToText(this)?.toString()
                 if (!text.isNullOrBlank()) {
                     serviceScope.launch { clipRepo.record(text) }
+                    learnWordsFromClipboard(text)
                 }
             }
         }
         clipboard.addPrimaryClipChangedListener(listener)
         clipboardListener = listener
     }
+
+    /**
+     * Feeds real words the user copied anywhere on the device — not just
+     * text typed through this keyboard — into the same personal dictionary
+     * ordinary typing builds, so those words start showing up as
+     * suggestions the next time their prefix is typed. This is the practical
+     * substitute for reading the device's actual search/browsing/message
+     * history, which a third-party keyboard has no permission to access at
+     * all (Android's sandboxing has no exception for keyboard apps) —
+     * clipboard content is the one cross-app source of "words the user
+     * cares about" this app can legitimately see.
+     *
+     * Deliberately calls wordRepo.learn() directly per word instead of
+     * routing through learnWord() (used for actually-typed words): learnWord
+     * also updates lastCommittedWord/lastCommittedLanguage for next-word
+     * bigram prediction, which must only reflect the live typing flow, not
+     * a block of pasted text that has no relationship to whatever the user
+     * types next.
+     *
+     * Deliberately conservative about what counts as a "word" worth
+     * learning — clipboard content is far noisier than typed text (whole
+     * paragraphs, URLs, code, phone numbers, receipts, OTP codes, etc.), so
+     * this only learns short, clean, letters-only tokens, capped per copy so
+     * one big paste can't flood the dictionary with junk in a single event.
+     */
+    private fun learnWordsFromClipboard(text: String) {
+        // Skip anything link/code/structured-data-shaped outright rather
+        // than trying to salvage individual words out of it — a URL's path
+        // segments or a JSON blob's keys aren't real vocabulary.
+        if (text.contains("://") || text.contains("@") ||
+            text.contains("{") || text.contains("<")
+        ) return
+        // A long paste is much more likely to be an article/message body
+        // than a short list of words worth learning individually; a real
+        // "I copied a couple of words" case is comfortably under this.
+        if (text.length > 300) return
+
+        val tokens = text.split(Regex("[\\s,.;:!?\"'()\\[\\]{}/\\\\|]+"))
+            .map { it.trim() }
+            .filter { it.isNotEmpty() }
+            .distinct()
+            .take(MAX_CLIPBOARD_WORDS_PER_COPY)
+
+        if (tokens.isEmpty()) return
+
+        serviceScope.launch {
+            for (token in tokens) {
+                val language = detectWordScript(token) ?: continue
+                wordRepo.learn(token, language)
+            }
+        }
+    }
+
+    /**
+     * Classifies [word] as "si" (Sinhala), "en" (Latin), or null (neither —
+     * e.g. a number, emoji, or mixed-script token, none of which are useful
+     * dictionary entries). Checked by Unicode block rather than by reusing
+     * isSinhalaTyping()/currentLanguage, since those describe which script
+     * the keyboard is *currently configured to type in* — completely
+     * unrelated to what script a piece of copied text happens to be in.
+     */
+    private fun detectWordScript(word: String): String? {
+        if (word.length > 40 || word.length < 2) return null
+        var sinhalaCount = 0
+        var latinCount = 0
+        for (ch in word) {
+            when {
+                ch.code in 0x0D80..0x0DFF -> sinhalaCount++
+                ch.isLetter() && ch.code < 0x0250 -> latinCount++ // Basic Latin + Latin-1 Supplement + Latin Extended-A/B letters
+                ch.isLetter() -> return null // some other script — not one we suggest in
+                ch.isDigit() -> return null  // e.g. "2024", order numbers — not vocabulary
+            }
+        }
+        return when {
+            sinhalaCount > 0 && latinCount == 0 -> "si"
+            latinCount > 0 && sinhalaCount == 0 -> "en"
+            else -> null // mixed script or no letters at all
+        }
+    }
+
+    // Tracks the most recent pure-English spell-check verdict for
+    // englishBuffer's current word — set in initSpellCheckerSession's
+    // onGetSuggestions, read by maybeAutocorrectAndCommitSpace() at SPACE.
+    // null means "no verdict yet for the current word" (spell checker
+    // hasn't replied, or its reply was for a since-changed word) — treated
+    // as "don't autocorrect", since acting on a stale or missing verdict
+    // risks correcting the wrong word entirely.
+    private var lastSpellCheckVerdict: SpellCheckVerdict? = null
+
+    /**
+     * [typedWord] is the word this verdict is *for* — guards against a slow
+     * async reply landing after englishBuffer has moved on to a different
+     * word (same staleness concern as elsewhere in this file, e.g.
+     * fetchNextWordSuggestions). [looksLikeTypo] mirrors the spell
+     * checker's own RESULT_ATTR_LOOKS_LIKE_TYPO flag — autocorrect only
+     * acts when the platform's own spell checker, not just our heuristics,
+     * considers the word wrong. [topCorrection] is its first suggested
+     * replacement, if any.
+     */
+    private data class SpellCheckVerdict(
+        val typedWord: String,
+        val looksLikeTypo: Boolean,
+        val topCorrection: String?
+    )
 
     // FIX #2: Single SpellCheckerSession created once and reused.
     private fun initSpellCheckerSession() {
@@ -242,13 +381,26 @@ class SinKeyInputMethodService : InputMethodService() {
                             val raw = englishBuffer.toString()
                             val words = mutableListOf<String>()
                             if (raw.isNotEmpty()) words.add(raw)
+                            var looksLikeTypo = false
+                            var topCorrection: String? = null
                             results?.forEach { info ->
+                                if (info.suggestionsCount > 0) {
+                                    looksLikeTypo = (info.suggestionsAttributes and
+                                        android.view.textservice.SuggestionsInfo.RESULT_ATTR_LOOKS_LIKE_TYPO) != 0
+                                }
                                 for (i in 0 until info.suggestionsCount) {
                                     val s = info.getSuggestionAt(i)
+                                    if (topCorrection == null && s != raw) topCorrection = s
                                     if (s != raw && words.size < 5) words.add(s)
                                 }
                             }
                             if (words.isNotEmpty()) suggestions.value = words
+                            // Recorded even when raw is empty (verdict simply
+                            // won't be used — maybeAutocorrectAndCommitSpace
+                            // requires a non-blank typedWord match) so a
+                            // stale verdict from the previous word can never
+                            // be mistakenly reused for an empty buffer.
+                            lastSpellCheckVerdict = SpellCheckVerdict(raw, looksLikeTypo, topCorrection)
                             return
                         }
 
@@ -306,6 +458,8 @@ class SinKeyInputMethodService : InputMethodService() {
                         isDark = isDark,
                         suggestions = suggestions.value,
                         onSuggestionSelected = ::handleSuggestion,
+                        autocorrectUndoWord = autocorrectUndo.value?.originalTyped,
+                        onUndoAutocorrect = ::undoAutocorrect,
                         onKey = ::handleKey,
                         inputType = currentInputTypeState.value,
                         boardStack = boardStack.value,
@@ -389,7 +543,15 @@ class SinKeyInputMethodService : InputMethodService() {
         wordBuffer.clear()
         englishBuffer.clear()
         suggestions.value = emptyList()
+        // A pending undo chip refers to text in the field we're leaving —
+        // meaningless (and potentially actionable-on-the-wrong-field) once
+        // focus moves elsewhere.
+        clearAutocorrectUndoIfAny()
         currentInputTypeState.value = info?.inputType ?: 0
+        // -1 = "don't know yet" — the very first onUpdateSelection call for
+        // this field will just record the real position instead of treating
+        // it as a jump (see onUpdateSelection).
+        expectedCursorPosition = -1
         // Moving to a different field (or restarting the same one) means the
         // text before the cursor may no longer be what we last committed —
         // don't carry stale next-word context across the switch.
@@ -409,6 +571,84 @@ class SinKeyInputMethodService : InputMethodService() {
             boardStack.value = listOf(Board.MAIN)
             shiftState.value = ShiftState.ONE_SHOT // auto-shift: capitalize first letter of new field
         }
+    }
+
+    /**
+     * Fires whenever the cursor/selection actually changes in the field —
+     * including moves WE didn't cause (the user tapping elsewhere in the
+     * text, using the system's cursor handle, arrow keys from a hardware
+     * keyboard, another app repositioning it, etc). Previously this had no
+     * override at all, so none of those moves were ever detected: wordBuffer/
+     * englishBuffer (this service's in-memory "what's being composed" state)
+     * and the suggestion strip kept reflecting whatever was being typed
+     * *before* the jump, even though the cursor — and therefore the actual
+     * word under it — had changed. E.g. type a partial word, tap earlier in
+     * the sentence: the suggestion strip kept showing suggestions for the
+     * word you'd abandoned instead of clearing or reflecting the new spot.
+     *
+     * expectedCursorPosition is updated after every edit *we* make (typing,
+     * backspace, committing a suggestion — see setExpectedCursorAfterEdit()
+     * calls below) specifically so this override can tell "cursor moved
+     * because of our own edit" apart from "cursor moved for some other
+     * reason" by comparing newSelEnd against it. Only the latter case needs
+     * to abandon in-progress composing state; reacting to our own
+     * self-caused moves too would be redundant (updateSuggestions() already
+     * runs right after those edits) and would also race with it.
+     */
+    override fun onUpdateSelection(
+        oldSelStart: Int,
+        oldSelEnd: Int,
+        newSelStart: Int,
+        newSelEnd: Int,
+        candidatesStart: Int,
+        candidatesEnd: Int
+    ) {
+        super.onUpdateSelection(oldSelStart, oldSelEnd, newSelStart, newSelEnd, candidatesStart, candidatesEnd)
+
+        val isExternalMove = expectedCursorPosition != -1 && newSelEnd != expectedCursorPosition
+        if (isExternalMove) {
+            // Cursor landed somewhere we didn't put it — whatever was being
+            // composed is no longer at the cursor, so there's nothing
+            // coherent left to keep typing into. Finish it as plain text
+            // (matches the Bug O4 Fix behaviour in onStartInputView for the
+            // same underlying reason: never leave a stale composing span
+            // visible) and clear the now-irrelevant suggestion strip.
+            if (wordBuffer.isNotEmpty() || englishBuffer.isNotEmpty()) {
+                currentInputConnection?.finishComposingText()
+                wordBuffer.clear()
+                englishBuffer.clear()
+            }
+            suggestions.value = emptyList()
+            lastCommittedWord = ""
+            lastCommittedLanguage = ""
+            // The undo chip's delete-then-retype logic assumes the cursor
+            // is still sitting right after the word it corrected — once the
+            // user has tapped elsewhere, that assumption no longer holds,
+            // so the chip must not be actionable anymore.
+            clearAutocorrectUndoIfAny()
+        }
+        expectedCursorPosition = newSelEnd
+    }
+
+    /**
+     * Call after any edit `handleKey` itself makes to the field (typing,
+     * backspace, committing a suggestion, punctuation, etc.) so
+     * onUpdateSelection can tell that edit's own cursor move apart from an
+     * external one (user tapping elsewhere, etc — see onUpdateSelection's
+     * doc). Reads the real resulting position back from the InputConnection
+     * rather than trying to predict it per edit type (composing spans,
+     * multi-codepoint deletes, and styled text all change the cursor by a
+     * different amount than the raw key text's length would suggest, so
+     * predicting it would be fragile and easy to get subtly wrong).
+     */
+    private fun syncExpectedCursorPosition(ic: android.view.inputmethod.InputConnection) {
+        // ExtractedText reports the real absolute cursor position after our
+        // edit — more reliable than computing it from the key/text we just
+        // sent, since composing spans, multi-codepoint deletes, and styled
+        // text all shift the cursor by an amount that doesn't simply match
+        // the raw text length.
+        val extracted = ic.getExtractedText(android.view.inputmethod.ExtractedTextRequest(), 0)
+        expectedCursorPosition = extracted?.let { it.startOffset + it.selectionEnd } ?: expectedCursorPosition
     }
 
     override fun onFinishInputView(finishingInput: Boolean) {
@@ -451,6 +691,12 @@ class SinKeyInputMethodService : InputMethodService() {
     private fun handleKey(key: String) {
         maybeFeedback()
         val ic = currentInputConnection ?: return
+        // Any key press other than tapping the undo chip itself (which goes
+        // through undoAutocorrect(), not this function) means the user has
+        // moved on from the word that was just autocorrected — the chip
+        // shouldn't linger describing a correction that's no longer the
+        // most recent thing that happened.
+        clearAutocorrectUndoIfAny()
 
         when (key) {
             "BACKSPACE" -> {
@@ -459,6 +705,10 @@ class SinKeyInputMethodService : InputMethodService() {
                     wordBuffer.clear()
                     ic.finishComposingText()
                     ic.commitText("", 1)
+                    // Same bug as the wordBuffer branch below: clearing the
+                    // buffer without refreshing the strip left whatever was
+                    // suggested for the just-deleted selection still showing.
+                    updateSuggestions()
                 } else if (wordBuffer.isNotEmpty()) {
                     wordBuffer.deleteCharAt(wordBuffer.length - 1)
                     if (wordBuffer.isEmpty()) {
@@ -467,6 +717,14 @@ class SinKeyInputMethodService : InputMethodService() {
                     } else {
                         setComposingTextStyled(ic, renderStyledBuffer())
                     }
+                    // BUG FIX: this branch used to never refresh the
+                    // suggestion strip, so backspacing through a
+                    // partially-typed Sinhala word left stale suggestions
+                    // from before the backspace on screen. updateSuggestions()
+                    // itself already handles the wordBuffer-now-empty case
+                    // (falls back to next-word prediction / clears the bar),
+                    // so it's safe to call unconditionally here.
+                    updateSuggestions()
                 } else {
                     if (englishBuffer.isNotEmpty()) englishBuffer.deleteCharAt(englishBuffer.length - 1)
                     val beforeCursor = ic.getTextBeforeCursor(4, 0)
@@ -483,9 +741,12 @@ class SinKeyInputMethodService : InputMethodService() {
                 updateAutoShift(ic)
             }
             "SPACE" -> {
-                if (isSinhalaTyping()) commitPendingWord()
-                else { learnWord(englishBuffer.toString(), "en"); englishBuffer.clear() }
-                ic.commitText(" ", 1)
+                if (isSinhalaTyping()) {
+                    commitPendingWord()
+                    ic.commitText(" ", 1)
+                } else {
+                    maybeAutocorrectAndCommitSpace(ic)
+                }
                 // After space, check if previous char was sentence-ending punctuation
                 updateAutoShift(ic)
                 // Word just finished — offer a next-word prediction instead of
@@ -569,6 +830,7 @@ class SinKeyInputMethodService : InputMethodService() {
                         suggestions.value = emptyList()
                         ic.commitText(text, 1)
                     }
+                    syncExpectedCursorPosition(ic)
                     return
                 }
                 val isSinglePrintable = key.length == 1 && !key[0].isLetter()
@@ -580,6 +842,7 @@ class SinKeyInputMethodService : InputMethodService() {
                     if (key == "!" || key == "?") {
                         if (shiftState.value == ShiftState.OFF) shiftState.value = ShiftState.ONE_SHOT
                     }
+                    syncExpectedCursorPosition(ic)
                     return
                 }
                 if (isEmoji(key)) {
@@ -623,6 +886,14 @@ class SinKeyInputMethodService : InputMethodService() {
                 }
             }
         }
+        // Sync expectedCursorPosition after every key handled above — see
+        // onUpdateSelection's doc comment for why this needs to run
+        // unconditionally on every edit path (typing, backspace, committing
+        // a suggestion, punctuation, etc.) rather than only some of them:
+        // any path that skips it would make the *next* onUpdateSelection
+        // call wrongly look like an external cursor jump and clear
+        // in-progress composing state that's actually still valid.
+        syncExpectedCursorPosition(ic)
     }
 
     /** Auto-shift: if the text before cursor ends with ". ", "! ", "? " or is empty → ONE_SHOT */
@@ -749,6 +1020,100 @@ class SinKeyInputMethodService : InputMethodService() {
         // Learn the plain (unstyled) word, not the fancy-font glyphs, so the
         // personal dictionary and future suggestions stay in normal text.
         learnWord(if (convertToSinhala) finalWord else raw, if (convertToSinhala) "si" else "en")
+        // See onUpdateSelection's doc comment. Redundant when called from
+        // within handleKey (which syncs again at its own end) but needed
+        // for commitPendingWord's other callers (e.g. onFinishInputView) —
+        // harmless either way since it just re-reads the real position.
+        ic?.let { syncExpectedCursorPosition(it) }
+    }
+
+    /**
+     * Pure-English SPACE handling: commits englishBuffer's word, silently
+     * autocorrecting it first if the platform spell checker's own most
+     * recent verdict for this exact word says it looks like a typo and
+     * offers a replacement (see SpellCheckVerdict/lastSpellCheckVerdict).
+     * Deliberately conservative — this only acts on the spell checker's own
+     * RESULT_ATTR_LOOKS_LIKE_TYPO flag rather than any heuristic of ours, so
+     * it never "corrects" a word the platform itself considers valid (e.g.
+     * names, slang, or words already in the user's personal dictionary,
+     * which is merged into what the spell checker session sees).
+     *
+     * When it does correct, sets autocorrectUndo so KeyboardView can offer
+     * a one-tap revert (see undoAutocorrect()) — this is the ONLY place
+     * autocorrectUndo is set; every other edit path clears it (see
+     * clearAutocorrectUndoIfAny()) so the chip can never linger past the
+     * one correction it describes.
+     */
+    private fun maybeAutocorrectAndCommitSpace(ic: android.view.inputmethod.InputConnection) {
+        val typed = englishBuffer.toString()
+        if (typed.isBlank()) {
+            ic.commitText(" ", 1)
+            return
+        }
+
+        val verdict = lastSpellCheckVerdict
+        val correction = verdict?.topCorrection
+        val shouldAutocorrect = verdict != null &&
+            verdict.typedWord == typed &&
+            verdict.looksLikeTypo &&
+            correction != null &&
+            !correction.equals(typed, ignoreCase = true)
+
+        val committedWord = if (shouldAutocorrect) correction!! else typed
+        val styled = com.spmods.sinkey.keyboard.FancyTextMapper.apply(committedWord, cachedFancyTextStyle)
+        ic.commitText(styled, 1)
+        ic.commitText(" ", 1)
+
+        if (shouldAutocorrect) {
+            autocorrectUndo.value = AutocorrectUndo(
+                originalTyped = typed,
+                correctedWord = styled,
+                hadTrailingSpace = true
+            )
+            // Learn the correction the spell checker made, not the typo —
+            // reinforcing a typo the user didn't actually intend defeats
+            // the point of correcting it in the first place.
+            learnWord(correction!!, "en")
+        } else {
+            clearAutocorrectUndoIfAny()
+            learnWord(typed, "en")
+        }
+        englishBuffer.clear()
+        lastSpellCheckVerdict = null
+    }
+
+    /**
+     * Reverts the most recent autocorrect (see maybeAutocorrectAndCommitSpace):
+     * deletes the corrected word + trailing space it committed and retypes
+     * exactly what the user originally typed, then a space, so the visible
+     * result matches what would be on screen had autocorrect never fired.
+     * Also re-learns the original word — one deliberate revert is a much
+     * stronger signal than the single autocorrect that preceded it, so it
+     * should outweigh that one auto-learned "correction" going forward.
+     */
+    private fun undoAutocorrect() {
+        val undo = autocorrectUndo.value ?: return
+        val ic = currentInputConnection ?: return
+        val deleteLength = undo.correctedWord.length + if (undo.hadTrailingSpace) 1 else 0
+        ic.deleteSurroundingText(deleteLength, 0)
+        ic.commitText(undo.originalTyped, 1)
+        if (undo.hadTrailingSpace) ic.commitText(" ", 1)
+        learnWord(undo.originalTyped, "en")
+        autocorrectUndo.value = null
+        syncExpectedCursorPosition(ic)
+    }
+
+    /**
+     * Clears a pending autocorrect-undo chip without acting on it — called
+     * from every edit path that isn't undoAutocorrect() itself, so the chip
+     * only ever stays visible for the single word it was created for. Kept
+     * as its own function (rather than inlining `autocorrectUndo.value =
+     * null` everywhere) so every call site reads as an intentional
+     * "this edit invalidates any pending undo" rather than looking like
+     * unrelated cleanup.
+     */
+    private fun clearAutocorrectUndoIfAny() {
+        if (autocorrectUndo.value != null) autocorrectUndo.value = null
     }
 
     /**
@@ -759,6 +1124,10 @@ class SinKeyInputMethodService : InputMethodService() {
      */
     private fun handleSuggestion(word: String) {
         val ic = currentInputConnection ?: return
+        // Picking a suggestion is a separate edit from whatever autocorrect
+        // last did — same reasoning as the clearAutocorrectUndoIfAny() call
+        // at the top of handleKey.
+        clearAutocorrectUndoIfAny()
         if (isSinhalaTyping()) {
             // In mix mode the suggestion bar can hold both a Sinhala rendering
             // and the raw-Latin English reading of the same buffer (see
@@ -795,6 +1164,9 @@ class SinKeyInputMethodService : InputMethodService() {
         // Word just finished — offer a next-word prediction instead of
         // leaving the suggestion bar empty.
         updateSuggestions()
+        // See onUpdateSelection's doc comment — this edits the field outside
+        // handleKey's own sync call, so it needs its own.
+        syncExpectedCursorPosition(ic)
     }
 
     /**
@@ -1198,6 +1570,15 @@ class SinKeyInputMethodService : InputMethodService() {
             // No spell-checker available — still surface the raw word itself.
             suggestions.value = (suggestions.value + raw).distinct().take(6)
         }
+        // Also merge in personal-dictionary English words (things the user
+        // has typed as English before, in mix mode or pure "en" mode) that
+        // start with the same prefix — mirrors the equivalent
+        // fetchPersonalSuggestions(primary, "si", ...) call already made for
+        // the Sinhala side of mix mode, just above where this is called
+        // from. Without this, mix mode only ever offered spell-checker
+        // dictionary words for English, never words the user had actually
+        // typed and built up frequency for themselves.
+        fetchPersonalSuggestions(raw, "en", baseList = suggestions.value)
     }
 
     /**
