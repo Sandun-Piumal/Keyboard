@@ -71,8 +71,15 @@ internal enum class StickerFontStyle(val label: String, val fontFamily: FontFami
  * expressed as a fraction of the square canvas size (so it scales correctly
  * both in the small on-screen preview and the full-resolution final PNG,
  * the same resolution-independence trick used for text/image position).
+ *
+ * Not internal (unlike StickerFontStyle/ImageStickerDraft in this same
+ * file) because it's a parameter of public functions outside this module's
+ * package boundary — StickerFileStore.compositeImageSticker,
+ * StickerRepository.createFromImageEdit, and
+ * SinKeyInputMethodService.saveEditedImageSticker all take it directly, and
+ * Kotlin doesn't allow a public function to expose an internal type.
  */
-internal enum class StickerShape(val label: String, val cornerFraction: Float) {
+enum class StickerShape(val label: String, val cornerFraction: Float) {
     CIRCLE("Circle", cornerFraction = 0f),
     ROUNDED_SQUARE("Rounded", cornerFraction = 0.18f),
     SQUARE("Square", cornerFraction = 0f)
