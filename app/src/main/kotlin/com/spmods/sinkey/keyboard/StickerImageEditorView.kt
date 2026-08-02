@@ -23,6 +23,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Crop
 import androidx.compose.material.icons.filled.FormatColorText
 import androidx.compose.material.icons.filled.TextFields
 import androidx.compose.material3.Icon
@@ -65,6 +66,19 @@ internal enum class StickerFontStyle(val label: String, val fontFamily: FontFami
 }
 
 /**
+ * The mask shape applied to the sticker's image — chosen via the Crop
+ * button next to Add Text. [cornerFraction] is used only by ROUNDED_SQUARE,
+ * expressed as a fraction of the square canvas size (so it scales correctly
+ * both in the small on-screen preview and the full-resolution final PNG,
+ * the same resolution-independence trick used for text/image position).
+ */
+internal enum class StickerShape(val label: String, val cornerFraction: Float) {
+    CIRCLE("Circle", cornerFraction = 0f),
+    ROUNDED_SQUARE("Rounded", cornerFraction = 0.18f),
+    SQUARE("Square", cornerFraction = 0f)
+}
+
+/**
  * Everything needed to (re)draw the sticker exactly as previewed — handed
  * to StickerFileStore.compositeImageSticker on save so the rendered PNG
  * matches this screen pixel-for-pixel (same square canvas, same relative
@@ -75,6 +89,7 @@ internal data class ImageStickerDraft(
     val imageScale: Float,
     val imageOffsetXFraction: Float,
     val imageOffsetYFraction: Float,
+    val shape: StickerShape,
     val text: String,
     val textColor: Int,
     val textSizeFraction: Float,
@@ -113,6 +128,8 @@ internal fun StickerImageEditorView(
     var imageScale by remember { mutableFloatStateOf(1f) }
     var imageOffset by remember { mutableStateOf(Offset.Zero) } // in px, within the preview box
     var previewBoxPx by remember { mutableStateOf(IntSize.Zero) }
+    var shape by remember { mutableStateOf(StickerShape.CIRCLE) }
+    var showShapePicker by remember { mutableStateOf(false) }
 
     var showTextEditor by remember { mutableStateOf(false) }
     var text by remember { mutableStateOf("") }
@@ -137,6 +154,7 @@ internal fun StickerImageEditorView(
                 imageScale = imageScale,
                 imageOffsetXFraction = if (previewBoxPx.width > 0) imageOffset.x / previewBoxPx.width else 0f,
                 imageOffsetYFraction = if (previewBoxPx.height > 0) imageOffset.y / previewBoxPx.height else 0f,
+                shape = shape,
                 text = text,
                 textColor = textColor.toArgb(),
                 textSizeFraction = textSizeFraction,
@@ -183,11 +201,18 @@ internal fun StickerImageEditorView(
             // Circular preview canvas — pinch to zoom / drag to reposition
             // the photo, and (if text has been added) drag the text
             // independently.
+            val previewShape = remember(shape, previewSize) {
+                when (shape) {
+                    StickerShape.CIRCLE -> CircleShape
+                    StickerShape.SQUARE -> RoundedCornerShape(0.dp)
+                    StickerShape.ROUNDED_SQUARE -> RoundedCornerShape(previewSize * shape.cornerFraction)
+                }
+            }
             Box(
                 modifier = Modifier
                     .padding(top = 6.dp)
                     .size(previewSize)
-                    .clip(CircleShape)
+                    .clip(previewShape)
                     .background(Color(0xFF2B2B2B))
                     .onSizeChanged { previewBoxPx = it }
                     .pointerInput(Unit) {
@@ -205,7 +230,7 @@ internal fun StickerImageEditorView(
                     modifier = Modifier
                         .fillMaxWidth()
                         .aspectRatio(1f)
-                        .clip(CircleShape)
+                        .clip(previewShape)
                         .graphicsLayer(
                             scaleX = imageScale,
                             scaleY = imageScale,
@@ -247,16 +272,65 @@ internal fun StickerImageEditorView(
 
             if (!showTextEditor && text.isBlank()) {
                 Row(
-                    modifier = Modifier
-                        .clip(RoundedCornerShape(8.dp))
-                        .background(colors.keyBg)
-                        .clickable { showTextEditor = true }
-                        .padding(horizontal = 16.dp, vertical = 8.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                    horizontalArrangement = Arrangement.spacedBy(10.dp),
+                    verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Icon(imageVector = Icons.Filled.TextFields, contentDescription = null, tint = DeshGreen, modifier = Modifier.size(16.dp))
-                    Text(text = "Add Text", fontSize = 13.sp, color = colors.keyText, fontWeight = FontWeight.Medium)
+                    Row(
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(8.dp))
+                            .background(colors.keyBg)
+                            .clickable { showTextEditor = true }
+                            .padding(horizontal = 16.dp, vertical = 8.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        Icon(imageVector = Icons.Filled.TextFields, contentDescription = null, tint = DeshGreen, modifier = Modifier.size(16.dp))
+                        Text(text = "Add Text", fontSize = 13.sp, color = colors.keyText, fontWeight = FontWeight.Medium)
+                    }
+
+                    // Crop — toggles a row of shape choices (Circle /
+                    // Rounded / Square) below; picking one re-clips both
+                    // this preview and (via ImageStickerDraft.shape) the
+                    // final saved sticker to match, see StickerFileStore.
+                    Row(
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(8.dp))
+                            .background(if (showShapePicker) DeshGreen.copy(alpha = 0.18f) else colors.keyBg)
+                            .clickable { showShapePicker = !showShapePicker }
+                            .padding(horizontal = 16.dp, vertical = 8.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        Icon(imageVector = Icons.Filled.Crop, contentDescription = null, tint = DeshGreen, modifier = Modifier.size(16.dp))
+                        Text(text = "Crop", fontSize = 13.sp, color = colors.keyText, fontWeight = FontWeight.Medium)
+                    }
+                }
+
+                if (showShapePicker) {
+                    Spacer(modifier = Modifier.height(10.dp))
+                    Row(
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        StickerShape.entries.forEach { option ->
+                            val selected = shape == option
+                            Row(
+                                modifier = Modifier
+                                    .clip(RoundedCornerShape(8.dp))
+                                    .background(if (selected) DeshGreen else colors.keyBg)
+                                    .clickable { shape = option }
+                                    .padding(horizontal = 14.dp, vertical = 8.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text(
+                                    text = option.label,
+                                    fontSize = 12.sp,
+                                    color = if (selected) Color.White else colors.keyText,
+                                    fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium
+                                )
+                            }
+                        }
+                    }
                 }
             } else {
                 StickerTextControls(
