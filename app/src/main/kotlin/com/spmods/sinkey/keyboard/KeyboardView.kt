@@ -86,6 +86,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.Undo
 
 // Number labels for top row keys
 private val topRowNumbers = listOf("1","2","3","4","5","6","7","8","9","0")
@@ -204,6 +205,14 @@ internal fun KeyboardView(
     isDark: Boolean = false,
     suggestions: List<String> = emptyList(),
     onSuggestionSelected: (String) -> Unit = {},
+    // Non-null right after a silent autocorrect swapped what the user
+    // typed for a spell-checker correction — holds the original typed
+    // word so AppsMicBar can show a one-tap "Undo" chip. Owned by the IME
+    // service (see SinKeyInputMethodService.autocorrectUndo) so it's
+    // cleared consistently from every edit path, the same reasoning as
+    // boardStack/shiftState above. Preview callers omit this and get no chip.
+    autocorrectUndoWord: String? = null,
+    onUndoAutocorrect: () -> Unit = {},
     onKey: (String) -> Unit,
     onDismiss: (() -> Unit)? = null,
     inputType: Int = 0,
@@ -329,6 +338,8 @@ internal fun KeyboardView(
                     isDark = isDark,
                     suggestions = if (isPhoneInput || currentBoard == Board.SYMBOLS || currentBoard == Board.NUMPAD) emptyList() else suggestions,
                     onSuggestionSelected = onSuggestionSelected,
+                    autocorrectUndoWord = if (isPhoneInput || currentBoard == Board.SYMBOLS || currentBoard == Board.NUMPAD) null else autocorrectUndoWord,
+                    onUndoAutocorrect = onUndoAutocorrect,
                     onKey = onKey,
                     onClipboardOpen = { pushBoard(Board.CLIPBOARD) },
                     onFontOpen = { pushBoard(Board.FONT) },
@@ -693,13 +704,23 @@ private fun AppsMicBar(
     isDark: Boolean = false,
     suggestions: List<String>,
     onSuggestionSelected: (String) -> Unit,
+    // Non-null right after an autocorrect swap — renders as a distinct
+    // "Undo" chip pinned before the regular suggestions. See KeyboardView's
+    // doc comment on this same param for ownership/lifecycle.
+    autocorrectUndoWord: String? = null,
+    onUndoAutocorrect: () -> Unit = {},
     onKey: (String) -> Unit,
     onClipboardOpen: () -> Unit,
     onFontOpen: () -> Unit,
     onStickerOpen: () -> Unit,
     selectedFontStyle: FancyTextStyle = FancyTextStyle.NONE
 ) {
-    val isTyping = suggestions.isNotEmpty()
+    // The undo chip must be able to show the strip even when there are no
+    // regular suggestions to go with it — right after autocorrect commits a
+    // word at SPACE, the word buffer (and therefore `suggestions`) is
+    // usually empty, but the chip describing what was just corrected still
+    // needs somewhere to render.
+    val isTyping = suggestions.isNotEmpty() || autocorrectUndoWord != null
 
     // AnimatedContent was removed here — the slide/fade transition caused the
     // toolbar to render twice during WhatsApp emoji panel open/close because
@@ -744,6 +765,48 @@ private fun AppsMicBar(
                     verticalAlignment = Alignment.CenterVertically,
                     contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 8.dp)
                 ) {
+                    if (autocorrectUndoWord != null) {
+                        item {
+                            // Distinct pill (not a plain text chip like the
+                            // suggestions below) so it visually reads as an
+                            // action rather than a word to insert — tapping
+                            // it reverts the correction rather than typing
+                            // autocorrectUndoWord into the field.
+                            Row(
+                                modifier = Modifier
+                                    .clip(RoundedCornerShape(4.dp))
+                                    .background(colors.subText.copy(alpha = 0.12f))
+                                    .clickable { onUndoAutocorrect() }
+                                    .padding(horizontal = 12.dp, vertical = 6.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(4.dp)
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Filled.Undo,
+                                    contentDescription = null,
+                                    modifier = Modifier.size(15.dp),
+                                    tint = colors.keyText
+                                )
+                                Text(
+                                    text = "\"$autocorrectUndoWord\"",
+                                    fontSize = 15.sp,
+                                    color = colors.keyText,
+                                    fontWeight = FontWeight.Medium,
+                                    maxLines = 1
+                                )
+                            }
+                        }
+                        if (suggestions.isNotEmpty()) {
+                            item {
+                                Box(
+                                    modifier = Modifier
+                                        .height(18.dp)
+                                        .width(1.dp)
+                                        .background(colors.subText.copy(alpha = 0.3f))
+                                )
+                            }
+                        }
+                    }
                     items(suggestions.size) { idx ->
                         val word = suggestions[idx]
                         // Fancy-font styling is applied to the suggestion chip's
