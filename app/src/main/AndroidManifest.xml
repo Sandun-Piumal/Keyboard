@@ -66,16 +66,18 @@
             android:launchMode="standard" />
 
         <!--
-            Full-screen Activity that hosts the "adjust image + add text"
+            Floating-card Activity that hosts the "adjust image + add text"
             sticker editor after an image is picked (see
             StickerEditActivity's class doc for why this needs to be a real
             Activity rather than rendered inline inside the keyboard's own
-            docked panel).
+            docked panel). Uses Theme.SinKey.FloatingCard so it appears as a
+            centered, rounded card over the dimmed host app instead of
+            covering the whole screen.
         -->
         <activity
             android:name=".ime.StickerEditActivity"
             android:exported="false"
-            android:theme="@style/Theme.SinKey"
+            android:theme="@style/Theme.SinKey.FloatingCard"
             android:excludeFromRecents="true"
             android:launchMode="standard"
             android:windowSoftInputMode="adjustResize" />
