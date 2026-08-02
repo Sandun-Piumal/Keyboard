@@ -26,4 +26,26 @@
         <item name="android:windowNoTitle">true</item>
         <item name="android:windowAnimationStyle">@null</item>
     </style>
+
+    <!--
+        Floating-card theme for StickerEditActivity. Instead of the editor
+        taking over the entire display like a normal opaque Activity, this
+        makes the Activity's own window translucent and NOT
+        match_parent-sized, so Android lays it out as a centered floating
+        panel with the previous app dimmed behind it — the same visual
+        family as a Dialog, but still a completely normal, independent
+        Activity (so StickerImageEditorView, ActivityResult APIs, etc. all
+        keep working exactly as before). The actual rounded-card look
+        (size, corner radius, elevation) is set on the window in
+        StickerEditActivity.onCreate(), since it depends on screen size.
+    -->
+    <style name="Theme.SinKey.FloatingCard" parent="android:Theme.Material.Light.NoActionBar">
+        <item name="android:windowIsFloating">true</item>
+        <item name="android:windowIsTranslucent">true</item>
+        <item name="android:windowBackground">@android:color/transparent</item>
+        <item name="android:windowNoTitle">true</item>
+        <item name="android:backgroundDimEnabled">true</item>
+        <item name="android:backgroundDimAmount">0.6</item>
+        <item name="android:windowAnimationStyle">@android:style/Animation.Dialog</item>
+    </style>
 </resources>
