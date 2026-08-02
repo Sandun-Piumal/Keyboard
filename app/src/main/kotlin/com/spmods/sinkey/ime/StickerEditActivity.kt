@@ -17,6 +17,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import com.spmods.sinkey.data.sticker.StickerFileStore
@@ -33,17 +34,23 @@ import java.io.File
 
 /**
  * Hosts Board.STICKER_EDIT's "adjust image + add text" screen as its own
- * genuine full-screen Activity, instead of trying to render it inline
- * inside the keyboard's own docked Compose tree.
+ * genuine Activity — presented as a centered, rounded floating card over
+ * the dimmed host app (Theme.SinKey.FloatingCard), rather than either (a)
+ * rendered inline inside the keyboard's own docked Compose tree, or (b)
+ * covering the entire display like a normal opaque Activity.
  *
- * Why this exists: an InputMethodService's window is a fixed-size panel
- * pinned to the bottom of the screen — nothing drawn inside it can float
- * freely over the rest of the screen, take up the full display, or escape
- * that panel's bounds without SYSTEM_ALERT_WINDOW (an extra runtime
+ * Why this needs to be a real Activity at all: an InputMethodService's
+ * window is a fixed-size panel pinned to the bottom of the screen —
+ * nothing drawn inside it can float freely over the rest of the screen or
+ * escape that panel's bounds without SYSTEM_ALERT_WINDOW (an extra runtime
  * permission the user would have to separately grant). A real Activity has
- * none of those constraints for free: launching this one gives the editor
- * its own full screen, on top of the keyboard and host app entirely, with
- * no panel-height math or overlay permission needed.
+ * none of those constraints for free.
+ *
+ * Why it's sized as a card instead of full-screen: the window's size and
+ * position can't be fixed purely in XML (they depend on the display's
+ * actual size), so onCreate() below explicitly sets a fixed WRAP_CONTENT-
+ * ish card size on the decor window via WindowManager.LayoutParams, in
+ * addition to the theme's windowIsFloating/backgroundDimEnabled flags.
  *
  * Flow: pickImageForSticker() (see SinKeyInputMethodService) already saves
  * the picked photo to a temp file and, instead of pushing Board.STICKER_EDIT
@@ -71,6 +78,16 @@ class StickerEditActivity : ComponentActivity() {
             return
         }
 
+        // Theme.SinKey.FloatingCard only makes the window translucent and
+        // dims the background; it can't size/position the window itself
+        // since that depends on the actual display metrics. Do that here:
+        // ~92% width, ~88% height, centered — a card, not the full screen.
+        window.setLayout(
+            (resources.displayMetrics.widthPixels * 0.92f).toInt(),
+            (resources.displayMetrics.heightPixels * 0.88f).toInt()
+        )
+        window.setGravity(android.view.Gravity.CENTER)
+
         val stickerRepo = StickerRepository(applicationContext)
 
         setContent {
@@ -82,7 +99,10 @@ class StickerEditActivity : ComponentActivity() {
             BackHandler(enabled = !saving) { finish() }
 
             Box(
-                modifier = Modifier.fillMaxSize().background(Color.Black),
+                modifier = Modifier
+                    .fillMaxSize()
+                    .clip(androidx.compose.foundation.shape.RoundedCornerShape(20.dp))
+                    .background(Color.Black),
                 contentAlignment = Alignment.Center
             ) {
                 val bitmapResult = produceState<android.graphics.Bitmap?>(initialValue = null, key1 = imagePath) {
@@ -108,7 +128,12 @@ class StickerEditActivity : ComponentActivity() {
                         StickerImageEditorView(
                             colors = colors,
                             bottomPadding = 12.dp,
-                            targetContentHeight = configuration.screenHeightDp.dp,
+                            // Card is sized to 88% of screen height in
+                            // onCreate() (window.setLayout) — mirror that
+                            // here so the editor's internal layout math
+                            // matches the actual space it has, instead of
+                            // assuming the old full-screen height.
+                            targetContentHeight = (configuration.screenHeightDp * 0.88f).dp,
                             imageBitmap = bitmap,
                             onSave = { draft: ImageStickerDraft ->
                                 saving = true
