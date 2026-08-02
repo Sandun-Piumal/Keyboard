@@ -7,6 +7,7 @@ import androidx.activity.compose.setContent
 import androidx.compose.foundation.background
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.wrapContentHeight
 import androidx.compose.material3.CircularProgressIndicator
@@ -130,15 +131,17 @@ class StickerEditActivity : ComponentActivity() {
 
             BackHandler(enabled = !saving) { finish() }
 
-            // Note: fillMaxSize() here would force this black card to be
-            // exactly the window's size (92%/88% of the screen, set in
-            // applyCardWindowBounds()). But StickerImageEditorView's own
-            // root Column only wraps its intrinsic content height (see its
-            // .heightIn(max = ...) — a ceiling, not a fixed height), so
-            // fillMaxSize() left empty black space above/below the actual
-            // editor content once that content was shorter than 88% of the
-            // screen. fillMaxWidth() + wrapContentHeight() makes the card
-            // exactly hug its content instead.
+            // The window itself is still sized to 92%/88% of the screen
+            // (applyCardWindowBounds()) — only the *card* wraps its content
+            // height, so there's leftover vertical space inside the window
+            // around the card. An outer Modifier.fillMaxSize() Box with
+            // contentAlignment = Center places the card in the middle of
+            // that leftover space instead of anchored to the window's top
+            // (Android's default gravity for a wrap-content child).
+            Box(
+                modifier = Modifier.fillMaxSize(),
+                contentAlignment = Alignment.Center
+            ) {
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -192,6 +195,7 @@ class StickerEditActivity : ComponentActivity() {
                                         imageScale = draft.imageScale,
                                         imageOffsetXFraction = draft.imageOffsetXFraction,
                                         imageOffsetYFraction = draft.imageOffsetYFraction,
+                                        shape = draft.shape,
                                         text = draft.text,
                                         textColor = draft.textColor,
                                         textSizeFraction = draft.textSizeFraction,
@@ -218,6 +222,7 @@ class StickerEditActivity : ComponentActivity() {
                         )
                     }
                 }
+            }
             }
         }
     }
