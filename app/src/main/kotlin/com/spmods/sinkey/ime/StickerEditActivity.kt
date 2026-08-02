@@ -69,22 +69,37 @@ class StickerEditActivity : ComponentActivity() {
         const val EXTRA_IMAGE_PATH = "image_path"
     }
 
-    // Theme.SinKey.FloatingCard only makes the window translucent and dims
-    // the background; it can't size/position the window itself since that
-    // depends on the actual display metrics. Setting this from onCreate()
-    // (before the window's decor view is attached — that only happens once
-    // setContent()'s first frame is laid out) gets silently ignored and the
-    // window falls back to full-screen. onResume() runs after attachment,
-    // so the resize actually takes effect here. It's also re-applied on
-    // every resume (e.g. after a config change) since some OEM skins reset
-    // floating-window bounds to full-screen on rotation.
+    // Theme.SinKey.FloatingCard makes the window translucent and dims the
+    // background, but WindowManager still measures/positions the window
+    // itself based on the *default* full-screen bounds before any layout
+    // pass — window.setLayout() called from onCreate() (before the
+    // DecorView is attached) or even from onResume() (which can still race
+    // Compose's first measure pass on some OEM skins) is often silently
+    // dropped, so the window falls back to full-screen. Doing it inside a
+    // pre-draw listener on the DecorView guarantees it runs after the
+    // window actually exists and right before its first real layout pass,
+    // so the resize reliably sticks. It's applied on every resume too,
+    // since some launchers/skins reset floating windows to full-screen
+    // after a config change (e.g. rotation, or returning from the system
+    // image picker).
+    private fun applyCardWindowBounds() {
+        val decor = window.decorView
+        decor.viewTreeObserver.addOnPreDrawListener(object : android.view.ViewTreeObserver.OnPreDrawListener {
+            override fun onPreDraw(): Boolean {
+                decor.viewTreeObserver.removeOnPreDrawListener(this)
+                window.setLayout(
+                    (resources.displayMetrics.widthPixels * 0.92f).toInt(),
+                    (resources.displayMetrics.heightPixels * 0.88f).toInt()
+                )
+                window.setGravity(android.view.Gravity.CENTER)
+                return true
+            }
+        })
+    }
+
     override fun onResume() {
         super.onResume()
-        window.setLayout(
-            (resources.displayMetrics.widthPixels * 0.92f).toInt(),
-            (resources.displayMetrics.heightPixels * 0.88f).toInt()
-        )
-        window.setGravity(android.view.Gravity.CENTER)
+        applyCardWindowBounds()
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -95,6 +110,14 @@ class StickerEditActivity : ComponentActivity() {
             finish()
             return
         }
+
+        // The window itself (not just our Compose content) needs a
+        // transparent background — otherwise the real window draws its own
+        // opaque black rectangle at full window bounds behind/around the
+        // rounded Compose card, which is what showed up as black bars
+        // around the card rather than dimmed host-app content.
+        window.setBackgroundDrawable(android.graphics.drawable.ColorDrawable(android.graphics.Color.TRANSPARENT))
+        applyCardWindowBounds()
 
         val stickerRepo = StickerRepository(applicationContext)
 
