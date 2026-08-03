@@ -8,6 +8,7 @@ import android.content.Context
  * next time the user types the same prefix, even across app restarts.
  */
 class WordRepository(context: Context) {
+    private val appContext = context.applicationContext
     private val dao = WordDatabase.getInstance(context).wordDao()
     private val bigramDao = WordDatabase.getInstance(context).bigramDao()
 
@@ -138,5 +139,33 @@ class WordRepository(context: Context) {
             for (j in 0..b.length) prev[j] = curr[j]
         }
         return prev[b.length]
+    }
+
+    /**
+     * Every known word for [language] — bundled base dictionary plus
+     * whatever the user has typed/learned. Used exclusively by gesture
+     * typing's word matcher (GestureWordMatcher); see WordDao.getAllForLanguage
+     * for why a full scan is unavoidable here instead of a prefix query.
+     */
+    suspend fun allWords(language: String): List<String> =
+        dao.getAllForLanguage(language).map { it.word }
+
+    /**
+     * Loads the bundled base word lists (assets/wordlist_en.txt,
+     * assets/wordlist_si.txt — see DictionarySeeder) into the personal
+     * dictionary at a low starting frequency, once. Exists mainly so
+     * gesture typing (GestureWordMatcher) has a reasonably useful
+     * vocabulary to match against from a fresh install, rather than only
+     * the handful of words the user has typed so far — but the seeded
+     * words also naturally strengthen ordinary prefix/fuzzy suggestions
+     * too, via the same words table both features read from.
+     *
+     * Safe to call on every app start: DictionarySeeder itself tracks
+     * whether seeding has already run (via PreferencesManager) and
+     * short-circuits instantly if so, and seedWord()'s OR IGNORE means
+     * even a redundant call can't re-bump frequencies or duplicate rows.
+     */
+    suspend fun seedBaseDictionaryIfNeeded() {
+        DictionarySeeder.seedIfNeeded(appContext, dao)
     }
 }
