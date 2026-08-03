@@ -194,6 +194,16 @@ class SinKeyInputMethodService : InputMethodService() {
         stickerRepo = com.spmods.sinkey.data.sticker.StickerRepository(this)
         registerClipboardListener()
 
+        // Loads the bundled base word lists (common English/Sinhala
+        // vocabulary — see DictionarySeeder) into the personal dictionary
+        // once, mainly so gesture typing (GestureWordMatcher) has a real
+        // vocabulary to match against from a fresh install rather than
+        // just whatever's been typed so far. Runs off the main thread and
+        // is a near-instant no-op on every subsequent start (see
+        // DictionarySeeder.seedIfNeeded's version check), so it's safe to
+        // fire-and-forget here rather than gating keyboard startup on it.
+        serviceScope.launch { wordRepo.seedBaseDictionaryIfNeeded() }
+
         // FIX #1: Still need initial language synchronously, but we only block once
         // here at startup (not on every key tap).
         currentLanguage.value = runBlocking { prefs.defaultLanguage.first() }
@@ -448,6 +458,7 @@ class SinKeyInputMethodService : InputMethodService() {
                 val bottomSpaceEnabled by prefs.bottomSpaceEnabled.collectAsState(initial = true)
                 val bottomSpaceSize by prefs.bottomSpaceSize.collectAsState(initial = 0f)
                 val showKeyBorders by prefs.showKeyBorders.collectAsState(initial = true)
+                val swipeTypingEnabled by prefs.swipeTypingEnabled.collectAsState(initial = false)
                 SinKeyTheme(themeMode = themeMode) {
                     KeyboardView(
                         currentLanguage = currentLanguage.value,
@@ -460,6 +471,9 @@ class SinKeyInputMethodService : InputMethodService() {
                         onSuggestionSelected = ::handleSuggestion,
                         autocorrectUndoWord = autocorrectUndo.value?.originalTyped,
                         onUndoAutocorrect = ::undoAutocorrect,
+                        swipeTypingEnabled = swipeTypingEnabled,
+                        onSwipeGesture = ::resolveGestureCandidates,
+                        onGestureWordCommitted = ::commitGestureWord,
                         onKey = ::handleKey,
                         inputType = currentInputTypeState.value,
                         boardStack = boardStack.value,
@@ -1114,6 +1128,125 @@ class SinKeyInputMethodService : InputMethodService() {
      */
     private fun clearAutocorrectUndoIfAny() {
         if (autocorrectUndo.value != null) autocorrectUndo.value = null
+    }
+
+    /**
+     * Bridges GestureTypingOverlay's raw swiped-letter sequence to actual
+     * word candidates. Called from KeyboardView's onSwipeGesture — see that
+     * param's doc comment for why this lives here rather than in the
+     * Compose layer (it needs wordRepo + a coroutine context, neither of
+     * which the overlay itself has).
+     *
+     * [language] is whatever GestureTypingOverlay was showing when the
+     * swipe happened (currentLanguage.value at drag-start) — "mix" is
+     * passed through as-is and simply returns no candidates, since mix
+     * mode doesn't have one single dictionary to score a swipe path
+     * against the way pure "si"/"en" do (see GestureTypingOverlay's own
+     * doc comment on this same limitation).
+     */
+    private suspend fun resolveGestureCandidates(letters: String, language: String): List<String> {
+        if (language != "si" && language != "en") return emptyList()
+        if (letters.length < 2) return emptyList()
+
+        val dictionary = wordRepo.allWords(language)
+        if (dictionary.isEmpty()) return emptyList()
+
+        // GestureWordMatcher's full path-shape scoring already ran inside
+        // GestureTypingOverlay (which has the actual on-screen key
+        // coordinates) to reduce the raw touch path down to this plain
+        // letter sequence. Ranking here works directly off that string via
+        // subsequence/length heuristics instead, which keeps this function
+        // independent of Compose/coordinate state — it only ever receives
+        // a String from the overlay, never screen positions.
+        return rankWordsByLetterSequence(letters, dictionary).take(5)
+    }
+
+    /**
+     * Scores every word in [dictionary] against the swiped [letters]
+     * sequence and returns the best matches, best first. This is a
+     * simpler, coordinate-free companion to GestureWordMatcher's full
+     * path-shape scoring (which already ran inside GestureTypingOverlay to
+     * reduce the raw touch path down to this letter sequence in the first
+     * place) — it doesn't need key positions, only string containment, so
+     * it can run here in the service without threading screen coordinates
+     * across the Compose/service boundary.
+     *
+     * Scoring favors words whose letters appear as a subsequence of
+     * [letters] in the same relative order (how a real swipe naturally
+     * traces a word's letters), then breaks ties by how close the
+     * candidate's length is to the swiped sequence's length and by
+     * dictionary frequency already baked into [dictionary]'s ordering
+     * (WordDao.getAllForLanguage sorts by frequency DESC, and this
+     * function's own sortedBy is stable, so equal-scoring words keep that
+     * frequency order).
+     */
+    private fun rankWordsByLetterSequence(letters: String, dictionary: List<String>): List<String> {
+        val swiped = letters.lowercase()
+        return dictionary
+            .mapNotNull { word ->
+                val lower = word.lowercase()
+                val subsequenceCost = subsequenceGapCost(swiped, lower) ?: return@mapNotNull null
+                val lengthPenalty = kotlin.math.abs(lower.length - swiped.length)
+                word to (subsequenceCost + lengthPenalty)
+            }
+            .sortedBy { it.second }
+            .map { it.first }
+    }
+
+    /**
+     * Null if [word]'s letters don't all appear in [swiped] in order (not a
+     * plausible match for this swipe at all). Otherwise, the total gap
+     * between consecutive matched letters' positions in [swiped] — a small
+     * gap means the swipe passed directly from one of the word's letters to
+     * the next with nothing else "detected" in between, which is what a
+     * clean, accurate swipe for that exact word looks like; a large gap
+     * means the swipe path wandered near a lot of other keys along the way,
+     * so it's a weaker match even though every letter technically appears
+     * in order.
+     */
+    private fun subsequenceGapCost(swiped: String, word: String): Int? {
+        var searchFrom = 0
+        var totalGap = 0
+        var lastIndex = -1
+        for (ch in word) {
+            val idx = swiped.indexOf(ch, searchFrom)
+            if (idx == -1) return null
+            if (lastIndex >= 0) totalGap += (idx - lastIndex - 1).coerceAtLeast(0)
+            lastIndex = idx
+            searchFrom = idx + 1
+        }
+        return totalGap
+    }
+
+    /**
+     * Commits the word GestureTypingOverlay/resolveGestureCandidates
+     * resolved a swipe to. Unlike commitPendingWord()/handleSuggestion(),
+     * there's no Latin-to-Sinhala transliteration step needed here: gesture
+     * matching scores directly against wordRepo's stored words, which for
+     * "si" are already real Sinhala-script text (that's what got learned/
+     * seeded into the dictionary in the first place), not a Latin buffer
+     * awaiting conversion. So this only needs to apply English fancy-text
+     * styling where relevant and commit, mirroring handleSuggestion's
+     * trailing-space/learn/undo-clearing behaviour for consistency with
+     * how picking an ordinary suggestion feels.
+     */
+    private fun commitGestureWord(word: String) {
+        val ic = currentInputConnection ?: return
+        clearAutocorrectUndoIfAny()
+        wordBuffer.clear()
+        englishBuffer.clear()
+        val language = if (isSinhalaTyping()) "si" else "en"
+        val styled = if (language == "en") {
+            com.spmods.sinkey.keyboard.FancyTextMapper.apply(word, cachedFancyTextStyle)
+        } else {
+            word
+        }
+        ic.commitText(styled, 1)
+        ic.commitText(" ", 1)
+        learnWord(word, language)
+        suggestions.value = emptyList()
+        updateSuggestions()
+        syncExpectedCursorPosition(ic)
     }
 
     /**
