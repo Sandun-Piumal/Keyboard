@@ -39,6 +39,18 @@ class PreferencesManager(private val context: Context) {
         // typed Latin buffer to its Sinhala transliteration, same as pure "si"
         // mode. Default OFF — mix mode commits the word as plain typed text.
         val MIX_AUTO_SINHALA = booleanPreferencesKey("mix_auto_sinhala")
+        // Gesture typing (swipe across letters instead of tapping each one)
+        // — off by default so existing users' typing behavior doesn't
+        // silently change; see GestureWordMatcher for the recognition side.
+        val SWIPE_TYPING_ENABLED = booleanPreferencesKey("swipe_typing_enabled")
+        // Internal, not user-facing: whether DictionarySeeder has already
+        // loaded the bundled base word lists into the words table. Not a
+        // simple "run once at install" flag — it's re-checked (cheaply) on
+        // every app start via WordRepository.seedBaseDictionaryIfNeeded()
+        // so a future app update that ships a larger word list can bump
+        // DictionarySeeder.SEED_VERSION to re-seed without wiping learned
+        // words (seedWord's OR IGNORE never touches an existing row).
+        val DICTIONARY_SEED_VERSION = androidx.datastore.preferences.core.intPreferencesKey("dictionary_seed_version")
     }
 
     val themeMode: Flow<ThemeMode> = context.dataStore.data.map { prefs ->
@@ -89,6 +101,16 @@ class PreferencesManager(private val context: Context) {
         prefs[Keys.MIX_AUTO_SINHALA] ?: false
     }
 
+    /** Gesture (swipe-to-type) typing toggle — default off. */
+    val swipeTypingEnabled: Flow<Boolean> = context.dataStore.data.map { prefs ->
+        prefs[Keys.SWIPE_TYPING_ENABLED] ?: false
+    }
+
+    /** Current dictionary-seed version already applied on this device; 0 if never seeded. */
+    val dictionarySeedVersion: Flow<Int> = context.dataStore.data.map { prefs ->
+        prefs[Keys.DICTIONARY_SEED_VERSION] ?: 0
+    }
+
     /** Emits the most-recently-used emojis list (up to [MAX_RECENT] entries). */
     val recentEmojis: Flow<List<String>> = context.dataStore.data.map { prefs ->
         val raw = prefs[Keys.RECENT_EMOJIS] ?: ""
@@ -134,6 +156,14 @@ class PreferencesManager(private val context: Context) {
 
     suspend fun setMixAutoSinhala(enabled: Boolean) {
         context.dataStore.edit { it[Keys.MIX_AUTO_SINHALA] = enabled }
+    }
+
+    suspend fun setSwipeTypingEnabled(enabled: Boolean) {
+        context.dataStore.edit { it[Keys.SWIPE_TYPING_ENABLED] = enabled }
+    }
+
+    suspend fun setDictionarySeedVersion(version: Int) {
+        context.dataStore.edit { it[Keys.DICTIONARY_SEED_VERSION] = version }
     }
 
     /**
