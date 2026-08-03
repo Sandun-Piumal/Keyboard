@@ -32,11 +32,13 @@ fun SettingsScreen(
     keyVibrateEnabled: Boolean,
     themeMode: ThemeMode,
     mixAutoSinhala: Boolean,
+    swipeTypingEnabled: Boolean,
     onLanguageChange: (String) -> Unit,
     onKeySoundChange: (Boolean) -> Unit,
     onKeyVibrateChange: (Boolean) -> Unit,
     onThemeModeChange: (ThemeMode) -> Unit,
     onMixAutoSinhalaChange: (Boolean) -> Unit,
+    onSwipeTypingChange: (Boolean) -> Unit,
     onOpenKeyboardHeight: () -> Unit = {}
 ) {
     Column(modifier = Modifier.fillMaxWidth().padding(bottom = 24.dp)) {
@@ -78,6 +80,13 @@ fun SettingsScreen(
                 subtitle = "On space/enter, turn the typed word into Sinhala"
             ) {
                 Switch(checked = mixAutoSinhala, onCheckedChange = onMixAutoSinhalaChange)
+            }
+            SettingRow(
+                icon = "👆",
+                title = "Swipe to type",
+                subtitle = "Drag across letters instead of tapping each one — works for Sinhala & English"
+            ) {
+                Switch(checked = swipeTypingEnabled, onCheckedChange = onSwipeTypingChange)
             }
             SettingRow(icon = "🔊", title = "Key sound", subtitle = "Play a click on tap") {
                 Switch(checked = keySoundEnabled, onCheckedChange = onKeySoundChange)
