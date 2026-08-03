@@ -442,11 +442,24 @@ class SinKeyInputMethodService : InputMethodService() {
         }
     }
 
+    // The single ImeComposeView instance reused for the lifetime of the
+    // service. THE FIX for the duplicate/"ghost" keyboard rendering bug:
+    // onCreateInputView() can be invoked more than once per service
+    // instance (fullscreen-mode toggles, config changes, IME re-attach).
+    // Creating a brand-new ImeComposeView each time left the *previous*
+    // view's Compose composition alive and still subscribed to the
+    // collectAsState() flows below (nothing had ever called
+    // disposeComposition() on it), so for a frame or more two live
+    // ComposeViews could both be attached/recomposing, rendering the
+    // keyboard twice, stacked on top of itself. Building the composable
+    // once and returning the same view instance from every
+    // onCreateInputView() call means there is only ever one composition,
+    // so this can no longer happen.
+    private var imeComposeView: ImeComposeView? = null
+
     override fun onCreateInputView(): View {
-        // Return a fresh ImeComposeView every time. Android's setInputView()
-        // will place it inside parentPanel. We override setInputView() below
-        // to remove any previously attached view first, preventing the ghost
-        // duplicate keyboard that appears when the IME window is re-shown.
+        imeComposeView?.let { return it }
+
         val composeView = ImeComposeView(this) {
                 val themeMode by prefs.themeMode.collectAsState(initial = com.spmods.sinkey.data.ThemeMode.SYSTEM)
                 val isDark = when (themeMode) {
@@ -510,20 +523,22 @@ class SinKeyInputMethodService : InputMethodService() {
                 }
         }
 
+        imeComposeView = composeView
         return composeView
     }
 
-    private var currentInputView: View? = null
-
     override fun setInputView(view: View) {
-        // Before calling super (which does parentPanel.addView(view)), remove
-        // the previously attached view from its parent. Without this step,
-        // Android stacks the old and new views inside parentPanel producing
-        // the ghost/duplicate keyboard visible on screen.
-        currentInputView?.let { old ->
-            (old.parent as? ViewGroup)?.removeView(old)
+        // Defensive: if the passed-in view is already attached somewhere
+        // (shouldn't normally happen now that onCreateInputView reuses a
+        // single instance, but guards against any framework path that
+        // re-calls setInputView with a view that's still parented), detach
+        // it first so super.setInputView() doesn't end up with the same
+        // view attached twice / stacked under a new one.
+        (view.parent as? ViewGroup)?.let { parent ->
+            if (parent !== window?.window?.findViewById<ViewGroup>(android.R.id.content)) {
+                parent.removeView(view)
+            }
         }
-        currentInputView = view
         super.setInputView(view)
     }
 
@@ -684,6 +699,12 @@ class SinKeyInputMethodService : InputMethodService() {
                 ?.removePrimaryClipChangedListener(listener)
         }
         clipboardListener = null
+        // Dispose the Compose composition explicitly now that the service
+        // (and therefore this view) is truly being torn down, so it stops
+        // observing state and releases its composition resources instead
+        // of lingering as a zombie collector.
+        imeComposeView?.disposeComposition()
+        imeComposeView = null
         super.onDestroy()
     }
 
