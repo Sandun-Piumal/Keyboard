@@ -82,6 +82,11 @@ import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.waitForUpOrCancellation
 import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.gestures.detectDragGestures
+import androidx.compose.foundation.Canvas
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.layout.positionInParent
+import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Search
@@ -213,6 +218,21 @@ internal fun KeyboardView(
     // boardStack/shiftState above. Preview callers omit this and get no chip.
     autocorrectUndoWord: String? = null,
     onUndoAutocorrect: () -> Unit = {},
+    // Gesture (swipe-to-type) typing — see GestureTypingOverlay/
+    // GestureWordMatcher. Off unless swipeTypingEnabled is true (mirrors
+    // PreferencesManager.swipeTypingEnabled, collected by the IME service).
+    // onSwipeGesture reports the raw swiped letter sequence (already
+    // deduped/nearest-key-resolved by GestureTypingOverlay) plus the
+    // current typing language, and gets back candidate words ranked best-
+    // first — actual dictionary matching happens in the service (see
+    // SinKeyInputMethodService.resolveGestureCandidates) since that's
+    // where wordRepo/serviceScope already live; the overlay itself has no
+    // coroutine scope of its own for DB access. The best candidate is
+    // committed automatically; the rest populate the suggestion strip so
+    // the user can tap an alternative, the same as typed-word suggestions.
+    swipeTypingEnabled: Boolean = false,
+    onSwipeGesture: suspend (letters: String, language: String) -> List<String> = { _, _ -> emptyList() },
+    onGestureWordCommitted: (String) -> Unit = {},
     onKey: (String) -> Unit,
     onDismiss: (() -> Unit)? = null,
     inputType: Int = 0,
@@ -549,6 +569,15 @@ internal fun KeyboardView(
                     }
                 }
                 else -> Box {
+                    // Key-center map built up as MainKeyboardKeys lays out
+                    // each letter key (see LetterKey/NumberedLetterKey's
+                    // onPositioned) — GestureTypingOverlay reads this once
+                    // a swipe finishes to translate the touch path into a
+                    // letter sequence. Only actually collected when gesture
+                    // typing is on (onKeyPositioned below is null otherwise),
+                    // so this costs nothing when the feature is off.
+                    val keyPositions = remember { mutableStateMapOf<Char, KeyPoint>() }
+
                     MainKeyboardKeys(
                         currentLanguage = currentLanguage,
                         shift = shift, shiftLocked = shiftLocked,
@@ -560,8 +589,22 @@ internal fun KeyboardView(
                         onSymbols = { pushBoard(Board.SYMBOLS) },
                         onEmojiPicker = { pushBoard(Board.EMOJI) },
                         onLangTooltip = { showLangTooltip = true },
-                        imeAction = inputType
+                        imeAction = inputType,
+                        onKeyPositioned = if (swipeTypingEnabled) { { ch, coords ->
+                            val center = coords.size.center
+                            val positionInParent = coords.positionInParent()
+                            keyPositions[ch] = KeyPoint(ch, positionInParent.x + center.x, positionInParent.y + center.y)
+                        } } else null
                     )
+
+                    if (swipeTypingEnabled) {
+                        GestureTypingOverlay(
+                            keyPositions = keyPositions,
+                            currentLanguage = currentLanguage,
+                            onSwipeGesture = onSwipeGesture,
+                            onWordCommitted = onGestureWordCommitted
+                        )
+                    }
                 }
             }
         }
@@ -605,7 +648,15 @@ internal fun MainKeyboardKeys(
     onSymbols: () -> Unit,
     onEmojiPicker: () -> Unit,
     onLangTooltip: () -> Unit,
-    imeAction: Int = android.view.inputmethod.EditorInfo.IME_ACTION_NONE
+    imeAction: Int = android.view.inputmethod.EditorInfo.IME_ACTION_NONE,
+    // Reports every letter key's on-screen center (in this Column's local
+    // coordinate space) as they're laid out — GestureTypingOverlay collects
+    // these into the key-position map GestureWordMatcher needs. null
+    // (the default) skips all the onGloballyPositioned work entirely, so
+    // this has no cost when gesture typing is off (see KeyboardView's own
+    // swipeTypingEnabled gate, which is what actually decides whether a
+    // non-null callback is passed in).
+    onKeyPositioned: ((Char, androidx.compose.ui.layout.LayoutCoordinates) -> Unit)? = null
 ) {
     Column(
         modifier = Modifier.fillMaxWidth()
@@ -614,8 +665,10 @@ internal fun MainKeyboardKeys(
     ) {
         // FIX #5: Pass onShiftChange so letter rows can reset one-shot shift.
         NumberedKeyRow(EnglishRows[0], topRowNumbers, shift, keyHeight, colors, keyShape,
+            onKeyPositioned = onKeyPositioned,
             onKey = { onKey(it); if (shift && !shiftLocked) onShiftStateChange(SinKeyInputMethodService.ShiftState.OFF) })
         KeyRow(EnglishRows[1], shift, keyHeight, colors, keyShape,
+            onKeyPositioned = onKeyPositioned,
             onKey = { onKey(it); if (shift && !shiftLocked) onShiftStateChange(SinKeyInputMethodService.ShiftState.OFF) })
         Row(
             modifier = Modifier.fillMaxWidth().padding(vertical = 3.dp),
@@ -630,7 +683,10 @@ internal fun MainKeyboardKeys(
             EnglishRows[2].forEach { k ->
                 val display = if (shift) k.uppercase() else k
                 // FIX #5: Reset shift after each letter (one-shot shift behaviour).
-                LetterKey(label = display, weight = 1f, keyHeight = keyHeight, colors = colors, keyShape = keyShape) {
+                LetterKey(
+                    label = display, weight = 1f, keyHeight = keyHeight, colors = colors, keyShape = keyShape,
+                    onPositioned = onKeyPositioned?.let { cb -> { coords: androidx.compose.ui.layout.LayoutCoordinates -> cb(k.lowercase().firstOrNull() ?: ' ', coords) } }
+                ) {
                     onKey(display)
                     if (shift && !shiftLocked) onShiftStateChange(SinKeyInputMethodService.ShiftState.OFF)
                 }
@@ -661,6 +717,132 @@ internal fun MainKeyboardKeys(
         }
     }
 }
+
+/**
+ * Transparent layer drawn over MainKeyboardKeys' letter rows that turns a
+ * finger-drag across the letters into a committed word (gesture / swipe
+ * typing). Deliberately a separate sibling Box rather than logic bolted
+ * onto LetterKey itself: LetterKey already owns a pointerInput+clickable
+ * pair for tap/press-preview, and layering a second, independent drag
+ * recognizer directly on the same keys risks the two fighting over the
+ * same pointer events. As a sibling overlay, this only starts consuming
+ * the gesture once a drag is already unambiguous (see the touchSlop
+ * threshold in the drag handler below), by which point it's clearly not a
+ * tap — a plain tap still reaches the LetterKey underneath untouched,
+ * since a drag that never exceeds slop is never claimed here at all.
+ *
+ * Visible trail: draws the swiped path with a fading, colour-shifting
+ * stroke while dragging (see traiLColor/strokeWidth below) — purely
+ * cosmetic feedback, cleared as soon as the gesture ends.
+ */
+@Composable
+private fun GestureTypingOverlay(
+    keyPositions: Map<Char, KeyPoint>,
+    currentLanguage: String,
+    onSwipeGesture: suspend (letters: String, language: String) -> List<String>,
+    onWordCommitted: (String) -> Unit
+) {
+    val scope = rememberCoroutineScope()
+    var pathPoints by remember { mutableStateOf(listOf<Offset>()) }
+    var isDragging by remember { mutableStateOf(false) }
+
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .pointerInput(keyPositions, currentLanguage) {
+                // Only a currentLanguage of "si" or "en" makes sense for
+                // gesture matching (mix mode doesn't have a single fixed
+                // dictionary to score against) — mix mode swipes fall
+                // through as an ordinary drag with no word committed,
+                // which detectDragGestures still handles safely (an empty
+                // onSwipeGesture result below just produces no candidates).
+                detectDragGestures(
+                    onDragStart = { offset ->
+                        isDragging = true
+                        pathPoints = listOf(offset)
+                    },
+                    onDrag = { change, _ ->
+                        change.consume()
+                        pathPoints = pathPoints + change.position
+                    },
+                    onDragEnd = {
+                        isDragging = false
+                        val finishedPath = pathPoints
+                        pathPoints = emptyList()
+                        if (finishedPath.size >= MIN_GESTURE_POINTS && keyPositions.isNotEmpty()) {
+                            val swipeKeyPoints = finishedPath.map { KeyPoint(' ', it.x, it.y) }
+                            val letters = nearestLettersAlongPath(swipeKeyPoints, keyPositions)
+                            if (letters.length >= MIN_GESTURE_LETTERS) {
+                                scope.launch {
+                                    val candidates = onSwipeGesture(letters, currentLanguage)
+                                    candidates.firstOrNull()?.let { onWordCommitted(it) }
+                                }
+                            }
+                        }
+                    },
+                    onDragCancel = {
+                        isDragging = false
+                        pathPoints = emptyList()
+                    }
+                )
+            }
+    ) {
+        if (isDragging && pathPoints.size >= 2) {
+            Canvas(modifier = Modifier.fillMaxSize()) {
+                val path = androidx.compose.ui.graphics.Path().apply {
+                    moveTo(pathPoints.first().x, pathPoints.first().y)
+                    pathPoints.drop(1).forEach { lineTo(it.x, it.y) }
+                }
+                drawPath(
+                    path = path,
+                    color = DeshGreen.copy(alpha = 0.55f),
+                    style = androidx.compose.ui.graphics.drawscope.Stroke(
+                        width = 12f,
+                        cap = androidx.compose.ui.graphics.StrokeCap.Round,
+                        join = androidx.compose.ui.graphics.StrokeJoin.Round
+                    )
+                )
+            }
+        }
+    }
+}
+
+/**
+ * Reduces a raw swipe path down to the sequence of letters it actually
+ * passed near, in order, with consecutive duplicates collapsed — e.g. a
+ * path that lingers over "e" for several sampled points only contributes
+ * one 'e', matching how GestureWordMatcher.idealPath also collapses
+ * consecutive-duplicate letters in candidate words. This is a coarse first
+ * pass (nearest key at each sample point); the real ranking happens in
+ * GestureWordMatcher.match against the full path shape, not just this
+ * letter sequence — this function only needs to be good enough to build a
+ * plausible query string.
+ */
+private fun nearestLettersAlongPath(path: List<KeyPoint>, keyPositions: Map<Char, KeyPoint>): String {
+    val sb = StringBuilder()
+    var lastChar: Char? = null
+    for (point in path) {
+        var closestChar: Char? = null
+        var closestDist = Float.MAX_VALUE
+        for ((ch, key) in keyPositions) {
+            val dx = point.x - key.x
+            val dy = point.y - key.y
+            val dist = dx * dx + dy * dy
+            if (dist < closestDist) {
+                closestDist = dist
+                closestChar = ch
+            }
+        }
+        if (closestChar != null && closestChar != lastChar) {
+            sb.append(closestChar)
+            lastChar = closestChar
+        }
+    }
+    return sb.toString()
+}
+
+private const val MIN_GESTURE_POINTS = 6
+private const val MIN_GESTURE_LETTERS = 2
 
 @Composable
 private fun SymbolsKeyboardKeys(
@@ -1060,6 +1242,10 @@ private fun NumberedKeyRow(
     keyHeight: Dp,
     colors: KeyboardColors,
     keyShape: RoundedCornerShape,
+    // (keyChar, coordinates) -> Unit — see LetterKey's onPositioned doc.
+    // keyChar is the *unshifted* lowercase char, since GestureWordMatcher
+    // always matches against lowercase candidate words.
+    onKeyPositioned: ((Char, androidx.compose.ui.layout.LayoutCoordinates) -> Unit)? = null,
     onKey: (String) -> Unit
 ) {
     Row(
@@ -1072,6 +1258,7 @@ private fun NumberedKeyRow(
             NumberedLetterKey(
                 label = display, number = num, weight = 1f,
                 keyHeight = keyHeight, colors = colors, keyShape = keyShape,
+                onPositioned = onKeyPositioned?.let { cb -> { coords: androidx.compose.ui.layout.LayoutCoordinates -> cb(k.lowercase().firstOrNull() ?: ' ', coords) } },
                 onTap = { onKey(display) },
                 onLongPress = { onKey(num) }
             )
@@ -1086,6 +1273,7 @@ private fun KeyRow(
     keyHeight: Dp,
     colors: KeyboardColors,
     keyShape: RoundedCornerShape,
+    onKeyPositioned: ((Char, androidx.compose.ui.layout.LayoutCoordinates) -> Unit)? = null,
     onKey: (String) -> Unit
 ) {
     Row(
@@ -1095,7 +1283,10 @@ private fun KeyRow(
         Box(modifier = Modifier.weight(0.5f))
         keys.forEach { k ->
             val display = if (shift) k.uppercase() else k
-            LetterKey(label = display, weight = 1f, keyHeight = keyHeight, colors = colors, keyShape = keyShape) { onKey(display) }
+            LetterKey(
+                label = display, weight = 1f, keyHeight = keyHeight, colors = colors, keyShape = keyShape,
+                onPositioned = onKeyPositioned?.let { cb -> { coords: androidx.compose.ui.layout.LayoutCoordinates -> cb(k.lowercase().firstOrNull() ?: ' ', coords) } }
+            ) { onKey(display) }
         }
         Box(modifier = Modifier.weight(0.5f))
     }
@@ -1188,6 +1379,7 @@ private fun KeyPreviewPopup(label: String, keyHeight: Dp, colors: KeyboardColors
 private fun RowScope.NumberedLetterKey(
     label: String, number: String, weight: Float,
     keyHeight: Dp, colors: KeyboardColors, keyShape: RoundedCornerShape,
+    onPositioned: ((androidx.compose.ui.layout.LayoutCoordinates) -> Unit)? = null,
     onTap: () -> Unit, onLongPress: () -> Unit
 ) {
     var pressed by remember { mutableStateOf(false) }
@@ -1198,6 +1390,7 @@ private fun RowScope.NumberedLetterKey(
             .scale(bumpScale)
             .clip(keyShape)
             .background(if (pressed) colors.keyBg.copy(alpha = 0.6f) else colors.keyBg)
+            .let { m -> if (onPositioned != null) m.onGloballyPositioned(onPositioned) else m }
             .combinedClickable(onClick = { onTap() }, onLongClick = { onLongPress() })
             .pointerInput(Unit) {
                 awaitEachGesture {
@@ -1226,6 +1419,13 @@ private fun RowScope.NumberedLetterKey(
 private fun RowScope.LetterKey(
     label: String, weight: Float,
     keyHeight: Dp, colors: KeyboardColors, keyShape: RoundedCornerShape,
+    // Reports this key's center in the root keyboard's coordinate space
+    // whenever it's laid out/moved — used only by GestureTypingOverlay
+    // (see KeyboardKeys' gestureKeyPositions state) to build the key-center
+    // map GestureWordMatcher needs. Left null everywhere gesture typing
+    // isn't relevant (symbol/numpad keys, previews) so this stays a no-op
+    // there instead of needing every LetterKey call site updated.
+    onPositioned: ((androidx.compose.ui.layout.LayoutCoordinates) -> Unit)? = null,
     onTap: () -> Unit
 ) {
     var pressed by remember { mutableStateOf(false) }
@@ -1236,6 +1436,7 @@ private fun RowScope.LetterKey(
             .scale(bumpScale)
             .clip(keyShape)
             .background(if (pressed) colors.keyBg.copy(alpha = 0.6f) else colors.keyBg)
+            .let { m -> if (onPositioned != null) m.onGloballyPositioned(onPositioned) else m }
             // clickable handles the actual tap/long-press logic reliably.
             // pointerInput only tracks down/up for the visual pressed state.
             .clickable { onTap() }
