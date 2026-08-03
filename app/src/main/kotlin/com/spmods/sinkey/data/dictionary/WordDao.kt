@@ -37,6 +37,18 @@ interface WordDao {
     @Query("SELECT * FROM words WHERE word = :word AND language = :language LIMIT 1")
     suspend fun findExact(word: String, language: String): WordEntity?
 
+    /**
+     * Every word known for [language] (bundled base dictionary + anything
+     * the user has typed/learned), ordered by frequency. Used only by
+     * gesture typing's word matcher (GestureWordMatcher) — swipe input
+     * doesn't have clean letter boundaries the way typed prefixes do, so it
+     * can't narrow the search with a WHERE...LIKE prefix query the way
+     * findByPrefix does; it needs the full candidate pool to score against
+     * the swiped path instead.
+     */
+    @Query("SELECT * FROM words WHERE language = :language ORDER BY frequency DESC")
+    suspend fun getAllForLanguage(language: String): List<WordEntity>
+
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun upsert(entity: WordEntity)
 
@@ -55,4 +67,22 @@ interface WordDao {
         """
     )
     suspend fun learnWord(word: String, language: String, now: Long = System.currentTimeMillis())
+
+    /**
+     * Inserts [word] as a base-dictionary entry (see DictionarySeeder) at a
+     * low starting [frequency] — only if it isn't already present. Unlike
+     * learnWord(), this never bumps an existing row: seeding runs on every
+     * app start (see DictionarySeeder's own has-seeded guard, which this
+     * duplicates defensively), and repeatedly "learning" ~3000 bundled
+     * words on every launch would both be wasteful and would let bundled
+     * words silently out-rank words the user has genuinely typed many
+     * times, defeating the point of frequency-based ranking.
+     */
+    @Query(
+        """
+        INSERT OR IGNORE INTO words (word, language, frequency, lastUsed)
+        VALUES (:word, :language, :frequency, :now)
+        """
+    )
+    suspend fun seedWord(word: String, language: String, frequency: Int = 1, now: Long = 0L)
 }
