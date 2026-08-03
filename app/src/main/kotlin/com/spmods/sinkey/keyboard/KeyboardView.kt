@@ -608,7 +608,12 @@ internal fun KeyboardView(
                             keyPositions = keyPositions,
                             currentLanguage = currentLanguage,
                             onSwipeGesture = onSwipeGesture,
-                            onWordCommitted = onGestureWordCommitted
+                            onWordCommitted = onGestureWordCommitted,
+                            // Valid here: this call site is a direct child
+                            // of the enclosing Box(Modifier.fillMaxWidth())
+                            // a few lines up, alongside MainKeyboardKeys —
+                            // exactly the BoxScope matchParentSize() needs.
+                            modifier = Modifier.matchParentSize()
                         )
                     }
                 }
@@ -746,28 +751,28 @@ private fun GestureTypingOverlay(
     keyPositions: Map<Char, KeyPoint>,
     currentLanguage: String,
     onSwipeGesture: suspend (letters: String, language: String) -> List<String>,
-    onWordCommitted: (String) -> Unit
+    onWordCommitted: (String) -> Unit,
+    // Passed as matchParentSize() by the caller (a direct child of its own
+    // enclosing Box, alongside MainKeyboardKeys) so this overlay is sized
+    // to exactly match the real keyboard content's resolved size rather
+    // than independently filling whatever space it's offered — see the
+    // Box below for why that distinction matters.
+    modifier: Modifier = Modifier
 ) {
     val scope = rememberCoroutineScope()
     var pathPoints by remember { mutableStateOf(listOf<Offset>()) }
     var isDragging by remember { mutableStateOf(false) }
 
-    // matchParentSize() rather than fillMaxSize(): this Box is a sibling of
-    // MainKeyboardKeys inside a parent Box that isn't given an explicit
-    // height (it sizes itself to its tallest child, i.e. MainKeyboardKeys'
-    // own Column). fillMaxSize() tries to fill whatever the *incoming*
-    // constraints allow, independently of what MainKeyboardKeys actually
-    // resolves to — inside an IME window (whose own height comes from a
-    // fixed dp formula rather than real on-screen measurement, see
-    // measuredMainContentHeight), that let this overlay's resolved size
-    // disagree with the real keyboard content's size, which showed up as a
-    // second, duplicated-looking keyboard region with a gap beneath the
-    // real one. matchParentSize() instead sizes strictly to the parent
-    // Box's own resolved size (which MainKeyboardKeys determines), so this
-    // overlay can never be taller than the actual keyboard it's laid over.
+    // This Box fills whatever space GestureTypingOverlay itself is given —
+    // sizing it correctly relative to MainKeyboardKeys (its sibling in the
+    // caller's Box) is done by the caller passing a matchParentSize()
+    // modifier into the `modifier` parameter below, not by this function
+    // trying to match a BoxScope it isn't actually inside (matchParentSize
+    // only works on a direct child of the enclosing Box, and this Box IS
+    // that child from the caller's point of view — see modifier param).
     Box(
-        modifier = Modifier
-            .matchParentSize()
+        modifier = modifier
+            .fillMaxSize()
             .pointerInput(keyPositions, currentLanguage) {
                 // Only a currentLanguage of "si" or "en" makes sense for
                 // gesture matching (mix mode doesn't have a single fixed
