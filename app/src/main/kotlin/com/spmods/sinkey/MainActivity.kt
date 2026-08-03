@@ -110,6 +110,7 @@ private fun SinKeyApp(prefs: PreferencesManager) {
     val bottomSpaceSize by prefs.bottomSpaceSize.collectAsState(initial = 0f)
     val showKeyBorders by prefs.showKeyBorders.collectAsState(initial = true)
     val mixAutoSinhala by prefs.mixAutoSinhala.collectAsState(initial = false)
+    val swipeTypingEnabled by prefs.swipeTypingEnabled.collectAsState(initial = false)
 
     // ── Back press priority (highest → lowest) ───────────────────────────────
     // 1. Keyboard preview open  → close preview
@@ -205,11 +206,13 @@ private fun SinKeyApp(prefs: PreferencesManager) {
                         keyVibrateEnabled = keyVibrateEnabled,
                         themeMode = themeMode,
                         mixAutoSinhala = mixAutoSinhala,
+                        swipeTypingEnabled = swipeTypingEnabled,
                         onLanguageChange = { lang -> scope.launch { prefs.setDefaultLanguage(lang) } },
                         onKeySoundChange = { enabled -> scope.launch { prefs.setKeySoundEnabled(enabled) } },
                         onKeyVibrateChange = { enabled -> scope.launch { prefs.setKeyVibrateEnabled(enabled) } },
                         onThemeModeChange = { mode -> scope.launch { prefs.setThemeMode(mode) } },
                         onMixAutoSinhalaChange = { enabled -> scope.launch { prefs.setMixAutoSinhala(enabled) } },
+                        onSwipeTypingChange = { enabled -> scope.launch { prefs.setSwipeTypingEnabled(enabled) } },
                         onOpenKeyboardHeight = { settingsSubScreen = SettingsSubScreen.KEYBOARD_HEIGHT }
                     )
                 }
