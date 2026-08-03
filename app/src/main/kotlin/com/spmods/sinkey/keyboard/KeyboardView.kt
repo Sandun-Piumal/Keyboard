@@ -26,6 +26,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.wrapContentHeight
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.defaultMinSize
@@ -591,9 +592,13 @@ internal fun KeyboardView(
                         onLangTooltip = { showLangTooltip = true },
                         imeAction = inputType,
                         onKeyPositioned = if (swipeTypingEnabled) { { ch, coords ->
-                            val center = coords.size.center
+                            // coords.size is an IntSize (width/height only,
+                            // no built-in .center without an extra import)
+                            // — compute the center manually instead.
+                            val centerX = coords.size.width / 2f
+                            val centerY = coords.size.height / 2f
                             val positionInParent = coords.positionInParent()
-                            keyPositions[ch] = KeyPoint(ch, positionInParent.x + center.x, positionInParent.y + center.y)
+                            keyPositions[ch] = KeyPoint(ch, positionInParent.x + centerX, positionInParent.y + centerY)
                         } } else null
                     )
 
