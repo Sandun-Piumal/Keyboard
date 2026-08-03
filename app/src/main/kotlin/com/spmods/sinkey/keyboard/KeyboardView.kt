@@ -27,7 +27,11 @@ import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.matchParentSize
+// matchParentSize() is a member of BoxScope (not a top-level extension
+// function like fillMaxSize), so it needs no import — it resolves
+// automatically via the implicit BoxScope receiver at each call site
+// inside a Box{} content lambda. Importing it as if it were top-level
+// doesn't compile.
 import androidx.compose.foundation.layout.wrapContentHeight
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.defaultMinSize
