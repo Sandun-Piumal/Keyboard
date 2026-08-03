@@ -5,7 +5,6 @@ import android.media.AudioManager
 import android.os.VibrationEffect
 import android.os.Vibrator
 import android.view.View
-import android.view.ViewGroup
 import android.view.inputmethod.EditorInfo
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -527,20 +526,20 @@ class SinKeyInputMethodService : InputMethodService() {
         return composeView
     }
 
-    override fun setInputView(view: View) {
-        // Defensive: if the passed-in view is already attached somewhere
-        // (shouldn't normally happen now that onCreateInputView reuses a
-        // single instance, but guards against any framework path that
-        // re-calls setInputView with a view that's still parented), detach
-        // it first so super.setInputView() doesn't end up with the same
-        // view attached twice / stacked under a new one.
-        (view.parent as? ViewGroup)?.let { parent ->
-            if (parent !== window?.window?.findViewById<ViewGroup>(android.R.id.content)) {
-                parent.removeView(view)
-            }
-        }
-        super.setInputView(view)
-    }
+    // NOTE: no setInputView() override. InputMethodService.setInputView()
+    // already does the correct attach/detach dance internally (it removes
+    // any existing child of its own mInputFrame before adding the new
+    // view). A previous version of this code overrode setInputView() to
+    // manually detach the incoming view's *current* parent first — but on
+    // some devices/apps the framework calls setInputView() with a view
+    // that's still attached to the *previous* mInputFrame mid-transition;
+    // ripping it out of that frame at the wrong moment (rather than
+    // letting the framework's own addView/removeView sequence handle it
+    // atomically) was itself the cause of two input frames briefly
+    // co-existing on screen — intermittent and app-dependent, matching
+    // "happens in some apps, sometimes". Now that onCreateInputView()
+    // always returns the same stable ImeComposeView instance, the
+    // framework's default handling is sufficient on its own.
 
     override fun onWindowShown() {
         super.onWindowShown()
