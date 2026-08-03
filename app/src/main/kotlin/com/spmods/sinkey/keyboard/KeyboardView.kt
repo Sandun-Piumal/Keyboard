@@ -27,6 +27,7 @@ import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.matchParentSize
 import androidx.compose.foundation.layout.wrapContentHeight
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.defaultMinSize
@@ -569,7 +570,7 @@ internal fun KeyboardView(
                         }
                     }
                 }
-                else -> Box {
+                else -> Box(modifier = Modifier.fillMaxWidth()) {
                     // Key-center map built up as MainKeyboardKeys lays out
                     // each letter key (see LetterKey/NumberedLetterKey's
                     // onPositioned) — GestureTypingOverlay reads this once
@@ -751,9 +752,22 @@ private fun GestureTypingOverlay(
     var pathPoints by remember { mutableStateOf(listOf<Offset>()) }
     var isDragging by remember { mutableStateOf(false) }
 
+    // matchParentSize() rather than fillMaxSize(): this Box is a sibling of
+    // MainKeyboardKeys inside a parent Box that isn't given an explicit
+    // height (it sizes itself to its tallest child, i.e. MainKeyboardKeys'
+    // own Column). fillMaxSize() tries to fill whatever the *incoming*
+    // constraints allow, independently of what MainKeyboardKeys actually
+    // resolves to — inside an IME window (whose own height comes from a
+    // fixed dp formula rather than real on-screen measurement, see
+    // measuredMainContentHeight), that let this overlay's resolved size
+    // disagree with the real keyboard content's size, which showed up as a
+    // second, duplicated-looking keyboard region with a gap beneath the
+    // real one. matchParentSize() instead sizes strictly to the parent
+    // Box's own resolved size (which MainKeyboardKeys determines), so this
+    // overlay can never be taller than the actual keyboard it's laid over.
     Box(
         modifier = Modifier
-            .fillMaxSize()
+            .matchParentSize()
             .pointerInput(keyPositions, currentLanguage) {
                 // Only a currentLanguage of "si" or "en" makes sense for
                 // gesture matching (mix mode doesn't have a single fixed
@@ -793,7 +807,7 @@ private fun GestureTypingOverlay(
             }
     ) {
         if (isDragging && pathPoints.size >= 2) {
-            Canvas(modifier = Modifier.fillMaxSize()) {
+            Canvas(modifier = Modifier.matchParentSize()) {
                 val path = androidx.compose.ui.graphics.Path().apply {
                     moveTo(pathPoints.first().x, pathPoints.first().y)
                     pathPoints.drop(1).forEach { lineTo(it.x, it.y) }
