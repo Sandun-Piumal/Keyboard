@@ -13,6 +13,7 @@ import com.spmods.sinkey.R
 import androidx.emoji2.bundled.BundledEmojiCompatConfig
 import androidx.emoji2.text.EmojiCompat
 import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.findViewTreeLifecycleOwner
 import androidx.lifecycle.setViewTreeLifecycleOwner
 import androidx.savedstate.setViewTreeSavedStateRegistryOwner
 import androidx.lifecycle.setViewTreeViewModelStoreOwner
@@ -543,18 +544,42 @@ class SinKeyInputMethodService : InputMethodService() {
 
     override fun onWindowShown() {
         super.onWindowShown()
-        // Re-apply owners on every show in case the IME window was recreated.
-        window?.window?.decorView?.let { decor ->
+        // Only re-apply the tree owners if the decorView doesn't already
+        // have them (i.e. the window was actually torn down and rebuilt).
+        // Previously this ran unconditionally on every onWindowShown call,
+        // including the transient hide/show blips Android sends when the
+        // user taps something in the host app's OWN chrome — WhatsApp's
+        // top toolbar, its call icon, its overflow menu — none of which
+        // actually detach our view or end the input session. Re-setting
+        // the same owner objects that were already set, and re-firing
+        // ON_RESUME, while the ImeComposeView is still fully attached and
+        // composed, forced an unnecessary recomposition/relayout pass in
+        // the middle of that focus blip. On some OEM window managers the
+        // compositor briefly shows both the pre-relayout and
+        // post-relayout frame during that pass — a transient duplicate
+        // keyboard that resolves a moment later, matching exactly what
+        // happens when tapping WhatsApp's toolbar/call/menu icons.
+        val decor = window?.window?.decorView
+        if (decor != null && decor.findViewTreeLifecycleOwner() !== lifecycleOwner) {
             decor.setViewTreeLifecycleOwner(lifecycleOwner)
             decor.setViewTreeSavedStateRegistryOwner(lifecycleOwner)
             decor.setViewTreeViewModelStoreOwner(lifecycleOwner)
         }
-        lifecycleOwner.handleLifecycleEvent(Lifecycle.Event.ON_RESUME)
+        if (lifecycleOwner.lifecycle.currentState != Lifecycle.State.RESUMED) {
+            lifecycleOwner.handleLifecycleEvent(Lifecycle.Event.ON_RESUME)
+        }
     }
 
     override fun onWindowHidden() {
         super.onWindowHidden()
-        lifecycleOwner.handleLifecycleEvent(Lifecycle.Event.ON_PAUSE)
+        // Same reasoning as onWindowShown above: only actually pause if
+        // we're not already paused/below, so a rapid hidden→shown blip
+        // from the host app's own chrome doesn't force a
+        // pause-then-immediately-resume cycle on a view that never
+        // stopped being attached.
+        if (lifecycleOwner.lifecycle.currentState == Lifecycle.State.RESUMED) {
+            lifecycleOwner.handleLifecycleEvent(Lifecycle.Event.ON_PAUSE)
+        }
     }
 
     override fun onStartInputView(info: EditorInfo?, restarting: Boolean) {
