@@ -459,7 +459,7 @@ class SinKeyInputMethodService : InputMethodService() {
     override fun onCreateInputView(): View {
         imeComposeView?.let { return it }
 
-        val composeView = ImeComposeView(this) {
+        val composeView = ImeComposeView(this, lifecycleOwner) {
                 val themeMode by prefs.themeMode.collectAsState(initial = com.spmods.sinkey.data.ThemeMode.SYSTEM)
                 val isDark = when (themeMode) {
                     com.spmods.sinkey.data.ThemeMode.LIGHT  -> false
