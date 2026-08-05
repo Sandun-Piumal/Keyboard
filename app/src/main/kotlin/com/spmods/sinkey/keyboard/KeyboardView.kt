@@ -91,6 +91,9 @@ import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.Canvas
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.getDistance
+import androidx.compose.ui.input.pointer.changedToUpIgnoreConsumed
+import androidx.compose.ui.input.pointer.PointerInputChange
 import androidx.compose.ui.layout.positionInParent
 import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.material.icons.Icons
@@ -782,37 +785,73 @@ private fun GestureTypingOverlay(
                 // gesture matching (mix mode doesn't have a single fixed
                 // dictionary to score against) — mix mode swipes fall
                 // through as an ordinary drag with no word committed,
-                // which detectDragGestures still handles safely (an empty
-                // onSwipeGesture result below just produces no candidates).
-                detectDragGestures(
-                    onDragStart = { offset ->
-                        isDragging = true
-                        pathPoints = listOf(offset)
-                    },
-                    onDrag = { change, _ ->
-                        change.consume()
-                        pathPoints = pathPoints + change.position
-                    },
-                    onDragEnd = {
-                        isDragging = false
-                        val finishedPath = pathPoints
-                        pathPoints = emptyList()
-                        if (finishedPath.size >= MIN_GESTURE_POINTS && keyPositions.isNotEmpty()) {
-                            val swipeKeyPoints = finishedPath.map { KeyPoint(' ', it.x, it.y) }
-                            val letters = nearestLettersAlongPath(swipeKeyPoints, keyPositions)
-                            if (letters.length >= MIN_GESTURE_LETTERS) {
-                                scope.launch {
-                                    val candidates = onSwipeGesture(letters, currentLanguage)
-                                    candidates.firstOrNull()?.let { onWordCommitted(it) }
+                // which the logic below still handles safely (an empty
+                // onSwipeGesture result just produces no candidates).
+                //
+                // IMPORTANT: this used to be a bare detectDragGestures(...),
+                // which claims (consumes) the pointer's very first down
+                // event unconditionally. Because this overlay sits on top
+                // of MainKeyboardKeys and fills the same area, that meant
+                // *every* touch — plain taps included — was swallowed here
+                // and never reached the letter/backspace/space/etc. keys
+                // underneath, i.e. the whole keyboard looked "dead" whenever
+                // swipe typing was on. Fixed the same way every other
+                // gesture in this file already does it (see
+                // NumberedLetterKey/LetterKey's own awaitFirstDown(
+                // requireUnconsumed = false) above): don't consume the
+                // down, and don't consume any movement either until it's
+                // clearly a drag (past touchSlop) — only from that point on
+                // do we own the gesture and swallow further movement so a
+                // swipe doesn't also register as a scroll/other gesture. A
+                // touch that never exceeds slop is a tap and is left
+                // completely alone, so it still reaches the key beneath.
+                awaitEachGesture {
+                    val down = awaitFirstDown(requireUnconsumed = false)
+                    var dragging = false
+                    val touchSlop = viewConfiguration.touchSlop
+
+                    while (true) {
+                        val event = awaitPointerEvent()
+                        val change = event.changes.firstOrNull { it.id == down.id } ?: break
+                        if (change.changedToUpIgnoreConsumed()) {
+                            if (dragging) {
+                                change.consume()
+                                isDragging = false
+                                val finishedPath = pathPoints
+                                pathPoints = emptyList()
+                                if (finishedPath.size >= MIN_GESTURE_POINTS && keyPositions.isNotEmpty()) {
+                                    val swipeKeyPoints = finishedPath.map { KeyPoint(' ', it.x, it.y) }
+                                    val letters = nearestLettersAlongPath(swipeKeyPoints, keyPositions)
+                                    if (letters.length >= MIN_GESTURE_LETTERS) {
+                                        scope.launch {
+                                            val candidates = onSwipeGesture(letters, currentLanguage)
+                                            candidates.firstOrNull()?.let { onWordCommitted(it) }
+                                        }
+                                    }
                                 }
                             }
+                            break
                         }
-                    },
-                    onDragCancel = {
-                        isDragging = false
-                        pathPoints = emptyList()
+
+                        if (!dragging) {
+                            val travelled = (change.position - down.position).getDistance()
+                            if (travelled > touchSlop) {
+                                // Past the slop threshold — this is now
+                                // unambiguously a swipe, not a tap. Start
+                                // claiming the gesture from here on.
+                                dragging = true
+                                isDragging = true
+                                pathPoints = listOf(down.position, change.position)
+                                change.consume()
+                            }
+                            // Still under slop: leave the change unconsumed
+                            // so a tap can still land on the key beneath.
+                        } else {
+                            pathPoints = pathPoints + change.position
+                            change.consume()
+                        }
                     }
-                )
+                }
             }
     ) {
         if (isDragging && pathPoints.size >= 2) {
