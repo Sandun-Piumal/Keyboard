@@ -1183,18 +1183,20 @@ class SinKeyInputMethodService : InputMethodService() {
      * which the overlay itself has).
      *
      * [language] is whatever GestureTypingOverlay was showing when the
-     * swipe happened (currentLanguage.value at drag-start) — "mix" is
-     * passed through as-is and simply returns no candidates, since mix
-     * mode doesn't have one single dictionary to score a swipe path
-     * against the way pure "si"/"en" do (see GestureTypingOverlay's own
-     * doc comment on this same limitation).
+     * swipe happened (currentLanguage.value at drag-start). "si"/"en" score
+     * against their one matching dictionary as before. "mix" doesn't have a
+     * single fixed dictionary, so instead of bailing out with no
+     * candidates it now scores the swipe against *both* dictionaries and
+     * merges the results — same subsequence/length heuristic run twice,
+     * best matches from either language interleaved by score. This mirrors
+     * how mix mode already treats typed (non-gesture) input: both
+     * languages are live candidates at once, not a hard either/or choice.
      */
     private suspend fun resolveGestureCandidates(letters: String, language: String): List<String> {
-        if (language != "si" && language != "en") return emptyList()
         if (letters.length < 2) return emptyList()
 
-        val dictionary = wordRepo.allWords(language)
-        if (dictionary.isEmpty()) return emptyList()
+        val languages = if (language == "mix") listOf("si", "en") else listOf(language)
+        if (languages.any { it != "si" && it != "en" }) return emptyList()
 
         // GestureWordMatcher's full path-shape scoring already ran inside
         // GestureTypingOverlay (which has the actual on-screen key
@@ -1203,7 +1205,35 @@ class SinKeyInputMethodService : InputMethodService() {
         // subsequence/length heuristics instead, which keeps this function
         // independent of Compose/coordinate state — it only ever receives
         // a String from the overlay, never screen positions.
-        return rankWordsByLetterSequence(letters, dictionary).take(5)
+        //
+        // For mix mode, each language's dictionary is ranked separately
+        // (its own scores aren't comparable across languages purely by
+        // number, since e.g. word-length distributions differ), then the
+        // two ranked lists are interleaved so the best candidate from
+        // whichever language matched more cleanly comes first, rather than
+        // one language's whole list always winning over the other's.
+        val rankedPerLanguage = languages.mapNotNull { lang ->
+            val dictionary = wordRepo.allWords(lang)
+            if (dictionary.isEmpty()) null else rankWordsByLetterSequence(letters, dictionary)
+        }
+        if (rankedPerLanguage.isEmpty()) return emptyList()
+        if (rankedPerLanguage.size == 1) return rankedPerLanguage[0].take(5)
+
+        val merged = LinkedHashSet<String>()
+        var index = 0
+        while (merged.size < 5) {
+            var addedAny = false
+            for (ranked in rankedPerLanguage) {
+                if (index < ranked.size) {
+                    merged.add(ranked[index])
+                    addedAny = true
+                    if (merged.size >= 5) break
+                }
+            }
+            if (!addedAny) break
+            index++
+        }
+        return merged.toList()
     }
 
     /**
