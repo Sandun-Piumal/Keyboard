@@ -27,6 +27,11 @@ object StickerFileStore {
     private const val DIR_NAME = "stickers"
     private const val MAX_DIMENSION_PX = 512 // stickers don't need to be larger than this on any screen
     private const val MAX_STICKER_BYTES = 100 * 1024 // WhatsApp rejects static stickers over 100KB
+    // Matches StickerImageEditorView's own text field cap (see its
+    // BasicTextField onValueChange). Text Sticker's draft buffer
+    // (StickerTextComposeView) previously had no equivalent cap, so very
+    // long captions could reach saveFromText() uncapped.
+    private const val MAX_TEXT_STICKER_CHARS = 40
 
     private fun dir(context: Context): File =
         File(context.filesDir, DIR_NAME).apply { if (!exists()) mkdirs() }
@@ -60,41 +65,62 @@ object StickerFileStore {
      * within the canvas width so longer phrases don't clip.
      */
     fun saveFromText(context: Context, text: String, textColor: Int = Color.WHITE): String? {
-        if (text.isBlank()) return null
-        val size = MAX_DIMENSION_PX
-        val bitmap = Bitmap.createBitmap(size, size, Bitmap.Config.ARGB_8888)
-        val canvas = Canvas(bitmap)
-        // Fully transparent background — PNG preserves alpha, so this
-        // becomes a "sticker" (no opaque box around the text) once committed.
-        canvas.drawColor(Color.TRANSPARENT)
-
-        val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-            color = textColor
-            textAlign = Paint.Align.CENTER
-            isFakeBoldText = true
-        }
-
-        // Start large and shrink until the text fits within ~85% of the
-        // canvas width, so short text (e.g. "Hi") stays big and bold while
-        // longer phrases still fit without being clipped.
-        val maxTextWidth = size * 0.85f
-        var textSizePx = size * 0.4f
-        paint.textSize = textSizePx
-        val bounds = Rect()
-        paint.getTextBounds(text, 0, text.length, bounds)
-        while (bounds.width() > maxTextWidth && textSizePx > 12f) {
-            textSizePx *= 0.9f
-            paint.textSize = textSizePx
-            paint.getTextBounds(text, 0, text.length, bounds)
-        }
-
-        val yPos = size / 2f - (paint.descent() + paint.ascent()) / 2f
-        canvas.drawText(text, size / 2f, yPos, paint)
+        // StickerTextComposeView's draft buffer has no length cap of its
+        // own (unlike StickerImageEditorView's 40-char text field), so a
+        // long caption could reach here uncapped. Truncated defensively
+        // here too — belt and braces, and it keeps this function safe even
+        // if it's ever called from elsewhere without that same cap.
+        val safeText = text.take(MAX_TEXT_STICKER_CHARS)
+        if (safeText.isBlank()) return null
 
         return try {
-            writeBitmap(context, bitmap)
-        } finally {
-            bitmap.recycle()
+            val size = MAX_DIMENSION_PX
+            val bitmap = Bitmap.createBitmap(size, size, Bitmap.Config.ARGB_8888)
+            val canvas = Canvas(bitmap)
+            // Fully transparent background — PNG preserves alpha, so this
+            // becomes a "sticker" (no opaque box around the text) once committed.
+            canvas.drawColor(Color.TRANSPARENT)
+
+            val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+                color = textColor
+                textAlign = Paint.Align.CENTER
+                isFakeBoldText = true
+            }
+
+            // Start large and shrink until the text fits within ~85% of the
+            // canvas width, so short text (e.g. "Hi") stays big and bold while
+            // longer phrases still fit without being clipped. Floored at 12f
+            // (not 0f/negative) — Paint.textSize must stay positive, and
+            // without a floor a very long string could shrink the loop
+            // toward zero/negative before bounds.width() ever drops below
+            // maxTextWidth, which is exactly the kind of edge case that used
+            // to reach drawText() unguarded by any try/catch below.
+            val maxTextWidth = size * 0.85f
+            var textSizePx = size * 0.4f
+            paint.textSize = textSizePx
+            val bounds = Rect()
+            paint.getTextBounds(safeText, 0, safeText.length, bounds)
+            while (bounds.width() > maxTextWidth && textSizePx > 12f) {
+                textSizePx *= 0.9f
+                paint.textSize = textSizePx
+                paint.getTextBounds(safeText, 0, safeText.length, bounds)
+            }
+
+            val yPos = size / 2f - (paint.descent() + paint.ascent()) / 2f
+            canvas.drawText(safeText, size / 2f, yPos, paint)
+
+            try {
+                writeBitmap(context, bitmap)
+            } finally {
+                bitmap.recycle()
+            }
+        } catch (e: Exception) {
+            // Mirrors compositeImageSticker's own try/finally below: fail
+            // gracefully back to the caller (StickerRepository.createFromText
+            // already treats a null path as "couldn't save that sticker" and
+            // shows a Toast) instead of taking the whole keyboard process
+            // down. This function previously had no such guard at all.
+            null
         }
     }
 
