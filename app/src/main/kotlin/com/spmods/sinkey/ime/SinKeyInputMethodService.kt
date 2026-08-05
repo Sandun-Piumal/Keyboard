@@ -659,6 +659,10 @@ class SinKeyInputMethodService : InputMethodService() {
         super.onUpdateSelection(oldSelStart, oldSelEnd, newSelStart, newSelEnd, candidatesStart, candidatesEnd)
 
         val isExternalMove = expectedCursorPosition != -1 && newSelEnd != expectedCursorPosition
+        // Recorded before finishComposingText() runs below — see the
+        // StackOverflowError note on that call for why this ordering
+        // matters, not just tidiness.
+        expectedCursorPosition = newSelEnd
         if (isExternalMove) {
             // Cursor landed somewhere we didn't put it — whatever was being
             // composed is no longer at the cursor, so there's nothing
@@ -667,9 +671,25 @@ class SinKeyInputMethodService : InputMethodService() {
             // same underlying reason: never leave a stale composing span
             // visible) and clear the now-irrelevant suggestion strip.
             if (wordBuffer.isNotEmpty() || englishBuffer.isNotEmpty()) {
-                currentInputConnection?.finishComposingText()
+                // wordBuffer/englishBuffer are cleared *before* calling
+                // finishComposingText(), not after. Many editors/frameworks
+                // dispatch finishComposingText() synchronously back into
+                // this same onUpdateSelection() (that round-trip is
+                // reflected in real crash traces as
+                // SinKeyInputMethodService.onUpdateSelection ->
+                // ...finishComposingText -> ...updateSelection ->
+                // onUpdateSelection again). With the old clear-after
+                // ordering, that reentrant call still saw a non-empty
+                // buffer and an unmatched expectedCursorPosition (also
+                // fixed above by moving that assignment earlier), so it
+                // took the same "isExternalMove" branch and called
+                // finishComposingText() again — recursing until a
+                // StackOverflowError. Clearing first means the reentrant
+                // call's own isExternalMove check (now also seeing a
+                // matching expectedCursorPosition) finds nothing left to do.
                 wordBuffer.clear()
                 englishBuffer.clear()
+                currentInputConnection?.finishComposingText()
             }
             suggestions.value = emptyList()
             lastCommittedWord = ""
@@ -680,7 +700,6 @@ class SinKeyInputMethodService : InputMethodService() {
             // so the chip must not be actionable anymore.
             clearAutocorrectUndoIfAny()
         }
-        expectedCursorPosition = newSelEnd
     }
 
     /**
