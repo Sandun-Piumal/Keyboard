@@ -36,6 +36,10 @@ import com.spmods.sinkey.R
 
 private enum class StickerCreateMode { CHOOSE, TEXT_COMPOSE }
 
+// Matches StickerImageEditorView's text field cap and
+// StickerFileStore.MAX_TEXT_STICKER_CHARS.
+private const val MAX_DRAFT_CHARS = 40
+
 /**
  * Board.STICKER_CREATE — mirrors the two-option "Create Sticker" screen
  * (Image Sticker / Text Sticker).
@@ -323,12 +327,18 @@ private fun StickerTextComposeView(
             bottomPadding = bottomPadding,
             colors = colors,
             onKey = { key ->
+                // MAX_DRAFT_CHARS mirrors StickerImageEditorView's own text
+                // field cap (see its BasicTextField onValueChange) — this
+                // draft buffer previously had no limit at all, so typing
+                // enough text here could grow it unbounded and reach
+                // StickerFileStore.saveFromText's canvas/text-layout code
+                // with a string long enough to crash the render.
                 when (key) {
                     "BACKSPACE" -> if (draft.isNotEmpty()) draft = draft.dropLast(1)
-                    "SPACE" -> draft += " "
+                    "SPACE" -> if (draft.length < MAX_DRAFT_CHARS) draft += " "
                     "ENTER" -> if (draft.isNotBlank()) onSubmit(draft, textColor.toArgb())
                     "SWITCH_KEYBOARD", "SYMBOLS", "ABC" -> Unit // not meaningful in this compose-only context
-                    else -> if (key.codePointCount(0, key.length) == 1) {
+                    else -> if (key.codePointCount(0, key.length) == 1 && draft.length < MAX_DRAFT_CHARS) {
                         draft += if (shift) key.uppercase() else key.lowercase()
                         if (shift) shift = false // one-shot shift, mirrors main keyboard's default feel
                     }
