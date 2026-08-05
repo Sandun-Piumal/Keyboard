@@ -576,51 +576,179 @@ internal fun KeyboardView(
                         }
                     }
                 }
-                else -> Box(modifier = Modifier.fillMaxWidth()) {
+                else -> {
                     // Key-center map built up as MainKeyboardKeys lays out
                     // each letter key (see LetterKey/NumberedLetterKey's
-                    // onPositioned) — GestureTypingOverlay reads this once
-                    // a swipe finishes to translate the touch path into a
-                    // letter sequence. Only actually collected when gesture
-                    // typing is on (onKeyPositioned below is null otherwise),
-                    // so this costs nothing when the feature is off.
+                    // onPositioned) — used once a swipe finishes to translate
+                    // the touch path into a letter sequence. Only actually
+                    // collected when gesture typing is on (onKeyPositioned
+                    // below is null otherwise), so this costs nothing when
+                    // the feature is off.
                     val keyPositions = remember { mutableStateMapOf<Char, KeyPoint>() }
+                    // Gesture-in-progress state, hoisted up to this shared
+                    // Box (see the pointerInput placement below for why it
+                    // can't live inside GestureTypingOverlay itself anymore).
+                    var gesturePathPoints by remember { mutableStateOf(listOf<Offset>()) }
+                    var gestureIsDragging by remember { mutableStateOf(false) }
+                    val gestureScope = rememberCoroutineScope()
 
-                    MainKeyboardKeys(
-                        currentLanguage = currentLanguage,
-                        shift = shift, shiftLocked = shiftLocked,
-                        onShiftStateChange = onShiftStateChange,
-                        keyHeight = keyHeight, keyShape = keyShape,
-                        bottomPadding = bottomPadding, colors = colors,
-                        showKeyBorders = showKeyBorders,
-                        onKey = onKey,
-                        onSymbols = { pushBoard(Board.SYMBOLS) },
-                        onEmojiPicker = { pushBoard(Board.EMOJI) },
-                        onLangTooltip = { showLangTooltip = true },
-                        imeAction = inputType,
-                        onKeyPositioned = if (swipeTypingEnabled) { { ch, coords ->
-                            // coords.size is an IntSize (width/height only,
-                            // no built-in .center without an extra import)
-                            // — compute the center manually instead.
-                            val centerX = coords.size.width / 2f
-                            val centerY = coords.size.height / 2f
-                            val positionInParent = coords.positionInParent()
-                            keyPositions[ch] = KeyPoint(ch, positionInParent.x + centerX, positionInParent.y + centerY)
-                        } } else null
-                    )
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .let { m ->
+                                // Gesture detection lives on THIS Box —
+                                // the same node MainKeyboardKeys is a child
+                                // of — rather than on a separate Box drawn
+                                // on top of it. That distinction is the
+                                // actual fix here (see the long comment
+                                // this replaces, previously attached to
+                                // GestureTypingOverlay's own inner Box):
+                                // Compose hit-tests overlapping *siblings*
+                                // by z-order and delivers every pointer
+                                // event to only the topmost one — it is NOT
+                                // like the Android View system where an
+                                // unconsumed touch can fall through to
+                                // whatever's underneath. So a separate
+                                // GestureTypingOverlay Box stacked via
+                                // matchParentSize() on top of
+                                // MainKeyboardKeys intercepted 100% of
+                                // touches in that region regardless of
+                                // whether it ever called change.consume() —
+                                // MainKeyboardKeys' own clickable/pointerInput
+                                // modifiers were never even hit-tested, so
+                                // every key looked completely dead the
+                                // instant swipe typing was turned on. The
+                                // only two supported ways around Compose's
+                                // "one hit per pointer" rule are (a) a
+                                // custom PointerInputModifierNode with
+                                // sharePointerInputWithSiblings = true, or
+                                // (b) not creating a competing sibling node
+                                // in the first place — attaching the
+                                // gesture pointerInput directly to this Box
+                                // (an ancestor of MainKeyboardKeys, not a
+                                // sibling of it) is (b), and needs no
+                                // experimental APIs.
+                                if (swipeTypingEnabled) {
+                                    m.pointerInput(keyPositions, currentLanguage) {
+                                        // Only a currentLanguage of "si" or
+                                        // "en" makes sense for gesture
+                                        // matching (mix mode doesn't have a
+                                        // single fixed dictionary to score
+                                        // against) — mix mode swipes fall
+                                        // through as an ordinary drag with
+                                        // no word committed, which the logic
+                                        // below still handles safely (an
+                                        // empty onSwipeGesture result just
+                                        // produces no candidates).
+                                        awaitEachGesture {
+                                            val down = awaitFirstDown(requireUnconsumed = false)
+                                            var dragging = false
+                                            val touchSlop = viewConfiguration.touchSlop
 
-                    if (swipeTypingEnabled) {
-                        GestureTypingOverlay(
-                            keyPositions = keyPositions,
+                                            while (true) {
+                                                val event = awaitPointerEvent()
+                                                val change = event.changes.firstOrNull { it.id == down.id } ?: break
+                                                if (change.changedToUpIgnoreConsumed()) {
+                                                    if (dragging) {
+                                                        change.consume()
+                                                        gestureIsDragging = false
+                                                        val finishedPath = gesturePathPoints
+                                                        gesturePathPoints = emptyList()
+                                                        if (finishedPath.size >= MIN_GESTURE_POINTS && keyPositions.isNotEmpty()) {
+                                                            val swipeKeyPoints = finishedPath.map { KeyPoint(' ', it.x, it.y) }
+                                                            val letters = nearestLettersAlongPath(swipeKeyPoints, keyPositions)
+                                                            if (letters.length >= MIN_GESTURE_LETTERS) {
+                                                                gestureScope.launch {
+                                                                    val candidates = onSwipeGesture(letters, currentLanguage)
+                                                                    candidates.firstOrNull()?.let { onGestureWordCommitted(it) }
+                                                                }
+                                                            }
+                                                        }
+                                                    }
+                                                    break
+                                                }
+
+                                                if (!dragging) {
+                                                    val travelled = (change.position - down.position).getDistance()
+                                                    if (travelled > touchSlop) {
+                                                        // Past the slop threshold —
+                                                        // this is now unambiguously a
+                                                        // swipe, not a tap. Start
+                                                        // claiming the gesture from
+                                                        // here on. Because this
+                                                        // pointerInput lives on the
+                                                        // Box ABOVE MainKeyboardKeys
+                                                        // (not a sibling beside it),
+                                                        // consuming here also stops
+                                                        // MainKeyboardKeys' own
+                                                        // clickable handlers from
+                                                        // ever starting a press for
+                                                        // this pointer — exactly the
+                                                        // "swipe wins once it's
+                                                        // clearly a swipe" behavior
+                                                        // this needs, without ever
+                                                        // blocking plain taps.
+                                                        dragging = true
+                                                        gestureIsDragging = true
+                                                        gesturePathPoints = listOf(down.position, change.position)
+                                                        change.consume()
+                                                    }
+                                                    // Still under slop: leave the
+                                                    // change unconsumed so a tap
+                                                    // still reaches MainKeyboardKeys.
+                                                } else {
+                                                    gesturePathPoints = gesturePathPoints + change.position
+                                                    change.consume()
+                                                }
+                                            }
+                                        }
+                                    }
+                                } else {
+                                    m
+                                }
+                            }
+                    ) {
+                        MainKeyboardKeys(
                             currentLanguage = currentLanguage,
-                            onSwipeGesture = onSwipeGesture,
-                            onWordCommitted = onGestureWordCommitted,
-                            // Valid here: this call site is a direct child
-                            // of the enclosing Box(Modifier.fillMaxWidth())
-                            // a few lines up, alongside MainKeyboardKeys —
-                            // exactly the BoxScope matchParentSize() needs.
-                            modifier = Modifier.matchParentSize()
+                            shift = shift, shiftLocked = shiftLocked,
+                            onShiftStateChange = onShiftStateChange,
+                            keyHeight = keyHeight, keyShape = keyShape,
+                            bottomPadding = bottomPadding, colors = colors,
+                            showKeyBorders = showKeyBorders,
+                            onKey = onKey,
+                            onSymbols = { pushBoard(Board.SYMBOLS) },
+                            onEmojiPicker = { pushBoard(Board.EMOJI) },
+                            onLangTooltip = { showLangTooltip = true },
+                            imeAction = inputType,
+                            onKeyPositioned = if (swipeTypingEnabled) { { ch, coords ->
+                                // coords.size is an IntSize (width/height only,
+                                // no built-in .center without an extra import)
+                                // — compute the center manually instead.
+                                val centerX = coords.size.width / 2f
+                                val centerY = coords.size.height / 2f
+                                val positionInParent = coords.positionInParent()
+                                keyPositions[ch] = KeyPoint(ch, positionInParent.x + centerX, positionInParent.y + centerY)
+                            } } else null
                         )
+
+                        if (swipeTypingEnabled) {
+                            // Pure drawing layer now — no pointerInput of
+                            // its own (see the outer Box's own modifier
+                            // above for where gesture detection actually
+                            // lives and why). matchParentSize() here only
+                            // affects layout/drawing bounds, which is fine —
+                            // it's Compose's *pointer hit-testing* of
+                            // overlapping siblings that was the problem,
+                            // and a Box with no pointerInput modifier is
+                            // never hit-tested at all, so it can safely
+                            // sit visually on top without intercepting
+                            // anything.
+                            GestureTypingOverlay(
+                                isDragging = gestureIsDragging,
+                                pathPoints = gesturePathPoints,
+                                modifier = Modifier.matchParentSize()
+                            )
+                        }
                     }
                 }
             }
@@ -736,139 +864,52 @@ internal fun MainKeyboardKeys(
 }
 
 /**
- * Transparent layer drawn over MainKeyboardKeys' letter rows that turns a
- * finger-drag across the letters into a committed word (gesture / swipe
- * typing). Deliberately a separate sibling Box rather than logic bolted
- * onto LetterKey itself: LetterKey already owns a pointerInput+clickable
- * pair for tap/press-preview, and layering a second, independent drag
- * recognizer directly on the same keys risks the two fighting over the
- * same pointer events. As a sibling overlay, this only starts consuming
- * the gesture once a drag is already unambiguous (see the touchSlop
- * threshold in the drag handler below), by which point it's clearly not a
- * tap — a plain tap still reaches the LetterKey underneath untouched,
- * since a drag that never exceeds slop is never claimed here at all.
+ * Purely the visual trail drawn while a swipe is in progress — the actual
+ * gesture *detection* (drag tracking, slop threshold, letter-path
+ * resolution, word commit) now lives on the outer Box that wraps both this
+ * composable and MainKeyboardKeys as siblings (see that Box's own
+ * pointerInput for the full explanation). This composable is intentionally
+ * left with no pointerInput of its own.
  *
- * Visible trail: draws the swiped path with a fading, colour-shifting
- * stroke while dragging (see traiLColor/strokeWidth below) — purely
- * cosmetic feedback, cleared as soon as the gesture ends.
+ * That split matters for more than just code organization: Compose only
+ * ever hit-tests and dispatches pointer events to the single topmost
+ * composable among overlapping siblings (see "Understand gestures" in the
+ * Compose docs) — regardless of whether that composable ever calls
+ * change.consume(). A plain, unconsumed touch does NOT "fall through" to
+ * whatever's underneath the way it would in the old Android View system.
+ * This composable used to own its own pointerInput as a sibling Box
+ * layered on top of MainKeyboardKeys via matchParentSize() — even after
+ * that pointerInput was fixed to never consume a plain tap, every key
+ * still looked completely dead the instant swipe typing was turned on,
+ * because MainKeyboardKeys' own clickable/pointerInput modifiers were
+ * simply never hit-tested at all while this overlay sat on top of them.
+ * Removing this composable's pointerInput entirely (a Box with no
+ * pointerInput modifier isn't hit-tested, so it can't intercept anything)
+ * and moving gesture detection up onto the shared ancestor Box is what
+ * actually fixes that; drawing the trail here on top is still fine and
+ * layout-safe, since drawing and hit-testing are independent.
  */
 @Composable
 private fun GestureTypingOverlay(
-    keyPositions: Map<Char, KeyPoint>,
-    currentLanguage: String,
-    onSwipeGesture: suspend (letters: String, language: String) -> List<String>,
-    onWordCommitted: (String) -> Unit,
-    // Passed as matchParentSize() by the caller (a direct child of its own
-    // enclosing Box, alongside MainKeyboardKeys) so this overlay is sized
-    // to exactly match the real keyboard content's resolved size rather
-    // than independently filling whatever space it's offered — see the
-    // Box below for why that distinction matters.
+    isDragging: Boolean,
+    pathPoints: List<Offset>,
     modifier: Modifier = Modifier
 ) {
-    val scope = rememberCoroutineScope()
-    var pathPoints by remember { mutableStateOf(listOf<Offset>()) }
-    var isDragging by remember { mutableStateOf(false) }
-
-    // This Box fills whatever space GestureTypingOverlay itself is given —
-    // sizing it correctly relative to MainKeyboardKeys (its sibling in the
-    // caller's Box) is done by the caller passing a matchParentSize()
-    // modifier into the `modifier` parameter below, not by this function
-    // trying to match a BoxScope it isn't actually inside (matchParentSize
-    // only works on a direct child of the enclosing Box, and this Box IS
-    // that child from the caller's point of view — see modifier param).
-    Box(
-        modifier = modifier
-            .fillMaxSize()
-            .pointerInput(keyPositions, currentLanguage) {
-                // Only a currentLanguage of "si" or "en" makes sense for
-                // gesture matching (mix mode doesn't have a single fixed
-                // dictionary to score against) — mix mode swipes fall
-                // through as an ordinary drag with no word committed,
-                // which the logic below still handles safely (an empty
-                // onSwipeGesture result just produces no candidates).
-                //
-                // IMPORTANT: this used to be a bare detectDragGestures(...),
-                // which claims (consumes) the pointer's very first down
-                // event unconditionally. Because this overlay sits on top
-                // of MainKeyboardKeys and fills the same area, that meant
-                // *every* touch — plain taps included — was swallowed here
-                // and never reached the letter/backspace/space/etc. keys
-                // underneath, i.e. the whole keyboard looked "dead" whenever
-                // swipe typing was on. Fixed the same way every other
-                // gesture in this file already does it (see
-                // NumberedLetterKey/LetterKey's own awaitFirstDown(
-                // requireUnconsumed = false) above): don't consume the
-                // down, and don't consume any movement either until it's
-                // clearly a drag (past touchSlop) — only from that point on
-                // do we own the gesture and swallow further movement so a
-                // swipe doesn't also register as a scroll/other gesture. A
-                // touch that never exceeds slop is a tap and is left
-                // completely alone, so it still reaches the key beneath.
-                awaitEachGesture {
-                    val down = awaitFirstDown(requireUnconsumed = false)
-                    var dragging = false
-                    val touchSlop = viewConfiguration.touchSlop
-
-                    while (true) {
-                        val event = awaitPointerEvent()
-                        val change = event.changes.firstOrNull { it.id == down.id } ?: break
-                        if (change.changedToUpIgnoreConsumed()) {
-                            if (dragging) {
-                                change.consume()
-                                isDragging = false
-                                val finishedPath = pathPoints
-                                pathPoints = emptyList()
-                                if (finishedPath.size >= MIN_GESTURE_POINTS && keyPositions.isNotEmpty()) {
-                                    val swipeKeyPoints = finishedPath.map { KeyPoint(' ', it.x, it.y) }
-                                    val letters = nearestLettersAlongPath(swipeKeyPoints, keyPositions)
-                                    if (letters.length >= MIN_GESTURE_LETTERS) {
-                                        scope.launch {
-                                            val candidates = onSwipeGesture(letters, currentLanguage)
-                                            candidates.firstOrNull()?.let { onWordCommitted(it) }
-                                        }
-                                    }
-                                }
-                            }
-                            break
-                        }
-
-                        if (!dragging) {
-                            val travelled = (change.position - down.position).getDistance()
-                            if (travelled > touchSlop) {
-                                // Past the slop threshold — this is now
-                                // unambiguously a swipe, not a tap. Start
-                                // claiming the gesture from here on.
-                                dragging = true
-                                isDragging = true
-                                pathPoints = listOf(down.position, change.position)
-                                change.consume()
-                            }
-                            // Still under slop: leave the change unconsumed
-                            // so a tap can still land on the key beneath.
-                        } else {
-                            pathPoints = pathPoints + change.position
-                            change.consume()
-                        }
-                    }
-                }
+    if (isDragging && pathPoints.size >= 2) {
+        Canvas(modifier = modifier) {
+            val path = androidx.compose.ui.graphics.Path().apply {
+                moveTo(pathPoints.first().x, pathPoints.first().y)
+                pathPoints.drop(1).forEach { lineTo(it.x, it.y) }
             }
-    ) {
-        if (isDragging && pathPoints.size >= 2) {
-            Canvas(modifier = Modifier.matchParentSize()) {
-                val path = androidx.compose.ui.graphics.Path().apply {
-                    moveTo(pathPoints.first().x, pathPoints.first().y)
-                    pathPoints.drop(1).forEach { lineTo(it.x, it.y) }
-                }
-                drawPath(
-                    path = path,
-                    color = DeshGreen.copy(alpha = 0.55f),
-                    style = androidx.compose.ui.graphics.drawscope.Stroke(
-                        width = 12f,
-                        cap = androidx.compose.ui.graphics.StrokeCap.Round,
-                        join = androidx.compose.ui.graphics.StrokeJoin.Round
-                    )
+            drawPath(
+                path = path,
+                color = DeshGreen.copy(alpha = 0.55f),
+                style = androidx.compose.ui.graphics.drawscope.Stroke(
+                    width = 12f,
+                    cap = androidx.compose.ui.graphics.StrokeCap.Round,
+                    join = androidx.compose.ui.graphics.StrokeJoin.Round
                 )
-            }
+            )
         }
     }
 }
