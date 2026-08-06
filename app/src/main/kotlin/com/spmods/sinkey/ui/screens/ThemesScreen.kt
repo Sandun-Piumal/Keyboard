@@ -425,6 +425,11 @@ private fun EffectPreviewKey(letter: String, effect: KeyEffect, accent: Color, m
             .border(0.75.dp, accent.copy(alpha = 0.4f), shape)
         KeyEffect.NEON_PULSE -> modifier.shadow(elevation = 8.dp, shape = shape, ambientColor = accent, spotColor = accent)
         KeyEffect.RGB_CYCLE -> modifier.border(1.75.dp, accent, shape)
+        // Static preview only — the real wave-outward-by-distance animation
+        // only makes sense across a full keyboard's worth of keys, not a
+        // 3-key card, so this just hints at the neon-ring look with the
+        // middle key highlighted as if a wave just passed through it.
+        KeyEffect.RGB_RIPPLE -> modifier.border(1.75.dp, accent.copy(alpha = 0.9f), shape)
     }
     Box(
         modifier = decorated
