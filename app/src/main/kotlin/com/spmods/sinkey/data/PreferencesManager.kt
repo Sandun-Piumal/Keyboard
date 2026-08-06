@@ -302,7 +302,14 @@ enum class KeyColorPalette(val key: String, val label: String, val accent: andro
     GREEN("green", "Green", androidx.compose.ui.graphics.Color(0xFF3FAE6B)),
     CYAN("cyan", "Cyan", androidx.compose.ui.graphics.Color(0xFF33C2C2)),
     PURPLE("purple", "Purple", androidx.compose.ui.graphics.Color(0xFF8A5FE0)),
-    AMBER("amber", "Amber", androidx.compose.ui.graphics.Color(0xFFE0A23B));
+    AMBER("amber", "Amber", androidx.compose.ui.graphics.Color(0xFFE0A23B)),
+    // New palettes (see ThemesScreen "Colors" section) — same pattern as
+    // above: a single representative accent color, purely additive.
+    CYBERPUNK("cyberpunk", "Cyberpunk", androidx.compose.ui.graphics.Color(0xFFFF2E9A)),
+    SUNSET("sunset", "Sunset", androidx.compose.ui.graphics.Color(0xFFFF7A45)),
+    OCEAN("ocean", "Ocean", androidx.compose.ui.graphics.Color(0xFF1E9FD6)),
+    FOREST("forest", "Forest", androidx.compose.ui.graphics.Color(0xFF2E7D4F)),
+    ROYAL_PURPLE("royal_purple", "Royal Purple", androidx.compose.ui.graphics.Color(0xFF5E35B1));
 
     companion object {
         fun fromKey(key: String): KeyColorPalette = entries.find { it.key == key } ?: DEFAULT
@@ -323,7 +330,17 @@ enum class KeyEffect(val key: String, val label: String) {
     /** Soft colored glow (blurred shadow) behind every key in the accent color. */
     GLOW("glow", "Glow"),
     /** Bottom-edge-only accent underline, like a subtle key "shadow" cue. */
-    UNDERLINE("underline", "Underline");
+    UNDERLINE("underline", "Underline"),
+    /** Expanding ripple circle from the touch point, on key press. */
+    RIPPLE("ripple", "Ripple"),
+    /** Key briefly scales up on press, like a soft "pop". */
+    POP_SCALE("pop_scale", "Pop"),
+    /** Bottom-edge drop shadow giving keys a raised/3D button look. */
+    SHADOW_3D("shadow_3d", "3D Shadow"),
+    /** Soft glow that continuously pulses in/out, not just on press. */
+    NEON_PULSE("neon_pulse", "Neon Pulse"),
+    /** Key border cycles through a loop of accent hues — RGB/cyberpunk look. */
+    RGB_CYCLE("rgb_cycle", "RGB Cycle");
 
     companion object {
         fun fromKey(key: String): KeyEffect = entries.find { it.key == key } ?: NONE
