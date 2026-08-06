@@ -18,6 +18,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.Dispatchers
@@ -85,5 +86,38 @@ fun StickerImage(
         Box(modifier = modifier, contentAlignment = Alignment.Center) {
             CircularProgressIndicator(modifier = Modifier.size(20.dp), strokeWidth = 2.dp)
         }
+    }
+}
+
+/**
+ * "My themes" custom keyboard background — a user-picked photo drawn full-
+ * bleed (cropped to fill, like a wallpaper) behind the whole keyboard.
+ * Reuses [StickerImage]'s decode()/bitmapCache rather than duplicating the
+ * content:// vs file:// handling and in-memory cache.
+ *
+ * Deliberately shows nothing (not even the loading spinner [StickerImage]
+ * uses) while decoding — for a background image a brief blank/transparent
+ * frame is unnoticeable and looks far better than a spinner flashing in
+ * the middle of the keyboard, plus the underlying solid `colors.bg` this
+ * sits in front of is already transparent so there's a coherent fallback
+ * (nothing → keyboard's own board backgrounds show through) rather than a
+ * jarring color swap once the bitmap finishes decoding.
+ */
+@Composable
+fun KeyboardCustomBackground(uriString: String, modifier: Modifier = Modifier) {
+    val context = LocalContext.current
+    var bitmap by remember(uriString) { mutableStateOf<Bitmap?>(null) }
+
+    LaunchedEffect(uriString) {
+        bitmap = withContext(Dispatchers.IO) { decode(context, uriString) }
+    }
+
+    bitmap?.let { loaded ->
+        Image(
+            bitmap = loaded.asImageBitmap(),
+            contentDescription = null,
+            contentScale = ContentScale.Crop,
+            modifier = modifier
+        )
     }
 }
