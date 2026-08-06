@@ -15,8 +15,10 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
+import androidx.compose.ui.draw.drawBehind
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.width
@@ -127,10 +129,80 @@ internal data class KeyboardColors(
     // and only their icons/text float on the page. Kept independent of
     // showKeyBorders on purpose.
     val cardBg: Color,
+    // Themes screen "Colors" accent — see KeyColorPalette. Used to tint the
+    // space bar / special keys and to drive the "Effects" outline/glow/
+    // underline colors below. Defaults to DeshGreen (KeyColorPalette.DEFAULT's
+    // accent), matching the app's original accent exactly when no palette
+    // has been explicitly chosen.
+    val accent: Color = DeshGreen,
+    // Themes screen "Effects" selection, carried alongside the colors so
+    // every key composable can read both from one place instead of two
+    // separate params threaded through ~15 call sites. NONE = original
+    // flat-background rendering, unchanged from before this feature existed.
+    val keyEffect: com.spmods.sinkey.data.KeyEffect = com.spmods.sinkey.data.KeyEffect.NONE,
 )
 
 @Composable
-internal fun keyboardColors(showKeyBorders: Boolean, isDark: Boolean): KeyboardColors {
+internal fun keyboardColors(
+    showKeyBorders: Boolean,
+    isDark: Boolean,
+    palette: com.spmods.sinkey.data.KeyColorPalette = com.spmods.sinkey.data.KeyColorPalette.DEFAULT,
+    keyEffect: com.spmods.sinkey.data.KeyEffect = com.spmods.sinkey.data.KeyEffect.NONE,
+    // True when a "My themes" custom photo background is active — makes
+    // `bg` fully transparent so the outer Box's image can show through
+    // every band of the keyboard (toolbar, suggestion strip, key rows)
+    // instead of being painted over by each row's own .background(colors.bg).
+    // See KeyboardView's root Box/Column for where the image itself is drawn.
+    transparentBg: Boolean = false,
+): KeyboardColors {
+    val base = keyboardColorsBase(showKeyBorders, isDark)
+    return base.copy(
+        bg = if (transparentBg) Color.Transparent else base.bg,
+        accent = palette.accent,
+        keyEffect = keyEffect,
+    )
+}
+
+/**
+ * Applies the current Themes-screen "Effects" style (see KeyEffect) as a
+ * decoration around a key, layered on top of whatever background/clip the
+ * caller already applied. Meant to be chained right after
+ * `.clip(keyShape).background(colors.keyBg)` at each of the ~9 key-drawing
+ * sites in this file — added once here instead of duplicating the same
+ * `when (colors.keyEffect)` branch at every call site.
+ *
+ * NONE is a true no-op (returns `this` unchanged) so keys look byte-for-byte
+ * identical to before this feature existed when no effect is selected.
+ */
+private fun Modifier.keyEffectDecoration(colors: KeyboardColors, keyShape: RoundedCornerShape): Modifier {
+    return when (colors.keyEffect) {
+        com.spmods.sinkey.data.KeyEffect.NONE -> this
+        com.spmods.sinkey.data.KeyEffect.OUTLINE -> this.border(
+            width = 1.5.dp,
+            color = colors.accent.copy(alpha = 0.85f),
+            shape = keyShape
+        )
+        com.spmods.sinkey.data.KeyEffect.GLOW -> this.shadow(
+            elevation = 6.dp,
+            shape = keyShape,
+            ambientColor = colors.accent,
+            spotColor = colors.accent
+        )
+        com.spmods.sinkey.data.KeyEffect.UNDERLINE -> this.drawBehind {
+            val strokeWidth = 2.dp.toPx()
+            drawLine(
+                color = colors.accent,
+                start = androidx.compose.ui.geometry.Offset(size.width * 0.18f, size.height - strokeWidth),
+                end = androidx.compose.ui.geometry.Offset(size.width * 0.82f, size.height - strokeWidth),
+                strokeWidth = strokeWidth,
+                cap = androidx.compose.ui.graphics.StrokeCap.Round
+            )
+        }
+    }
+}
+
+@Composable
+private fun keyboardColorsBase(showKeyBorders: Boolean, isDark: Boolean): KeyboardColors {
     return if (isDark) {
         // FIX #12: Dark theme previously had almost no visible difference between
         // bordered (0xFF2E2E2E) and borderless (0xFF262626) key backgrounds.
@@ -276,7 +348,27 @@ internal fun KeyboardView(
     // wired to SinKeyInputMethodService.saveEditedImageSticker.
     onSaveImageSticker: (ImageStickerDraft) -> Unit = {}
 ) {
-    val colors = keyboardColors(showKeyBorders, isDark)
+    // Read ahead of `colors` below (moved up from where these used to live,
+    // further down this function) because keyboardColors() now needs the
+    // palette/effect/custom-background prefs to build the right
+    // KeyboardColors for this composition.
+    val context = LocalContext.current
+    val prefsManager = remember { PreferencesManager(context) }
+    val keyColorPalette by prefsManager.keyColorPalette.collectAsState(
+        initial = com.spmods.sinkey.data.KeyColorPalette.DEFAULT
+    )
+    val keyEffect by prefsManager.keyEffect.collectAsState(
+        initial = com.spmods.sinkey.data.KeyEffect.NONE
+    )
+    val customBackgroundUri by prefsManager.customBackgroundUri.collectAsState(initial = null)
+
+    val colors = keyboardColors(
+        showKeyBorders = showKeyBorders,
+        isDark = isDark,
+        palette = keyColorPalette,
+        keyEffect = keyEffect,
+        transparentBg = customBackgroundUri != null,
+    )
     val keyHeight = stepToKeyHeight(keyboardHeight)
     val bottomPadding = if (bottomSpaceEnabled) stepToBottomPadding(bottomSpaceSize) else 4.dp
     val keyShape = RoundedCornerShape(6.dp)
@@ -316,8 +408,6 @@ internal fun KeyboardView(
             android.view.inputmethod.EditorInfo.TYPE_CLASS_PHONE
     }
 
-    val context = LocalContext.current
-    val prefsManager = remember { PreferencesManager(context) }
     val recentEmojis by prefsManager.recentEmojis.collectAsState(initial = emptyList())
     val clipRepository = remember { ClipRepository(context) }
     val clipHistory by clipRepository.history.collectAsState(initial = emptyList())
@@ -353,6 +443,19 @@ internal fun KeyboardView(
 
     // ONE Column for the whole keyboard — toolbar always at top, content below
     Box(modifier = Modifier.fillMaxWidth().wrapContentHeight()) {
+        // "My themes" custom photo background — drawn as the bottom-most
+        // layer of the outer Box, behind everything else. Only rendered
+        // when a background is actually set; colors.bg is made fully
+        // transparent by keyboardColors(transparentBg = ...) in that case
+        // so every row's own `.background(colors.bg)` (toolbar, suggestion
+        // strip, key rows, etc.) lets this show through instead of
+        // painting over it in solid color band-by-band.
+        customBackgroundUri?.let { uriString ->
+            KeyboardCustomBackground(
+                uriString = uriString,
+                modifier = Modifier.matchParentSize()
+            )
+        }
         Column(
             modifier = Modifier.fillMaxWidth().wrapContentHeight().background(colors.bg)
         ) {
@@ -1497,6 +1600,7 @@ private fun RowScope.NumberedLetterKey(
             .scale(bumpScale)
             .clip(keyShape)
             .background(if (pressed) colors.keyBg.copy(alpha = 0.6f) else colors.keyBg)
+            .keyEffectDecoration(colors, keyShape)
             .let { m -> if (onPositioned != null) m.onGloballyPositioned(onPositioned) else m }
             .combinedClickable(onClick = { onTap() }, onLongClick = { onLongPress() })
             .pointerInput(Unit) {
@@ -1543,6 +1647,7 @@ private fun RowScope.LetterKey(
             .scale(bumpScale)
             .clip(keyShape)
             .background(if (pressed) colors.keyBg.copy(alpha = 0.6f) else colors.keyBg)
+            .keyEffectDecoration(colors, keyShape)
             .let { m -> if (onPositioned != null) m.onGloballyPositioned(onPositioned) else m }
             // clickable handles the actual tap/long-press logic reliably.
             // pointerInput only tracks down/up for the visual pressed state.
@@ -2281,6 +2386,7 @@ private fun RowScope.NumpadDigitKey(
             .scale(bumpScale)
             .clip(keyShape)
             .background(if (pressed) colors.keyBg.copy(alpha = 0.6f) else colors.keyBg)
+            .keyEffectDecoration(colors, keyShape)
             .clickable { onTap() }
             .pointerInput(Unit) {
                 awaitEachGesture {
@@ -2643,6 +2749,7 @@ private fun PhoneDialPadView(
                             modifier = Modifier
                                 .height(keyHeight).weight(1f)
                                 .clip(keyShape).background(colors.keyBg)
+                                .keyEffectDecoration(colors, keyShape)
                                 .clickable { onKey(key) },
                             contentAlignment = Alignment.Center
                         ) {
@@ -2709,6 +2816,7 @@ private fun PhoneDialPadView(
                     modifier = Modifier
                         .height(keyHeight).weight(1f)
                         .clip(keyShape).background(colors.keyBg)
+                        .keyEffectDecoration(colors, keyShape)
                         .combinedClickable(onClick = { onKey("*") }, onLongClick = { onKey("#") }),
                     contentAlignment = Alignment.Center
                 ) {
@@ -2719,6 +2827,7 @@ private fun PhoneDialPadView(
                     modifier = Modifier
                         .height(keyHeight).weight(1f)
                         .clip(keyShape).background(colors.keyBg)
+                        .keyEffectDecoration(colors, keyShape)
                         .combinedClickable(onClick = { onKey("0") }, onLongClick = { onKey("+") }),
                     contentAlignment = Alignment.Center
                 ) {
@@ -2730,6 +2839,7 @@ private fun PhoneDialPadView(
                     modifier = Modifier
                         .height(keyHeight).weight(1f)
                         .clip(keyShape).background(colors.keyBg)
+                        .keyEffectDecoration(colors, keyShape)
                         .combinedClickable(onClick = { onKey("_") }, onLongClick = { onKey("SWITCH_KEYBOARD") }),
                     contentAlignment = Alignment.Center
                 ) {
