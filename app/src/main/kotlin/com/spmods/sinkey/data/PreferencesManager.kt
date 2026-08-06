@@ -340,7 +340,14 @@ enum class KeyEffect(val key: String, val label: String) {
     /** Soft glow that continuously pulses in/out, not just on press. */
     NEON_PULSE("neon_pulse", "Neon Pulse"),
     /** Key border cycles through a loop of accent hues — RGB/cyberpunk look. */
-    RGB_CYCLE("rgb_cycle", "RGB Cycle");
+    RGB_CYCLE("rgb_cycle", "RGB Cycle"),
+    /**
+     * Touching any key sends an expanding neon/RGB color wave outward to
+     * every other key on the board, based on distance from the touched
+     * key — fades out as it travels and over time. Purely touch-reactive;
+     * keys show no color at rest, unlike RGB_CYCLE's always-on animation.
+     */
+    RGB_RIPPLE("rgb_ripple", "RGB Ripple");
 
     companion object {
         fun fromKey(key: String): KeyEffect = entries.find { it.key == key } ?: NONE
