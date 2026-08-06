@@ -10,6 +10,14 @@ import androidx.compose.animation.togetherWith
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.Animatable
+import androidx.compose.ui.composed
+import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.TransformOrigin
@@ -196,6 +204,128 @@ private fun Modifier.keyEffectDecoration(colors: KeyboardColors, keyShape: Round
                 end = androidx.compose.ui.geometry.Offset(size.width * 0.82f, size.height - strokeWidth),
                 strokeWidth = strokeWidth,
                 cap = androidx.compose.ui.graphics.StrokeCap.Round
+            )
+        }
+        // Bottom-edge drop shadow only (offset shadow), giving a raised
+        // "3D button" look rather than GLOW's even all-around blur.
+        com.spmods.sinkey.data.KeyEffect.SHADOW_3D -> this
+            .shadow(
+                elevation = 4.dp,
+                shape = keyShape,
+                ambientColor = Color.Black.copy(alpha = 0.35f),
+                spotColor = Color.Black.copy(alpha = 0.45f)
+            )
+            .border(width = 0.75.dp, color = colors.accent.copy(alpha = 0.35f), shape = keyShape)
+        // Continuously-pulsing glow — animated version of GLOW. Uses
+        // Modifier.composed so it can host its own infinite animation
+        // without every call site needing to be touched.
+        com.spmods.sinkey.data.KeyEffect.NEON_PULSE -> this.composed {
+            val infinite = rememberInfiniteTransition(label = "neonPulse")
+            val pulse by infinite.animateFloat(
+                initialValue = 2.dp.value,
+                targetValue = 10.dp.value,
+                animationSpec = infiniteRepeatable(
+                    animation = tween(1100, easing = androidx.compose.animation.core.FastOutSlowInEasing),
+                    repeatMode = RepeatMode.Reverse
+                ),
+                label = "neonPulseElevation"
+            )
+            this.shadow(
+                elevation = pulse.dp,
+                shape = keyShape,
+                ambientColor = colors.accent,
+                spotColor = colors.accent
+            )
+        }
+        // Border hue cycles through a small loop of colors derived from the
+        // chosen accent — the "gaming RGB / cyberpunk" look.
+        com.spmods.sinkey.data.KeyEffect.RGB_CYCLE -> this.composed {
+            val infinite = rememberInfiniteTransition(label = "rgbCycle")
+            val hueShift by infinite.animateFloat(
+                initialValue = 0f,
+                targetValue = 360f,
+                animationSpec = infiniteRepeatable(
+                    animation = tween(3000, easing = androidx.compose.animation.core.LinearEasing)
+                ),
+                label = "rgbHueShift"
+            )
+            val cycledColor = remember(hueShift) { rotateHue(colors.accent, hueShift) }
+            this.border(width = 1.75.dp, color = cycledColor, shape = keyShape)
+        }
+        // Ripple handled separately via .keyRippleEffect() at the call site
+        // (needs the actual touch position from pointerInput), so it's a
+        // no-op here — see LetterKey/NumberedLetterKey/NumpadDigitKey.
+        com.spmods.sinkey.data.KeyEffect.RIPPLE -> this
+        // Pop/scale handled via rememberKeyBumpScale's existing pressed-scale
+        // animation at the call site (bumpScale already responds to
+        // `pressed`) — see keyPopScaleMultiplier() used alongside .scale().
+        com.spmods.sinkey.data.KeyEffect.POP_SCALE -> this
+    }
+}
+
+/**
+ * Rotates [color]'s hue by [degrees] (0–360) in HSV space, keeping
+ * saturation/value the same — used by RGB_CYCLE to animate through a loop
+ * of hues derived from whichever accent color the user picked, rather than
+ * a hardcoded rainbow unrelated to their chosen palette.
+ */
+private fun rotateHue(color: Color, degrees: Float): Color {
+    val hsv = FloatArray(3)
+    android.graphics.Color.RGBToHSV(
+        (color.red * 255).toInt(),
+        (color.green * 255).toInt(),
+        (color.blue * 255).toInt(),
+        hsv
+    )
+    hsv[0] = (hsv[0] + degrees) % 360f
+    return Color(android.graphics.Color.HSVToColor(hsv))
+}
+
+/**
+ * Extra scale multiplier for KeyEffect.POP_SCALE, layered on top of the
+ * existing press-bump scale so "Pop" reads as a clearly bigger bounce than
+ * the default subtle bump. Returns 1f (no-op) for every other effect so
+ * this is safe to multiply into .scale() unconditionally at call sites.
+ */
+@Composable
+private fun keyPopScaleMultiplier(pressed: Boolean, keyEffect: com.spmods.sinkey.data.KeyEffect): Float {
+    if (keyEffect != com.spmods.sinkey.data.KeyEffect.POP_SCALE) return 1f
+    val scale by animateFloatAsState(
+        targetValue = if (pressed) 1.18f else 1f,
+        animationSpec = spring(dampingRatio = Spring.DampingRatioMediumBouncy, stiffness = Spring.StiffnessLow),
+        label = "popScale"
+    )
+    return scale
+}
+
+/**
+ * Draws an expanding, fading ripple circle from the last touch-down point
+ * for KeyEffect.RIPPLE. No-op Modifier for every other effect. Meant to be
+ * chained right after .keyEffectDecoration() at key call sites that track
+ * their own `pressed`/touch state (LetterKey, NumberedLetterKey,
+ * NumpadDigitKey).
+ */
+private fun Modifier.keyRippleEffect(
+    colors: KeyboardColors,
+    pressed: Boolean
+): Modifier = composed {
+    if (colors.keyEffect != com.spmods.sinkey.data.KeyEffect.RIPPLE) return@composed this
+
+    val rippleProgress = remember { Animatable(0f) }
+    LaunchedEffect(pressed) {
+        if (pressed) {
+            rippleProgress.snapTo(0f)
+            rippleProgress.animateTo(1f, animationSpec = tween(420, easing = androidx.compose.animation.core.LinearOutSlowInEasing))
+        }
+    }
+    this.drawWithContent {
+        drawContent()
+        if (rippleProgress.value > 0f && rippleProgress.value < 1f) {
+            val maxRadius = kotlin.math.max(size.width, size.height) * 0.75f
+            drawCircle(
+                color = colors.accent.copy(alpha = (1f - rippleProgress.value) * 0.45f),
+                radius = maxRadius * rippleProgress.value,
+                center = androidx.compose.ui.geometry.Offset(size.width / 2f, size.height / 2f)
             )
         }
     }
@@ -1594,13 +1724,15 @@ private fun RowScope.NumberedLetterKey(
 ) {
     var pressed by remember { mutableStateOf(false) }
     val bumpScale = rememberKeyBumpScale(pressed)
+    val popScale = keyPopScaleMultiplier(pressed, colors.keyEffect)
     Box(
         modifier = Modifier
             .height(keyHeight).weight(weight)
-            .scale(bumpScale)
+            .scale(bumpScale * popScale)
             .clip(keyShape)
             .background(if (pressed) colors.keyBg.copy(alpha = 0.6f) else colors.keyBg)
             .keyEffectDecoration(colors, keyShape)
+            .keyRippleEffect(colors, pressed)
             .let { m -> if (onPositioned != null) m.onGloballyPositioned(onPositioned) else m }
             .combinedClickable(onClick = { onTap() }, onLongClick = { onLongPress() })
             .pointerInput(Unit) {
@@ -1641,13 +1773,15 @@ private fun RowScope.LetterKey(
 ) {
     var pressed by remember { mutableStateOf(false) }
     val bumpScale = rememberKeyBumpScale(pressed)
+    val popScale = keyPopScaleMultiplier(pressed, colors.keyEffect)
     Box(
         modifier = Modifier
             .height(keyHeight).weight(weight)
-            .scale(bumpScale)
+            .scale(bumpScale * popScale)
             .clip(keyShape)
             .background(if (pressed) colors.keyBg.copy(alpha = 0.6f) else colors.keyBg)
             .keyEffectDecoration(colors, keyShape)
+            .keyRippleEffect(colors, pressed)
             .let { m -> if (onPositioned != null) m.onGloballyPositioned(onPositioned) else m }
             // clickable handles the actual tap/long-press logic reliably.
             // pointerInput only tracks down/up for the visual pressed state.
