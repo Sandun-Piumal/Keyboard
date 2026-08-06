@@ -1,10 +1,15 @@
 package com.spmods.sinkey
 
 import android.app.Activity
+import android.graphics.Bitmap
+import android.graphics.BitmapFactory
+import android.net.Uri
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
+import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
@@ -26,6 +31,7 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -37,11 +43,14 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.toArgb
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
 import androidx.core.view.WindowCompat
+import com.spmods.sinkey.data.KeyColorPalette
+import com.spmods.sinkey.data.KeyEffect
 import com.spmods.sinkey.data.PreferencesManager
 import com.spmods.sinkey.data.ThemeMode
 import com.spmods.sinkey.keyboard.KeyboardView
@@ -50,7 +59,9 @@ import com.spmods.sinkey.ui.screens.KeyboardHeightScreen
 import com.spmods.sinkey.ui.screens.SettingsScreen
 import com.spmods.sinkey.ui.screens.ThemesScreen
 import com.spmods.sinkey.ui.theme.SinKeyTheme
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 private val DeshGreen = Color(0xFF1B5E37)
 
@@ -111,6 +122,58 @@ private fun SinKeyApp(prefs: PreferencesManager) {
     val showKeyBorders by prefs.showKeyBorders.collectAsState(initial = true)
     val mixAutoSinhala by prefs.mixAutoSinhala.collectAsState(initial = false)
     val swipeTypingEnabled by prefs.swipeTypingEnabled.collectAsState(initial = false)
+    val keyColorPalette by prefs.keyColorPalette.collectAsState(initial = KeyColorPalette.DEFAULT)
+    val keyEffect by prefs.keyEffect.collectAsState(initial = KeyEffect.NONE)
+    val customBackgroundUri by prefs.customBackgroundUri.collectAsState(initial = null)
+
+    // ── "My themes" custom background: photo picker + preview decode ──────
+    val context = LocalContext.current
+    // Small in-memory preview bitmap for the Themes screen's "My themes"
+    // tile — decoded off the main thread whenever customBackgroundUri
+    // changes (including on first load, so the previously-picked photo
+    // still shows after reopening the app). Separate from the keyboard's
+    // own KeyboardCustomBackground decode/cache (KeyboardView is a
+    // different composable tree, often not even composed while the app UI
+    // is showing this screen), so this doesn't share or depend on that
+    // cache.
+    var customBackgroundPreview by remember { mutableStateOf<Bitmap?>(null) }
+    LaunchedEffect(customBackgroundUri) {
+        val uriString = customBackgroundUri
+        customBackgroundPreview = if (uriString != null) {
+            withContext(Dispatchers.IO) {
+                runCatching {
+                    context.contentResolver.openInputStream(Uri.parse(uriString))?.use {
+                        BitmapFactory.decodeStream(it)
+                    }
+                }.getOrNull()
+            }
+        } else {
+            null
+        }
+    }
+
+    // PickVisualMedia is the modern Android Photo Picker — needs no
+    // READ_MEDIA_IMAGES/READ_EXTERNAL_STORAGE runtime permission on any API
+    // level (it runs out-of-process and only hands back a scoped Uri for
+    // whatever the user picks), which is why AndroidManifest.xml needed no
+    // changes for this feature.
+    val pickPhotoLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.PickVisualMedia()
+    ) { uri: Uri? ->
+        if (uri == null) return@rememberLauncherForActivityResult
+        // Persist read access across app/device restarts — without this,
+        // the Uri stored in DataStore would throw SecurityException the
+        // next time anything (this screen's preview decode, or the
+        // keyboard's KeyboardCustomBackground) tries to open it after the
+        // process that received it from the picker has died.
+        runCatching {
+            context.contentResolver.takePersistableUriPermission(
+                uri,
+                android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION
+            )
+        }
+        scope.launch { prefs.setCustomBackgroundUri(uri.toString()) }
+    }
 
     // ── Back press priority (highest → lowest) ───────────────────────────────
     // 1. Keyboard preview open  → close preview
@@ -198,7 +261,20 @@ private fun SinKeyApp(prefs: PreferencesManager) {
                     tab == Tab.HOME -> HomeScreen()
                     tab == Tab.THEMES -> ThemesScreen(
                         currentMode = themeMode,
-                        onSelect = { mode -> scope.launch { prefs.setThemeMode(mode) } }
+                        onSelect = { mode -> scope.launch { prefs.setThemeMode(mode) } },
+                        keyColorPalette = keyColorPalette,
+                        onKeyColorPaletteChange = { palette -> scope.launch { prefs.setKeyColorPalette(palette) } },
+                        keyEffect = keyEffect,
+                        onKeyEffectChange = { effect -> scope.launch { prefs.setKeyEffect(effect) } },
+                        customBackgroundPreview = customBackgroundPreview,
+                        onPickCustomBackground = {
+                            pickPhotoLauncher.launch(
+                                androidx.activity.result.PickVisualMediaRequest(
+                                    ActivityResultContracts.PickVisualMedia.ImageOnly
+                                )
+                            )
+                        },
+                        onClearCustomBackground = { scope.launch { prefs.setCustomBackgroundUri(null) } }
                     )
                     tab == Tab.SETTINGS -> SettingsScreen(
                         defaultLanguage = defaultLanguage,
