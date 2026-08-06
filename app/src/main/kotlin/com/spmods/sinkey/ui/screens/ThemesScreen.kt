@@ -4,6 +4,8 @@ import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -14,9 +16,6 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.lazy.grid.GridCells
-import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
-import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -87,7 +86,17 @@ fun ThemesScreen(
     onPickCustomBackground: () -> Unit = {},
     onClearCustomBackground: () -> Unit = {}
 ) {
-    Column(modifier = Modifier.fillMaxWidth().padding(bottom = 24.dp)) {
+    // Scrollable: with the Colors/Effects grids now holding more entries
+    // than fit on one screen (12 colors, 9 effects), the page needs its own
+    // scroll — previously this Column had no verticalScroll at all, so
+    // content below the fold (esp. the Effects grid) was simply clipped and
+    // unreachable rather than scrollable.
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .verticalScroll(rememberScrollState())
+            .padding(bottom = 24.dp)
+    ) {
         Column(modifier = Modifier.padding(22.dp, 18.dp, 22.dp, 4.dp)) {
             Text(
                 "APPEARANCE",
@@ -105,39 +114,54 @@ fun ThemesScreen(
             )
         }
 
-        LazyVerticalGrid(
-            columns = GridCells.Fixed(2),
-            modifier = Modifier
-                .padding(horizontal = 16.dp)
-                .height(180.dp),
-            horizontalArrangement = Arrangement.spacedBy(12.dp),
+        // Manual 2-column chunking instead of LazyVerticalGrid — this Column
+        // is now inside the page's own verticalScroll, and nesting a lazy
+        // scrollable grid inside a scrolling Column caused the janky
+        // "scrolls in pieces" feel (competing nested-scroll containers).
+        // A plain Column of Rows has no scroll behavior of its own, so the
+        // whole page scrolls as a single smooth list.
+        Column(
+            modifier = Modifier.padding(horizontal = 16.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
-            items(themeOptions) { option ->
-                val selected = option.mode == currentMode
-                Column(
-                    modifier = Modifier
-                        .clip(RoundedCornerShape(16.dp))
-                        .border(
-                            width = if (selected) 2.dp else 1.dp,
-                            color = if (selected) MaterialTheme.colorScheme.secondary else MaterialTheme.colorScheme.outlineVariant,
-                            shape = RoundedCornerShape(16.dp)
-                        )
-                        .background(MaterialTheme.colorScheme.surface)
-                        .clickable { option.mode?.let(onSelect) }
+            themeOptions.chunked(2).forEach { rowOptions ->
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(12.dp),
+                    modifier = Modifier.fillMaxWidth()
                 ) {
-                    Box(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .height(70.dp)
-                            .background(option.bg),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Text(option.emoji, fontSize = 22.sp)
+                    rowOptions.forEach { option ->
+                        val selected = option.mode == currentMode
+                        Column(
+                            modifier = Modifier
+                                .weight(1f)
+                                .clip(RoundedCornerShape(16.dp))
+                                .border(
+                                    width = if (selected) 2.dp else 1.dp,
+                                    color = if (selected) MaterialTheme.colorScheme.secondary else MaterialTheme.colorScheme.outlineVariant,
+                                    shape = RoundedCornerShape(16.dp)
+                                )
+                                .background(MaterialTheme.colorScheme.surface)
+                                .clickable { option.mode?.let(onSelect) }
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .height(70.dp)
+                                    .background(option.bg),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Text(option.emoji, fontSize = 22.sp)
+                            }
+                            Column(modifier = Modifier.padding(12.dp, 9.dp)) {
+                                Text(option.label, fontSize = 12.5.sp, fontWeight = FontWeight.SemiBold)
+                                Text(option.siLabel, fontSize = 11.5.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            }
+                        }
                     }
-                    Column(modifier = Modifier.padding(12.dp, 9.dp)) {
-                        Text(option.label, fontSize = 12.5.sp, fontWeight = FontWeight.SemiBold)
-                        Text(option.siLabel, fontSize = 11.5.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    // Pad out an odd last row so the single remaining tile
+                    // keeps half-width instead of stretching full-width.
+                    if (rowOptions.size == 1) {
+                        Box(modifier = Modifier.weight(1f))
                     }
                 }
             }
@@ -255,47 +279,56 @@ private fun Modifier.dashedBorder(color: Color, shape: RoundedCornerShape): Modi
 
 @Composable
 private fun ColorsGrid(selected: KeyColorPalette, onSelect: (KeyColorPalette) -> Unit) {
-    LazyVerticalGrid(
-        columns = GridCells.Fixed(3),
-        modifier = Modifier
-            .padding(horizontal = 16.dp)
-            .height(96.dp * ((KeyColorPalette.entries.size + 2) / 3)),
-        horizontalArrangement = Arrangement.spacedBy(10.dp),
+    Column(
+        modifier = Modifier.padding(horizontal = 16.dp),
         verticalArrangement = Arrangement.spacedBy(10.dp)
     ) {
-        items(KeyColorPalette.entries) { palette ->
-            val isSelected = palette == selected
-            Column(
-                modifier = Modifier
-                    .aspectRatio(1f)
-                    .clip(RoundedCornerShape(14.dp))
-                    .border(
-                        width = if (isSelected) 2.dp else 1.dp,
-                        color = if (isSelected) palette.accent else MaterialTheme.colorScheme.outlineVariant,
-                        shape = RoundedCornerShape(14.dp)
-                    )
-                    .background(MaterialTheme.colorScheme.surface)
-                    .clickable { onSelect(palette) },
-                horizontalAlignment = Alignment.CenterHorizontally,
-                verticalArrangement = Arrangement.Center
+        KeyColorPalette.entries.chunked(3).forEach { rowPalettes ->
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(10.dp),
+                modifier = Modifier.fillMaxWidth()
             ) {
-                Box(
-                    modifier = Modifier
-                        .size(30.dp)
-                        .clip(CircleShape)
-                        .background(palette.accent),
-                    contentAlignment = Alignment.Center
-                ) {
-                    if (isSelected) {
-                        Icon(Icons.Filled.Check, contentDescription = null, tint = Color.White, modifier = Modifier.size(16.dp))
+                rowPalettes.forEach { palette ->
+                    val isSelected = palette == selected
+                    Column(
+                        modifier = Modifier
+                            .weight(1f)
+                            .aspectRatio(1f)
+                            .clip(RoundedCornerShape(14.dp))
+                            .border(
+                                width = if (isSelected) 2.dp else 1.dp,
+                                color = if (isSelected) palette.accent else MaterialTheme.colorScheme.outlineVariant,
+                                shape = RoundedCornerShape(14.dp)
+                            )
+                            .background(MaterialTheme.colorScheme.surface)
+                            .clickable { onSelect(palette) },
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.Center
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .size(30.dp)
+                                .clip(CircleShape)
+                                .background(palette.accent),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            if (isSelected) {
+                                Icon(Icons.Filled.Check, contentDescription = null, tint = Color.White, modifier = Modifier.size(16.dp))
+                            }
+                        }
+                        Text(
+                            palette.label,
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.Medium,
+                            modifier = Modifier.padding(top = 6.dp)
+                        )
                     }
                 }
-                Text(
-                    palette.label,
-                    fontSize = 11.sp,
-                    fontWeight = FontWeight.Medium,
-                    modifier = Modifier.padding(top = 6.dp)
-                )
+                // Pad out a short last row so tiles keep their 1/3-width
+                // size instead of stretching to fill the row.
+                repeat(3 - rowPalettes.size) {
+                    Box(modifier = Modifier.weight(1f))
+                }
             }
         }
     }
@@ -308,45 +341,52 @@ private fun ColorsGrid(selected: KeyColorPalette, onSelect: (KeyColorPalette) ->
  */
 @Composable
 private fun EffectsGrid(selected: KeyEffect, palette: KeyColorPalette, onSelect: (KeyEffect) -> Unit) {
-    LazyVerticalGrid(
-        columns = GridCells.Fixed(2),
-        modifier = Modifier
-            .padding(horizontal = 16.dp)
-            .height(100.dp * ((KeyEffect.entries.size + 1) / 2)),
-        horizontalArrangement = Arrangement.spacedBy(12.dp),
+    Column(
+        modifier = Modifier.padding(horizontal = 16.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
-        items(KeyEffect.entries) { effect ->
-            val isSelected = effect == selected
-            Column(
-                modifier = Modifier
-                    .clip(RoundedCornerShape(14.dp))
-                    .border(
-                        width = if (isSelected) 2.dp else 1.dp,
-                        color = if (isSelected) palette.accent else MaterialTheme.colorScheme.outlineVariant,
-                        shape = RoundedCornerShape(14.dp)
-                    )
-                    .background(Color(0xFF1E1E1E))
-                    .clickable { onSelect(effect) }
+        KeyEffect.entries.chunked(2).forEach { rowEffects ->
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
+                modifier = Modifier.fillMaxWidth()
             ) {
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(64.dp)
-                        .padding(10.dp),
-                    horizontalArrangement = Arrangement.spacedBy(6.dp)
-                ) {
-                    listOf("q", "w", "e").forEach { letter ->
-                        EffectPreviewKey(letter, effect, palette.accent, Modifier.weight(1f))
+                rowEffects.forEach { effect ->
+                    val isSelected = effect == selected
+                    Column(
+                        modifier = Modifier
+                            .weight(1f)
+                            .clip(RoundedCornerShape(14.dp))
+                            .border(
+                                width = if (isSelected) 2.dp else 1.dp,
+                                color = if (isSelected) palette.accent else MaterialTheme.colorScheme.outlineVariant,
+                                shape = RoundedCornerShape(14.dp)
+                            )
+                            .background(Color(0xFF1E1E1E))
+                            .clickable { onSelect(effect) }
+                    ) {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(64.dp)
+                                .padding(10.dp),
+                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                        ) {
+                            listOf("q", "w", "e").forEach { letter ->
+                                EffectPreviewKey(letter, effect, palette.accent, Modifier.weight(1f))
+                            }
+                        }
+                        Text(
+                            effect.label,
+                            fontSize = 12.5.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            color = Color.White,
+                            modifier = Modifier.padding(10.dp, 0.dp, 10.dp, 10.dp)
+                        )
                     }
                 }
-                Text(
-                    effect.label,
-                    fontSize = 12.5.sp,
-                    fontWeight = FontWeight.SemiBold,
-                    color = Color.White,
-                    modifier = Modifier.padding(10.dp, 0.dp, 10.dp, 10.dp)
-                )
+                if (rowEffects.size == 1) {
+                    Box(modifier = Modifier.weight(1f))
+                }
             }
         }
     }
@@ -369,6 +409,22 @@ private fun EffectPreviewKey(letter: String, effect: KeyEffect, accent: Color, m
                 cap = StrokeCap.Round
             )
         }
+        // Static previews for the new effects — the real animated versions
+        // (pulse/RGB cycle/ripple) run on the actual keyboard; these cards
+        // just need to communicate the *idea* of each style at a glance.
+        KeyEffect.RIPPLE -> modifier.drawBehind {
+            drawCircle(
+                color = accent.copy(alpha = 0.35f),
+                radius = size.minDimension * 0.55f,
+                center = androidx.compose.ui.geometry.Offset(size.width / 2f, size.height / 2f)
+            )
+        }
+        KeyEffect.POP_SCALE -> modifier.border(1.5.dp, accent.copy(alpha = 0.6f), shape)
+        KeyEffect.SHADOW_3D -> modifier
+            .shadow(elevation = 4.dp, shape = shape, ambientColor = Color.Black, spotColor = Color.Black)
+            .border(0.75.dp, accent.copy(alpha = 0.4f), shape)
+        KeyEffect.NEON_PULSE -> modifier.shadow(elevation = 8.dp, shape = shape, ambientColor = accent, spotColor = accent)
+        KeyEffect.RGB_CYCLE -> modifier.border(1.75.dp, accent, shape)
     }
     Box(
         modifier = decorated
