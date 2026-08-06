@@ -165,6 +165,53 @@ class SinKeyInputMethodService : InputMethodService() {
     // answering (mix mode reuses wordBuffer, not englishBuffer, for typing).
     private var mixEnglishQuery: String = ""
 
+    // BUG FIX: mixEnglishQuery alone isn't enough to tell replies apart —
+    // it's overwritten on every keystroke, so if a fast typist fires two
+    // spell-check requests before the first reply arrives, and the buffer
+    // later returns to a value equal to the *older* request's query (e.g.
+    // typing then backspacing back to the same text), the stale reply could
+    // pass the "wordBuffer.toString() == raw" check and get applied even
+    // though a newer, still-pending request is what should actually answer
+    // for that text. A monotonically increasing token disambiguates: only
+    // the reply matching the most recently issued request is ever applied.
+    private var mixEnglishRequestId: Long = 0
+
+    // Holds the Sinhala/transliteration side of the current suggestion list
+    // separately from the async English (mix mode) results, so the two
+    // async sources (Room personal-dictionary lookup + spell-checker) can
+    // each update their own half and be recombined, instead of one write
+    // clobbering whatever the other already placed into suggestions.value —
+    // previously the mix-mode spell-checker callback did
+    // `suggestions.value = (suggestions.value + englishWords)...`, which
+    // silently ate the other source's results whenever it ran first.
+    private var mixSinhalaSuggestions: List<String> = emptyList()
+    private var mixEnglishSuggestions: List<String> = emptyList()
+
+    /** Recombines the two mix-mode suggestion sources into a single deduped list. */
+    private fun recomputeMixSuggestions() {
+        suggestions.value = (mixSinhalaSuggestions + mixEnglishSuggestions).distinct().take(6)
+    }
+
+    /**
+     * Clears the suggestion strip AND the mix-mode buckets behind it, and
+     * invalidates any in-flight mix English request. Use this instead of
+     * `suggestions.value = emptyList()` directly at any point where typing
+     * has moved on (word committed, buffer cleared, field/language
+     * switched, etc.) — BUG FIX: previously only suggestions.value itself
+     * was cleared at these sites, leaving mixSinhalaSuggestions /
+     * mixEnglishSuggestions holding stale data that a subsequent
+     * recomputeMixSuggestions() call (e.g. a late-arriving async reply
+     * that still passes its own staleness checks) could resurrect into a
+     * suggestion for the wrong word.
+     */
+    private fun clearSuggestions() {
+        suggestions.value = emptyList()
+        mixSinhalaSuggestions = emptyList()
+        mixEnglishSuggestions = emptyList()
+        mixEnglishQuery = ""
+        mixEnglishRequestId += 1
+    }
+
     // Tracks where WE expect the cursor to be after our own edits (typing,
     // backspace, committing a suggestion, etc.) — see onUpdateSelection.
     // -1 means "unknown / just switched fields", which suppresses the first
@@ -416,13 +463,20 @@ class SinKeyInputMethodService : InputMethodService() {
 
                         // Mix mode: this callback is answering the extra English-side
                         // lookup fired from fetchEnglishSuggestionsForMix — merge its
-                        // results onto the end of whatever Sinhala suggestions are
-                        // already showing instead of replacing them. Bail out if the
-                        // buffer has since moved on (cleared, or now a different word)
-                        // so a slow async reply can't attach stale suggestions.
+                        // results into mixEnglishSuggestions and recombine with
+                        // whatever the Sinhala side has separately, instead of
+                        // clobbering suggestions.value wholesale. Bail out if the
+                        // buffer has since moved on (cleared, or now a different
+                        // word) — checked both by request id (guards against a
+                        // stale in-flight reply whose query text happens to match
+                        // the current buffer again, e.g. after a backspace-retype)
+                        // and by the buffer content itself, so a slow async reply
+                        // can never attach stale suggestions.
                         val raw = mixEnglishQuery
+                        val requestId = mixEnglishRequestId
                         if (currentLanguage.value != "mix" || raw.isEmpty()) return
                         if (wordBuffer.toString() != raw) return
+                        if (requestId != mixEnglishRequestId) return
                         val englishWords = mutableListOf<String>()
                         englishWords.add(raw)
                         results?.forEach { info ->
@@ -431,7 +485,8 @@ class SinKeyInputMethodService : InputMethodService() {
                                 if (s != raw && englishWords.size < 3) englishWords.add(s)
                             }
                         }
-                        suggestions.value = (suggestions.value + englishWords).distinct().take(6)
+                        mixEnglishSuggestions = englishWords
+                        recomputeMixSuggestions()
                     }
                     override fun onGetSentenceSuggestions(results: Array<out android.view.textservice.SentenceSuggestionsInfo>?) {}
                 },
@@ -595,7 +650,7 @@ class SinKeyInputMethodService : InputMethodService() {
 
         wordBuffer.clear()
         englishBuffer.clear()
-        suggestions.value = emptyList()
+        clearSuggestions()
         // A pending undo chip refers to text in the field we're leaving —
         // meaningless (and potentially actionable-on-the-wrong-field) once
         // focus moves elsewhere.
@@ -691,15 +746,77 @@ class SinKeyInputMethodService : InputMethodService() {
                 englishBuffer.clear()
                 currentInputConnection?.finishComposingText()
             }
-            suggestions.value = emptyList()
+            clearSuggestions()
             lastCommittedWord = ""
             lastCommittedLanguage = ""
+            wasExplicitShift = false
             // The undo chip's delete-then-retype logic assumes the cursor
             // is still sitting right after the word it corrected — once the
             // user has tapped elsewhere, that assumption no longer holds,
             // so the chip must not be actionable anymore.
             clearAutocorrectUndoIfAny()
+
+            // BUG FIX: the cursor landing mid/after an *existing* word (the
+            // user tapping back into text they already typed) used to just
+            // leave the suggestion strip empty forever, since nothing here
+            // ever looked at what's actually around the new cursor position.
+            // Re-derive that word from the field and re-run suggestions for
+            // it, so tapping into an existing word offers corrections/
+            // completions for it exactly like typing it fresh would.
+            currentInputConnection?.let { reseedSuggestionsForWordAtCursor(it) }
         }
+    }
+
+    /**
+     * Reads the word immediately touching the cursor (before it, extending
+     * back to the previous whitespace/punctuation boundary) and reseeds
+     * wordBuffer/englishBuffer + the suggestion strip from it, as if the
+     * user had just finished typing that word. Only handles the "cursor is
+     * right after or inside a word" case — if the cursor is between words
+     * (e.g. right after a space), there's no partial word to resume, so
+     * this intentionally leaves the buffers empty and lets updateSuggestions()
+     * fall back to next-word prediction as before.
+     *
+     * Deliberately conservative about what counts as "part of a word": stops
+     * at the first whitespace or ASCII punctuation character, same set used
+     * to detect the composing-word boundary elsewhere (learnWordsFromClipboard's
+     * tokenizer). Sinhala combining marks are within 0x0D80-0x0DFF so they're
+     * naturally included as letters, not treated as boundaries.
+     */
+    private fun reseedSuggestionsForWordAtCursor(ic: android.view.inputmethod.InputConnection) {
+        val before = ic.getTextBeforeCursor(64, 0)?.toString() ?: ""
+        if (before.isEmpty()) return
+        val boundary = Regex("[\\s,.;:!?\"'()\\[\\]{}/\\\\|]")
+        var start = before.length
+        while (start > 0 && !boundary.matches(before[start - 1].toString())) start--
+        val word = before.substring(start)
+        if (word.isEmpty()) return
+
+        // Route into whichever buffer matches the word's own script rather
+        // than currentLanguage — the user may have typed this word in a
+        // different mode than the one they're currently in (e.g. typed in
+        // "si", then switched to "en", then tapped back into the Sinhala
+        // word), and resuming into the wrong buffer would just transliterate
+        // it incorrectly.
+        //
+        // detectWordScript returns null for short (<2 char), mixed-script,
+        // digit, or other-script words — treat that as "can't tell" and
+        // leave the buffers empty rather than guessing, instead of the
+        // earlier `script != "si"` check which incorrectly folded null into
+        // the English branch and would wrongly try to resume e.g. a lone
+        // punctuation-adjacent character or a "2024"-style token as English.
+        val script = detectWordScript(word) ?: return
+        if (script == "si" && isSinhalaTyping()) {
+            wordBuffer.append(word)
+        } else if (script == "en") {
+            englishBuffer.append(word)
+        } else {
+            // Sinhala-script word but keyboard is currently in pure "en"
+            // mode — nothing sensible to resume typing into; leave buffers
+            // empty rather than guess.
+            return
+        }
+        updateSuggestions()
     }
 
     /**
@@ -833,7 +950,7 @@ class SinKeyInputMethodService : InputMethodService() {
             }
             "ENTER" -> {
                 if (isSinhalaTyping()) commitPendingWord()
-                else { learnWord(englishBuffer.toString(), "en"); englishBuffer.clear(); suggestions.value = emptyList() }
+                else { learnWord(englishBuffer.toString(), "en"); englishBuffer.clear(); clearSuggestions() }
 
                 val editorInfo = currentInputEditorInfo
                 val action = editorInfo?.imeOptions?.and(EditorInfo.IME_MASK_ACTION) ?: EditorInfo.IME_ACTION_NONE
@@ -878,7 +995,7 @@ class SinKeyInputMethodService : InputMethodService() {
             "LANG_TOGGLE" -> {
                 commitPendingWord()
                 englishBuffer.clear()
-                suggestions.value = emptyList()
+                clearSuggestions()
                 currentLanguage.value = when (currentLanguage.value) {
                     "mix" -> "en"
                     "en"  -> "si"
@@ -888,7 +1005,7 @@ class SinKeyInputMethodService : InputMethodService() {
             "," , "." -> {
                 commitPendingWord()
                 englishBuffer.clear()
-                suggestions.value = emptyList()
+                clearSuggestions()
                 ic.commitText(key, 1)
                 // Period → next word should be capitalized
                 if (key == ".") {
@@ -905,7 +1022,7 @@ class SinKeyInputMethodService : InputMethodService() {
                     if (text.isNotEmpty()) {
                         commitPendingWord()
                         englishBuffer.clear()
-                        suggestions.value = emptyList()
+                        clearSuggestions()
                         ic.commitText(text, 1)
                     }
                     syncExpectedCursorPosition(ic)
@@ -1094,7 +1211,7 @@ class SinKeyInputMethodService : InputMethodService() {
         ic?.setComposingText("", 1)
         ic?.commitText(finalWord, 1)
         wordBuffer.clear()
-        suggestions.value = emptyList()
+        clearSuggestions()
         // Learn the plain (unstyled) word, not the fancy-font glyphs, so the
         // personal dictionary and future suggestions stay in normal text.
         learnWord(if (convertToSinhala) finalWord else raw, if (convertToSinhala) "si" else "en")
@@ -1338,7 +1455,7 @@ class SinKeyInputMethodService : InputMethodService() {
         ic.commitText(styled, 1)
         ic.commitText(" ", 1)
         learnWord(word, language)
-        suggestions.value = emptyList()
+        clearSuggestions()
         updateSuggestions()
         syncExpectedCursorPosition(ic)
     }
@@ -1368,6 +1485,15 @@ class SinKeyInputMethodService : InputMethodService() {
             ic.setComposingText("", 1)
             ic.commitText(toCommit, 1)
             wordBuffer.clear()
+            // BUG FIX: previously the mix-mode suggestion buckets
+            // (mixSinhalaSuggestions/mixEnglishSuggestions) weren't reset
+            // here. wordBuffer.clear() alone doesn't stop a still-in-flight
+            // spell-checker reply for the just-committed word from later
+            // calling recomputeMixSuggestions() and re-showing a stale
+            // suggestion for a word that's already been typed — clearing
+            // here (via the same helper onUpdateSelection/etc. use) closes
+            // that window and also invalidates the in-flight request id.
+            clearSuggestions()
             learnWord(word, if (pickedEnglish) "en" else "si")
         } else {
             // Delete the length of what's actually on screen (the styled/
@@ -1383,6 +1509,7 @@ class SinKeyInputMethodService : InputMethodService() {
             val styled = com.spmods.sinkey.keyboard.FancyTextMapper.apply(word, cachedFancyTextStyle)
             ic.commitText(styled, 1)
             englishBuffer.clear()
+            clearSuggestions()
             learnWord(word, "en")
         }
         // Auto-space after applying a suggestion.
@@ -1701,7 +1828,7 @@ class SinKeyInputMethodService : InputMethodService() {
             if (lastCommittedWord.isNotBlank() && lastCommittedLanguage == predictLanguage) {
                 fetchNextWordSuggestions(lastCommittedWord, predictLanguage)
             } else {
-                suggestions.value = emptyList()
+                clearSuggestions()
             }
             return
         }
@@ -1744,7 +1871,20 @@ class SinKeyInputMethodService : InputMethodService() {
                 val cap = SinhalaTransliterator.transliterate(raw[0].uppercaseChar() + raw.substring(1))
                 if (!list.contains(cap) && list.size < 5) list.add(cap)
             }
-            suggestions.value = list.take(5)
+            // BUG FIX: in mix mode this used to write straight into
+            // suggestions.value, which the async English spell-check reply
+            // (see onGetSuggestions' mix branch) or the personal-dictionary
+            // merge below could then partially or fully overwrite depending
+            // on which one landed last — a plain last-write-wins race.
+            // Sinhala results now live in their own bucket and get
+            // recombined with the English bucket explicitly, so neither
+            // source can erase the other's results.
+            if (currentLanguage.value == "mix") {
+                mixSinhalaSuggestions = list.take(5)
+                recomputeMixSuggestions()
+            } else {
+                suggestions.value = list.take(5)
+            }
             // Merge in personal-dictionary words the user has typed before that
             // start with the same rendered prefix (e.g. previously typed
             // Sinhala words matching what's being composed right now).
@@ -1786,6 +1926,13 @@ class SinKeyInputMethodService : InputMethodService() {
      */
     private fun fetchEnglishSuggestionsForMix(raw: String) {
         mixEnglishQuery = raw
+        // BUG FIX: bump the request id so the onGetSuggestions reply for
+        // *this* request can be told apart from a still-pending reply to an
+        // earlier request that happens to share the same query text (e.g.
+        // type "of", backspace to "o", retype "of" — two requests both
+        // querying "of", but only the second's reply should count). See the
+        // mixEnglishRequestId field comment for the full race this closes.
+        mixEnglishRequestId += 1
         val session = spellCheckerSession
         if (session != null) {
             try {
@@ -1795,7 +1942,8 @@ class SinKeyInputMethodService : InputMethodService() {
             }
         } else {
             // No spell-checker available — still surface the raw word itself.
-            suggestions.value = (suggestions.value + raw).distinct().take(6)
+            mixEnglishSuggestions = listOf(raw)
+            recomputeMixSuggestions()
         }
         // Also merge in personal-dictionary English words (things the user
         // has typed as English before, in mix mode or pure "en" mode) that
@@ -1804,8 +1952,34 @@ class SinKeyInputMethodService : InputMethodService() {
         // the Sinhala side of mix mode, just above where this is called
         // from. Without this, mix mode only ever offered spell-checker
         // dictionary words for English, never words the user had actually
-        // typed and built up frequency for themselves.
-        fetchPersonalSuggestions(raw, "en", baseList = suggestions.value)
+        // typed and built up frequency for themselves. Routed through the
+        // English bucket (not suggestions.value directly) for the same
+        // reason as above — keeps it from clobbering the Sinhala bucket.
+        fetchPersonalSuggestionsMixEnglish(raw)
+    }
+
+    /**
+     * Same idea as [fetchPersonalSuggestions] but for mix mode's English
+     * bucket specifically: merges learned personal-dictionary English words
+     * into mixEnglishSuggestions and recombines via [recomputeMixSuggestions]
+     * instead of writing suggestions.value directly, so it can never race
+     * against / erase the Sinhala bucket's results.
+     */
+    private fun fetchPersonalSuggestionsMixEnglish(prefix: String) {
+        if (prefix.isEmpty()) return
+        val requestId = mixEnglishRequestId
+        serviceScope.launch {
+            val learned = wordRepo.suggestionsFor(prefix, "en", limit = 5)
+            if (learned.isEmpty()) return@launch
+            // Stale-reply guard, same reasoning as onGetSuggestions' mix
+            // branch: only apply if this is still the most recent request
+            // and the buffer hasn't moved on to different text.
+            if (requestId != mixEnglishRequestId) return@launch
+            if (currentLanguage.value != "mix" || wordBuffer.toString() != prefix) return@launch
+            val current = mixEnglishSuggestions.ifEmpty { listOf(prefix) }
+            mixEnglishSuggestions = (learned + current).distinct().take(5)
+            recomputeMixSuggestions()
+        }
     }
 
     /**
@@ -1822,7 +1996,7 @@ class SinKeyInputMethodService : InputMethodService() {
      * flashing stale suggestions, since there's no typed text to fall back to.
      */
     private fun fetchNextWordSuggestions(previousWord: String, language: String) {
-        suggestions.value = emptyList()
+        clearSuggestions()
         serviceScope.launch {
             val predicted = wordRepo.nextWordSuggestions(previousWord, language, limit = 3)
             // Guard against a stale async reply landing after the user has
@@ -1837,6 +2011,15 @@ class SinKeyInputMethodService : InputMethodService() {
 
     private fun fetchPersonalSuggestions(prefix: String, language: String, baseList: List<String>) {
         if (prefix.isEmpty()) return
+        // BUG FIX: in mix mode, "si" personal-dictionary results used to be
+        // merged straight into suggestions.value, the same shared field the
+        // async English mix results (recomputeMixSuggestions) also write
+        // to — whichever finished last won, silently dropping the other's
+        // suggestions. Route mix-mode Sinhala results through
+        // mixSinhalaSuggestions instead, same as the synchronous list
+        // higher up in updateSuggestions(), so this can only ever affect
+        // the Sinhala half of the merged result.
+        val isMixSinhala = language == "si" && currentLanguage.value == "mix"
         serviceScope.launch {
             val learned = if (language == "si") {
                 wordRepo.fuzzySuggestionsFor(prefix, language, limit = 5)
@@ -1851,9 +2034,18 @@ class SinKeyInputMethodService : InputMethodService() {
             // a baseList that's already full (which happens for any 3+
             // char word since the transliteration fix above), then fill
             // any remaining room with baseList entries not already present.
-            val current = suggestions.value.ifEmpty { baseList }
-            val merged = (learned + current).distinct().take(5)
-            suggestions.value = merged
+            if (isMixSinhala) {
+                // Stale-reply guard: only apply if mix mode's Sinhala buffer
+                // still holds the word this lookup was for.
+                if (currentLanguage.value != "mix" || wordBuffer.toString() != prefix) return@launch
+                val current = mixSinhalaSuggestions.ifEmpty { baseList }
+                mixSinhalaSuggestions = (learned + current).distinct().take(5)
+                recomputeMixSuggestions()
+            } else {
+                val current = suggestions.value.ifEmpty { baseList }
+                val merged = (learned + current).distinct().take(5)
+                suggestions.value = merged
+            }
         }
     }
 
