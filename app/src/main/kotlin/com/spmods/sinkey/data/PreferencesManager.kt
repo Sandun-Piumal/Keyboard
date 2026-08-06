@@ -51,6 +51,21 @@ class PreferencesManager(private val context: Context) {
         // DictionarySeeder.SEED_VERSION to re-seed without wiping learned
         // words (seedWord's OR IGNORE never touches an existing row).
         val DICTIONARY_SEED_VERSION = androidx.datastore.preferences.core.intPreferencesKey("dictionary_seed_version")
+
+        // Themes screen: which KeyColorPalette accent is applied to keys —
+        // one of KeyColorPalette.entries' .key values. DEFAULT keeps the
+        // existing look (no accent tint) so this is purely additive for
+        // existing users.
+        val KEY_COLOR_PALETTE = stringPreferencesKey("key_color_palette")
+        // Themes screen: which KeyEffect border/glow style is drawn on keys —
+        // one of KeyEffect.entries' .key values. NONE keeps the existing
+        // flat look.
+        val KEY_EFFECT = stringPreferencesKey("key_effect")
+        // "My themes" — a user-picked photo (persisted via
+        // takePersistableUriPermission so it survives reboots) shown as the
+        // keyboard's background. Null/blank = no custom background, fall
+        // back to the normal solid keyboardColors().bg.
+        val CUSTOM_BACKGROUND_URI = stringPreferencesKey("custom_background_uri")
     }
 
     val themeMode: Flow<ThemeMode> = context.dataStore.data.map { prefs ->
@@ -118,6 +133,25 @@ class PreferencesManager(private val context: Context) {
         else raw.split(",").filter { it.isNotBlank() }
     }
 
+    /** Currently selected key-color palette, defaulting to DEFAULT (no tint change). */
+    val keyColorPalette: Flow<KeyColorPalette> = context.dataStore.data.map { prefs ->
+        KeyColorPalette.fromKey(prefs[Keys.KEY_COLOR_PALETTE] ?: KeyColorPalette.DEFAULT.key)
+    }
+
+    /** Currently selected key border/glow effect, defaulting to NONE. */
+    val keyEffect: Flow<KeyEffect> = context.dataStore.data.map { prefs ->
+        KeyEffect.fromKey(prefs[Keys.KEY_EFFECT] ?: KeyEffect.NONE.key)
+    }
+
+    /**
+     * content:// Uri (as a string) of the user's chosen "My themes" photo
+     * background, or null if none is set / the built-in solid background
+     * should be used instead.
+     */
+    val customBackgroundUri: Flow<String?> = context.dataStore.data.map { prefs ->
+        prefs[Keys.CUSTOM_BACKGROUND_URI]?.takeIf { it.isNotBlank() }
+    }
+
     suspend fun setThemeMode(mode: ThemeMode) {
         context.dataStore.edit { it[Keys.THEME_MODE] = mode.name }
     }
@@ -164,6 +198,25 @@ class PreferencesManager(private val context: Context) {
 
     suspend fun setDictionarySeedVersion(version: Int) {
         context.dataStore.edit { it[Keys.DICTIONARY_SEED_VERSION] = version }
+    }
+
+    suspend fun setKeyColorPalette(palette: KeyColorPalette) {
+        context.dataStore.edit { it[Keys.KEY_COLOR_PALETTE] = palette.key }
+    }
+
+    suspend fun setKeyEffect(effect: KeyEffect) {
+        context.dataStore.edit { it[Keys.KEY_EFFECT] = effect.key }
+    }
+
+    /**
+     * Sets (or clears, when [uri] is null) the "My themes" custom photo
+     * background. Persisting the read permission is the caller's
+     * responsibility (see ThemesScreen's photo picker launcher) — this just
+     * stores the string, so a Uri without a persisted permission would
+     * fail to load on the next app/keyboard restart.
+     */
+    suspend fun setCustomBackgroundUri(uri: String?) {
+        context.dataStore.edit { it[Keys.CUSTOM_BACKGROUND_URI] = uri ?: "" }
     }
 
     /**
@@ -226,5 +279,53 @@ enum class FancyTextStyle(val key: String, val label: String, val preview: Strin
 
     companion object {
         fun fromKey(key: String): FancyTextStyle = entries.find { it.key == key } ?: NONE
+    }
+}
+
+/**
+ * Themes screen "Colors" section — an accent color applied to the keyboard
+ * (space bar / special-key tint and the Themes card's own accent dot),
+ * layered on top of the existing light/dark KeyboardColors rather than
+ * replacing it. DEFAULT reproduces the app's original look exactly (no
+ * accent override), so switching to this system doesn't change anything
+ * for users who never open the new Colors picker.
+ *
+ * [accent] is a single representative color used both for the small dot in
+ * the Themes screen's preview card and as the tint mixed into the
+ * keyboard's special/space key backgrounds — see
+ * KeyboardView.applyPaletteAccent().
+ */
+enum class KeyColorPalette(val key: String, val label: String, val accent: androidx.compose.ui.graphics.Color) {
+    DEFAULT("default", "Default", androidx.compose.ui.graphics.Color(0xFF6E9A65)),
+    BLUE("blue", "Blue", androidx.compose.ui.graphics.Color(0xFF3B6FE0)),
+    RED("red", "Red", androidx.compose.ui.graphics.Color(0xFFE05252)),
+    GREEN("green", "Green", androidx.compose.ui.graphics.Color(0xFF3FAE6B)),
+    CYAN("cyan", "Cyan", androidx.compose.ui.graphics.Color(0xFF33C2C2)),
+    PURPLE("purple", "Purple", androidx.compose.ui.graphics.Color(0xFF8A5FE0)),
+    AMBER("amber", "Amber", androidx.compose.ui.graphics.Color(0xFFE0A23B));
+
+    companion object {
+        fun fromKey(key: String): KeyColorPalette = entries.find { it.key == key } ?: DEFAULT
+    }
+}
+
+/**
+ * Themes screen "Effects" section — how each key's border/edge is drawn.
+ * Purely a rendering choice layered onto whatever KeyboardColors.keyBg
+ * already is; doesn't change key colors, sizing, or layout. NONE reproduces
+ * the app's original flat-background look.
+ */
+enum class KeyEffect(val key: String, val label: String) {
+    /** Flat key background only, no extra border/glow — original look. */
+    NONE("none", "None"),
+    /** Thin solid border in the palette accent color around every key. */
+    OUTLINE("outline", "Outline"),
+    /** Soft colored glow (blurred shadow) behind every key in the accent color. */
+    GLOW("glow", "Glow"),
+    /** Bottom-edge-only accent underline, like a subtle key "shadow" cue. */
+    UNDERLINE("underline", "Underline");
+
+    companion object {
+        fun fromKey(key: String): KeyEffect = entries.find { it.key == key } ?: NONE
     }
 }
