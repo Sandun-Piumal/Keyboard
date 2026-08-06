@@ -260,6 +260,11 @@ private fun Modifier.keyEffectDecoration(colors: KeyboardColors, keyShape: Round
         // animation at the call site (bumpScale already responds to
         // `pressed`) — see keyPopScaleMultiplier() used alongside .scale().
         com.spmods.sinkey.data.KeyEffect.POP_SCALE -> this
+        // Drawn entirely by RgbRippleOverlay (a Box layered above all keys —
+        // see KeyboardView's rgbRippleActive branch), since the wave needs
+        // to travel across *every* key's position relative to whichever key
+        // was touched, not just decorate that one key itself. No-op here.
+        com.spmods.sinkey.data.KeyEffect.RGB_RIPPLE -> this
     }
 }
 
@@ -813,17 +818,28 @@ internal fun KeyboardView(
                     // Key-center map built up as MainKeyboardKeys lays out
                     // each letter key (see LetterKey/NumberedLetterKey's
                     // onPositioned) — used once a swipe finishes to translate
-                    // the touch path into a letter sequence. Only actually
-                    // collected when gesture typing is on (onKeyPositioned
-                    // below is null otherwise), so this costs nothing when
-                    // the feature is off.
+                    // the touch path into a letter sequence, AND (see
+                    // rgbRippleTrigger below) to know every other key's
+                    // position when RGB_RIPPLE needs to color them by
+                    // distance from whichever key was just touched. Collected
+                    // whenever either feature needs it; costs nothing when
+                    // both are off (onKeyPositioned stays null below).
                     val keyPositions = remember { mutableStateMapOf<Char, KeyPoint>() }
+                    val rgbRippleActive = colors.keyEffect == com.spmods.sinkey.data.KeyEffect.RGB_RIPPLE
                     // Gesture-in-progress state, hoisted up to this shared
                     // Box (see the pointerInput placement below for why it
                     // can't live inside GestureTypingOverlay itself anymore).
                     var gesturePathPoints by remember { mutableStateOf(listOf<Offset>()) }
                     var gestureIsDragging by remember { mutableStateOf(false) }
                     val gestureScope = rememberCoroutineScope()
+                    // RGB_RIPPLE: (touched key's center, a monotonically
+                    // increasing trigger id) — bumping the id on every touch
+                    // (even of the same key twice in a row) restarts the
+                    // wave animation each time via the LaunchedEffect(id)
+                    // keyed on it in RgbRippleOverlay, which a plain Offset
+                    // key wouldn't do for two touches at the identical spot.
+                    var rgbRippleOrigin by remember { mutableStateOf<Offset?>(null) }
+                    var rgbRippleTriggerId by remember { mutableStateOf(0) }
 
                     Box(
                         modifier = Modifier
@@ -861,7 +877,30 @@ internal fun KeyboardView(
                                 // (an ancestor of MainKeyboardKeys, not a
                                 // sibling of it) is (b), and needs no
                                 // experimental APIs.
-                                if (swipeTypingEnabled) {
+                                if (rgbRippleActive) {
+                                    // Lightweight, read-only tap watcher for
+                                    // RGB_RIPPLE: never consumes anything
+                                    // (awaitFirstDown(requireUnconsumed =
+                                    // false) + no change.consume() calls) so
+                                    // every tap still reaches the real key
+                                    // underneath exactly as before — this
+                                    // purely observes "a finger just went
+                                    // down here" to kick off the color wave
+                                    // from the nearest known key center.
+                                    m.pointerInput(keyPositions) {
+                                        awaitEachGesture {
+                                            val down = awaitFirstDown(requireUnconsumed = false)
+                                            val nearest = keyPositions.values.minByOrNull { kp ->
+                                                val dx = kp.x - down.position.x
+                                                val dy = kp.y - down.position.y
+                                                dx * dx + dy * dy
+                                            }
+                                            val origin = nearest?.let { Offset(it.x, it.y) } ?: down.position
+                                            rgbRippleOrigin = origin
+                                            rgbRippleTriggerId++
+                                        }
+                                    }
+                                } else if (swipeTypingEnabled) {
                                     m.pointerInput(keyPositions, currentLanguage) {
                                         // Only a currentLanguage of "si" or
                                         // "en" makes sense for gesture
@@ -953,7 +992,7 @@ internal fun KeyboardView(
                             onEmojiPicker = { pushBoard(Board.EMOJI) },
                             onLangTooltip = { showLangTooltip = true },
                             imeAction = inputType,
-                            onKeyPositioned = if (swipeTypingEnabled) { { ch, coords ->
+                            onKeyPositioned = if (swipeTypingEnabled || rgbRippleActive) { { ch, coords ->
                                 // coords.size is an IntSize (width/height only,
                                 // no built-in .center without an extra import)
                                 // — compute the center manually instead.
@@ -963,6 +1002,20 @@ internal fun KeyboardView(
                                 keyPositions[ch] = KeyPoint(ch, positionInParent.x + centerX, positionInParent.y + centerY)
                             } } else null
                         )
+
+                        if (rgbRippleActive) {
+                            // Pure drawing layer, same non-hit-testing
+                            // reasoning as GestureTypingOverlay below — this
+                            // Box has no pointerInput of its own so it can
+                            // sit on top of every key without blocking taps.
+                            RgbRippleOverlay(
+                                origin = rgbRippleOrigin,
+                                triggerId = rgbRippleTriggerId,
+                                keyPositions = keyPositions.values.toList(),
+                                accent = colors.accent,
+                                modifier = Modifier.matchParentSize()
+                            )
+                        }
 
                         if (swipeTypingEnabled) {
                             // Pure drawing layer now — no pointerInput of
@@ -1122,6 +1175,79 @@ internal fun MainKeyboardKeys(
  * actually fixes that; drawing the trail here on top is still fine and
  * layout-safe, since drawing and hit-testing are independent.
  */
+/**
+ * KeyEffect.RGB_RIPPLE: draws an expanding neon/RGB color wave, centered on
+ * [origin] (the touched key's center, in this Box's local coordinates),
+ * that colors every other known key position by distance from that origin
+ * as the wave front passes over it, then fades. Pure drawing layer — same
+ * non-hit-testing reasoning as GestureTypingOverlay (see its doc comment),
+ * so it can sit on top of every key without blocking taps.
+ *
+ * [triggerId] is bumped by the caller on every touch-down, including two
+ * consecutive touches on the exact same key — keying the restart animation
+ * off triggerId rather than off `origin` itself means the wave still
+ * restarts from scratch even when origin didn't change value.
+ */
+@Composable
+private fun RgbRippleOverlay(
+    origin: Offset?,
+    triggerId: Int,
+    keyPositions: List<KeyPoint>,
+    accent: Color,
+    modifier: Modifier = Modifier
+) {
+    if (origin == null || keyPositions.isEmpty()) return
+
+    // 0f..1f once per triggerId — represents how far the wave front has
+    // traveled (as a fraction of RIPPLE_MAX_RADIUS_DP) and how much it's
+    // faded, both driven off the same progress value for simplicity.
+    val progress = remember { Animatable(0f) }
+    LaunchedEffect(triggerId) {
+        progress.snapTo(0f)
+        progress.animateTo(1f, animationSpec = tween(650, easing = androidx.compose.animation.core.LinearOutSlowInEasing))
+    }
+
+    if (progress.value >= 1f) return
+
+    Canvas(modifier = modifier) {
+        val maxRadiusPx = RIPPLE_MAX_RADIUS_DP.dp.toPx()
+        val waveFrontRadius = progress.value * maxRadiusPx
+        // How wide the visible "band" of the wave is, in px — keys well
+        // behind the front (already passed) or well ahead of it (not yet
+        // reached) stay undrawn; only keys near the current front glow.
+        val bandWidthPx = 0.42f * maxRadiusPx
+
+        keyPositions.forEach { key ->
+            val dx = key.x - origin.x
+            val dy = key.y - origin.y
+            val dist = kotlin.math.sqrt(dx * dx + dy * dy)
+            val distanceFromFront = kotlin.math.abs(dist - waveFrontRadius)
+            if (distanceFromFront < bandWidthPx) {
+                // Closer to the exact front = brighter; also fades globally
+                // as the whole wave ages (1f - progress).
+                val bandStrength = 1f - (distanceFromFront / bandWidthPx)
+                val overallFade = 1f - progress.value
+                val alpha = (bandStrength * overallFade).coerceIn(0f, 1f)
+                if (alpha > 0.02f) {
+                    // Hue cycles with distance so the wave reads as a
+                    // genuine RGB/rainbow ring rather than a single flat
+                    // accent-colored blob.
+                    val hueShift = (dist / maxRadiusPx) * 300f
+                    val waveColor = rotateHue(accent, hueShift)
+                    drawCircle(
+                        color = waveColor.copy(alpha = alpha * 0.8f),
+                        radius = 26.dp.toPx(),
+                        center = Offset(key.x, key.y)
+                    )
+                }
+            }
+        }
+    }
+}
+
+/** Max travel distance (dp) of the RGB_RIPPLE wave front from its origin key. */
+private const val RIPPLE_MAX_RADIUS_DP = 260
+
 @Composable
 private fun GestureTypingOverlay(
     isDragging: Boolean,
