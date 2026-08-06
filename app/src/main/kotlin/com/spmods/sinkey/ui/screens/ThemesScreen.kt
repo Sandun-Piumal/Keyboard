@@ -259,7 +259,7 @@ private fun ColorsGrid(selected: KeyColorPalette, onSelect: (KeyColorPalette) ->
         columns = GridCells.Fixed(3),
         modifier = Modifier
             .padding(horizontal = 16.dp)
-            .height(((KeyColorPalette.entries.size + 2) / 3) * 96.dp),
+            .height(96.dp * ((KeyColorPalette.entries.size + 2) / 3)),
         horizontalArrangement = Arrangement.spacedBy(10.dp),
         verticalArrangement = Arrangement.spacedBy(10.dp)
     ) {
@@ -312,7 +312,7 @@ private fun EffectsGrid(selected: KeyEffect, palette: KeyColorPalette, onSelect:
         columns = GridCells.Fixed(2),
         modifier = Modifier
             .padding(horizontal = 16.dp)
-            .height(((KeyEffect.entries.size + 1) / 2) * 100.dp),
+            .height(100.dp * ((KeyEffect.entries.size + 1) / 2)),
         horizontalArrangement = Arrangement.spacedBy(12.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
