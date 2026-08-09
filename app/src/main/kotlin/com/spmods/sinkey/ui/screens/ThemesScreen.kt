@@ -792,15 +792,67 @@ private fun LedPatternGrid(selected: LedPattern, palette: KeyColorPalette, onSel
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .height(40.dp)
-                                .padding(vertical = 14.dp)
+                                .padding(vertical = 8.dp),
+                            contentAlignment = Alignment.Center
                         ) {
-                            if (pattern != LedPattern.NONE) {
-                                com.spmods.sinkey.keyboard.KeyboardLedStrip(
-                                    pattern = pattern,
-                                    accent = palette.accent,
-                                    isIdle = false,
-                                    modifier = Modifier.fillMaxWidth()
-                                )
+                            // Static illustrative preview only — the real
+                            // effect (KeyboardLedRipple) needs live touch
+                            // positions on the actual keyboard to animate,
+                            // which doesn't exist in this small settings
+                            // swatch. A few small bordered squares stand in
+                            // for "the light traces each key's border",
+                            // colored/spaced to hint at what each pattern
+                            // looks like without faking the animation.
+                            when (pattern) {
+                                LedPattern.NONE -> Unit
+                                LedPattern.BREATHING -> Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                                    repeat(3) { i ->
+                                        Box(
+                                            modifier = Modifier
+                                                .size(14.dp)
+                                                .border(
+                                                    1.5.dp,
+                                                    palette.accent.copy(alpha = 1f - i * 0.28f),
+                                                    RoundedCornerShape(4.dp)
+                                                )
+                                        )
+                                    }
+                                }
+                                LedPattern.WAVE -> Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                                    repeat(3) { i ->
+                                        Box(
+                                            modifier = Modifier
+                                                .size(14.dp)
+                                                .border(
+                                                    1.5.dp,
+                                                    palette.accent.copy(alpha = if (i == 1) 1f else 0.35f),
+                                                    RoundedCornerShape(4.dp)
+                                                )
+                                        )
+                                    }
+                                }
+                                LedPattern.CYCLE -> Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                                    listOf(0f, 120f, 240f).forEach { hue ->
+                                        Box(
+                                            modifier = Modifier
+                                                .size(14.dp)
+                                                .border(1.5.dp, Color.hsv(hue, 0.85f, 1f), RoundedCornerShape(4.dp))
+                                        )
+                                    }
+                                }
+                                LedPattern.STARS -> Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                                    repeat(3) { i ->
+                                        Box(
+                                            modifier = Modifier
+                                                .size(14.dp)
+                                                .border(
+                                                    1.5.dp,
+                                                    palette.accent.copy(alpha = if (i == 0 || i == 2) 1f else 0.3f),
+                                                    RoundedCornerShape(4.dp)
+                                                )
+                                        )
+                                    }
+                                }
                             }
                         }
                         Text(
