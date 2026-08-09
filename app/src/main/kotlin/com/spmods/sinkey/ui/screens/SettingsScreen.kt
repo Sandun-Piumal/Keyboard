@@ -33,12 +33,14 @@ fun SettingsScreen(
     themeMode: ThemeMode,
     mixAutoSinhala: Boolean,
     swipeTypingEnabled: Boolean,
+    smoothImeTransition: Boolean = true,
     onLanguageChange: (String) -> Unit,
     onKeySoundChange: (Boolean) -> Unit,
     onKeyVibrateChange: (Boolean) -> Unit,
     onThemeModeChange: (ThemeMode) -> Unit,
     onMixAutoSinhalaChange: (Boolean) -> Unit,
     onSwipeTypingChange: (Boolean) -> Unit,
+    onSmoothImeTransitionChange: (Boolean) -> Unit = {},
     onOpenKeyboardHeight: () -> Unit = {}
 ) {
     Column(modifier = Modifier.fillMaxWidth().padding(bottom = 24.dp)) {
@@ -93,6 +95,13 @@ fun SettingsScreen(
             }
             SettingRow(icon = "📳", title = "Vibrate on tap", subtitle = "Haptic feedback") {
                 Switch(checked = keyVibrateEnabled, onCheckedChange = onKeyVibrateChange)
+            }
+            SettingRow(
+                icon = "✨",
+                title = "Smooth keyboard transition",
+                subtitle = "Gentle fade + slide when the keyboard appears"
+            ) {
+                Switch(checked = smoothImeTransition, onCheckedChange = onSmoothImeTransitionChange)
             }
             // Keyboard height — navigates to sub-screen
             SettingRow(
