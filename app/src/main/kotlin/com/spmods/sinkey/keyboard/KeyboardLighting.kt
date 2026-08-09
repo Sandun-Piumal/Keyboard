@@ -279,9 +279,15 @@ fun TypingAnimationPopup(
     val alpha = (1f - progress.value).coerceIn(0f, 1f)
     val scale = 0.7f + 0.5f * (1f - progress.value)
 
-    Popup(offset = anchorOffset, modifier = modifier) {
+    // Popup renders into its own window, positioned by `alignment` +
+    // `offset` (both in raw pixels for offset) rather than by any Modifier
+    // from the caller's own layout tree — Popup has no `modifier`
+    // parameter, since its content isn't a normal child of the composable
+    // that calls it. BottomCenter matches where the caller wants this to
+    // appear (just above the keyboard's key rows).
+    Popup(alignment = Alignment.BottomCenter, offset = anchorOffset) {
         Box(
-            modifier = Modifier
+            modifier = modifier
                 .graphicsLayer {
                     translationY = riseOffsetY.toPx()
                     this.alpha = alpha
