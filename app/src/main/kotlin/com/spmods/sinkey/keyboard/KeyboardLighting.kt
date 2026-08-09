@@ -154,8 +154,14 @@ fun materialYouAccentColor(context: Context, isDark: Boolean): Color {
  * relevant right as an idle glow is fading, since a genuinely idle board
  * has no presses left to trigger new glows anyway.
  */
+// KeyPoint (see GestureWordMatcher.kt) is `internal` to this module, so any
+// public function taking it as a parameter type would leak that internal
+// type through a public API surface — Kotlin's explicit-API-safety check
+// catches this at compile time. KeyboardLedRipple is only ever called from
+// within this same module (KeyboardView.kt), so `internal` here costs
+// nothing and satisfies that check.
 @Composable
-fun KeyboardLedRipple(
+internal fun KeyboardLedRipple(
     pattern: LedPattern,
     origin: Offset?,
     triggerId: Int,
