@@ -122,9 +122,17 @@ private fun SinKeyApp(prefs: PreferencesManager) {
     val showKeyBorders by prefs.showKeyBorders.collectAsState(initial = true)
     val mixAutoSinhala by prefs.mixAutoSinhala.collectAsState(initial = false)
     val swipeTypingEnabled by prefs.swipeTypingEnabled.collectAsState(initial = false)
+    val smoothImeTransition by prefs.smoothImeTransition.collectAsState(initial = true)
     val keyColorPalette by prefs.keyColorPalette.collectAsState(initial = KeyColorPalette.DEFAULT)
     val keyEffect by prefs.keyEffect.collectAsState(initial = KeyEffect.NONE)
     val customBackgroundUri by prefs.customBackgroundUri.collectAsState(initial = null)
+    val backgroundStyle by prefs.backgroundStyle.collectAsState(initial = com.spmods.sinkey.data.BackgroundStyle.NONE)
+    val materialYouEnabled by prefs.materialYouEnabled.collectAsState(initial = false)
+    val typingAnimation by prefs.typingAnimation.collectAsState(initial = com.spmods.sinkey.data.TypingAnimation.NONE)
+    val typingAnimationEmoji by prefs.typingAnimationEmoji.collectAsState(initial = "✨")
+    val typingAnimationImageUri by prefs.typingAnimationImageUri.collectAsState(initial = null)
+    val ledPattern by prefs.ledPattern.collectAsState(initial = com.spmods.sinkey.data.LedPattern.NONE)
+    val ledIdleDimming by prefs.ledIdleDimming.collectAsState(initial = true)
 
     // ── "My themes" custom background: photo picker + preview decode ──────
     val context = LocalContext.current
@@ -156,7 +164,10 @@ private fun SinKeyApp(prefs: PreferencesManager) {
     // READ_MEDIA_IMAGES/READ_EXTERNAL_STORAGE runtime permission on any API
     // level (it runs out-of-process and only hands back a scoped Uri for
     // whatever the user picks), which is why AndroidManifest.xml needed no
-    // changes for this feature.
+    // changes for this feature. ImageOnly's filter is image/*, which
+    // already includes image/gif, so "Image / GIF Backgrounds" needs no
+    // separate picker mode — KeyboardCustomBackground below sniffs the
+    // picked file's bytes and animates it if it turns out to be a GIF.
     val pickPhotoLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.PickVisualMedia()
     ) { uri: Uri? ->
@@ -173,6 +184,39 @@ private fun SinKeyApp(prefs: PreferencesManager) {
             )
         }
         scope.launch { prefs.setCustomBackgroundUri(uri.toString()) }
+    }
+
+    // ── "Typing Animation" DIY custom image: same picker/preview pattern
+    // as the "My themes" background above, kept as a fully separate
+    // Uri/preview pair since the two features are independent (a user can
+    // have a custom background photo AND a custom typing-animation image
+    // picked from two different photos).
+    var typingAnimationImagePreview by remember { mutableStateOf<Bitmap?>(null) }
+    LaunchedEffect(typingAnimationImageUri) {
+        val uriString = typingAnimationImageUri
+        typingAnimationImagePreview = if (uriString != null) {
+            withContext(Dispatchers.IO) {
+                runCatching {
+                    context.contentResolver.openInputStream(Uri.parse(uriString))?.use {
+                        BitmapFactory.decodeStream(it)
+                    }
+                }.getOrNull()
+            }
+        } else {
+            null
+        }
+    }
+    val pickTypingAnimationImageLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.PickVisualMedia()
+    ) { uri: Uri? ->
+        if (uri == null) return@rememberLauncherForActivityResult
+        runCatching {
+            context.contentResolver.takePersistableUriPermission(
+                uri,
+                android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION
+            )
+        }
+        scope.launch { prefs.setTypingAnimationImageUri(uri.toString()) }
     }
 
     // ── Back press priority (highest → lowest) ───────────────────────────────
@@ -274,7 +318,29 @@ private fun SinKeyApp(prefs: PreferencesManager) {
                                 )
                             )
                         },
-                        onClearCustomBackground = { scope.launch { prefs.setCustomBackgroundUri(null) } }
+                        onClearCustomBackground = { scope.launch { prefs.setCustomBackgroundUri(null) } },
+                        backgroundStyle = backgroundStyle,
+                        onBackgroundStyleChange = { style -> scope.launch { prefs.setBackgroundStyle(style) } },
+                        materialYouEnabled = materialYouEnabled,
+                        onMaterialYouEnabledChange = { enabled -> scope.launch { prefs.setMaterialYouEnabled(enabled) } },
+                        materialYouAvailable = android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.S,
+                        typingAnimation = typingAnimation,
+                        onTypingAnimationChange = { anim -> scope.launch { prefs.setTypingAnimation(anim) } },
+                        typingAnimationEmoji = typingAnimationEmoji,
+                        onTypingAnimationEmojiChange = { emoji -> scope.launch { prefs.setTypingAnimationEmoji(emoji) } },
+                        typingAnimationImagePreview = typingAnimationImagePreview,
+                        onPickTypingAnimationImage = {
+                            pickTypingAnimationImageLauncher.launch(
+                                androidx.activity.result.PickVisualMediaRequest(
+                                    ActivityResultContracts.PickVisualMedia.ImageOnly
+                                )
+                            )
+                        },
+                        onClearTypingAnimationImage = { scope.launch { prefs.setTypingAnimationImageUri(null) } },
+                        ledPattern = ledPattern,
+                        onLedPatternChange = { pattern -> scope.launch { prefs.setLedPattern(pattern) } },
+                        ledIdleDimming = ledIdleDimming,
+                        onLedIdleDimmingChange = { enabled -> scope.launch { prefs.setLedIdleDimming(enabled) } }
                     )
                     tab == Tab.SETTINGS -> SettingsScreen(
                         defaultLanguage = defaultLanguage,
@@ -283,12 +349,14 @@ private fun SinKeyApp(prefs: PreferencesManager) {
                         themeMode = themeMode,
                         mixAutoSinhala = mixAutoSinhala,
                         swipeTypingEnabled = swipeTypingEnabled,
+                        smoothImeTransition = smoothImeTransition,
                         onLanguageChange = { lang -> scope.launch { prefs.setDefaultLanguage(lang) } },
                         onKeySoundChange = { enabled -> scope.launch { prefs.setKeySoundEnabled(enabled) } },
                         onKeyVibrateChange = { enabled -> scope.launch { prefs.setKeyVibrateEnabled(enabled) } },
                         onThemeModeChange = { mode -> scope.launch { prefs.setThemeMode(mode) } },
                         onMixAutoSinhalaChange = { enabled -> scope.launch { prefs.setMixAutoSinhala(enabled) } },
                         onSwipeTypingChange = { enabled -> scope.launch { prefs.setSwipeTypingEnabled(enabled) } },
+                        onSmoothImeTransitionChange = { enabled -> scope.launch { prefs.setSmoothImeTransition(enabled) } },
                         onOpenKeyboardHeight = { settingsSubScreen = SettingsSubScreen.KEYBOARD_HEIGHT }
                     )
                 }
