@@ -496,17 +496,53 @@ internal fun KeyboardView(
         initial = com.spmods.sinkey.data.KeyEffect.NONE
     )
     val customBackgroundUri by prefsManager.customBackgroundUri.collectAsState(initial = null)
+    val backgroundStyle by prefsManager.backgroundStyle.collectAsState(
+        initial = com.spmods.sinkey.data.BackgroundStyle.NONE
+    )
+    val materialYouEnabled by prefsManager.materialYouEnabled.collectAsState(initial = false)
+    val typingAnimation by prefsManager.typingAnimation.collectAsState(
+        initial = com.spmods.sinkey.data.TypingAnimation.NONE
+    )
+    val typingAnimationEmoji by prefsManager.typingAnimationEmoji.collectAsState(initial = "✨")
+    val typingAnimationImageUri by prefsManager.typingAnimationImageUri.collectAsState(initial = null)
+    val ledPattern by prefsManager.ledPattern.collectAsState(
+        initial = com.spmods.sinkey.data.LedPattern.NONE
+    )
+    val ledIdleDimming by prefsManager.ledIdleDimming.collectAsState(initial = true)
 
     val colors = keyboardColors(
         showKeyBorders = showKeyBorders,
         isDark = isDark,
         palette = keyColorPalette,
         keyEffect = keyEffect,
-        transparentBg = customBackgroundUri != null,
-    )
+        transparentBg = customBackgroundUri != null || backgroundStyle != com.spmods.sinkey.data.BackgroundStyle.NONE,
+    ).let { base ->
+        // Material You: when enabled, override the accent with the
+        // dynamic system-wallpaper color instead of the picked
+        // KeyColorPalette — purely a color swap, effects/backgrounds
+        // still layer on top exactly as before.
+        if (materialYouEnabled) base.copy(accent = materialYouAccentColor(context, isDark)) else base
+    }
     val keyHeight = stepToKeyHeight(keyboardHeight)
     val bottomPadding = if (bottomSpaceEnabled) stepToBottomPadding(bottomSpaceSize) else 4.dp
     val keyShape = RoundedCornerShape(6.dp)
+
+    // ── Typing Animation + LED idle-dimming: both react to key presses,
+    // so onKey is wrapped once here (every one of the ~30 key composables
+    // below calls the same onKey parameter) rather than threading a
+    // separate press callback through every individual key site.
+    var typingAnimationTrigger by remember { mutableStateOf(0) }
+    var lastKeyAnchor by remember { mutableStateOf(IntOffset.Zero) }
+    var lastActivityAtMs by remember { mutableStateOf(0L) }
+    val originalOnKey = onKey
+    @Suppress("NAME_SHADOWING")
+    val onKey: (String) -> Unit = { key ->
+        typingAnimationTrigger++
+        lastActivityAtMs = System.currentTimeMillis()
+        originalOnKey(key)
+    }
+    val isLedIdle by rememberKeyboardIdleState(lastActivityAtMs, enabled = ledIdleDimming)
+    val typingAnimationImageBitmap = rememberCustomAnimationBitmap(typingAnimationImageUri)
 
     // shift = true whenever shiftState is ONE_SHOT or LOCKED
     val shift = shiftState != SinKeyInputMethodService.ShiftState.OFF
@@ -578,6 +614,18 @@ internal fun KeyboardView(
 
     // ONE Column for the whole keyboard — toolbar always at top, content below
     Box(modifier = Modifier.fillMaxWidth().wrapContentHeight()) {
+        // Built-in procedural background (Gradient/Rainbow/Galaxy/Smoke/...)
+        // — bottom-most layer. Drawn only when no "My themes" photo is set,
+        // since a user-picked photo always takes precedence (see
+        // BackgroundStyle doc comment) — both are still allowed to make
+        // colors.bg transparent above so either one shows through cleanly.
+        if (customBackgroundUri == null && backgroundStyle != com.spmods.sinkey.data.BackgroundStyle.NONE) {
+            KeyboardBuiltInBackground(
+                style = backgroundStyle,
+                isDark = isDark,
+                modifier = Modifier.matchParentSize()
+            )
+        }
         // "My themes" custom photo background — drawn as the bottom-most
         // layer of the outer Box, behind everything else. Only rendered
         // when a background is actually set; colors.bg is made fully
@@ -594,6 +642,14 @@ internal fun KeyboardView(
         Column(
             modifier = Modifier.fillMaxWidth().wrapContentHeight().background(colors.bg)
         ) {
+            // ── LED / Neon ambient lighting strip — top edge of the board,
+            // above the toolbar, reacting to keyEffect's accent color and
+            // dimming when idle (see rememberKeyboardIdleState above).
+            KeyboardLedStrip(
+                pattern = ledPattern,
+                accent = colors.accent,
+                isIdle = isLedIdle
+            )
             // ── Toolbar (always visible, never re-created on pad switch,
             // except for the Emoji board — which moves its own category
             // tabs to the very top instead, in place of this toolbar) ──────
@@ -1056,6 +1112,31 @@ internal fun KeyboardView(
         ) {
             LangTooltip(currentLanguage = currentLanguage)
         }
+
+        // ── Typing Animation pop-up — floats above the last-pressed key on
+        // every board (MAIN, SYMBOLS, NUMPAD, etc.), since onKey is wrapped
+        // once for the whole KeyboardView. Anchored at a fixed top-center
+        // offset rather than the exact key position: individual key
+        // composables don't all report their screen coordinates (only the
+        // MAIN board's letters do, for swipe-typing/RGB-ripple), so a
+        // simple centered float above the board keeps this working
+        // consistently everywhere without threading per-key position
+        // tracking through every board. Popup's offset is in raw pixels,
+        // not dp, so keyHeight is converted via the local density rather
+        // than reusing its raw .value (which would be wrong on anything
+        // but a 1x-density screen).
+        val density = LocalDensity.current
+        val popupOffsetPx = remember(keyHeight, density) {
+            with(density) { IntOffset(0, -(keyHeight * 2).roundToPx()) }
+        }
+        TypingAnimationPopup(
+            trigger = typingAnimationTrigger,
+            animation = typingAnimation,
+            customEmoji = typingAnimationEmoji,
+            customImageBitmap = typingAnimationImageBitmap,
+            anchorOffset = popupOffsetPx,
+            modifier = Modifier.align(Alignment.BottomCenter)
+        )
     }
 }
 
