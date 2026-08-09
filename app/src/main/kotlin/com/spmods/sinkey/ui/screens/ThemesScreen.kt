@@ -43,9 +43,17 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.material3.Switch
+import androidx.compose.material3.SwitchDefaults
+import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.style.TextAlign
+import com.spmods.sinkey.data.BackgroundStyle
 import com.spmods.sinkey.data.KeyColorPalette
 import com.spmods.sinkey.data.KeyEffect
+import com.spmods.sinkey.data.LedPattern
 import com.spmods.sinkey.data.ThemeMode
+import com.spmods.sinkey.data.TypingAnimation
 
 private data class ThemeOption(val label: String, val siLabel: String, val bg: Color, val fg: Color, val emoji: String, val mode: ThemeMode?)
 
@@ -84,7 +92,28 @@ fun ThemesScreen(
     // app's screens.
     customBackgroundPreview: android.graphics.Bitmap? = null,
     onPickCustomBackground: () -> Unit = {},
-    onClearCustomBackground: () -> Unit = {}
+    onClearCustomBackground: () -> Unit = {},
+    // Backgrounds: built-in procedural presets (Gradient/Rainbow/Galaxy/...).
+    backgroundStyle: BackgroundStyle = BackgroundStyle.NONE,
+    onBackgroundStyleChange: (BackgroundStyle) -> Unit = {},
+    // Material You: dynamic accent from the system wallpaper (Android 12+).
+    materialYouEnabled: Boolean = false,
+    onMaterialYouEnabledChange: (Boolean) -> Unit = {},
+    materialYouAvailable: Boolean = true,
+    // Typing Animation: emoji/icon pop-up on keypress, plus DIY custom
+    // emoji/image variants.
+    typingAnimation: TypingAnimation = TypingAnimation.NONE,
+    onTypingAnimationChange: (TypingAnimation) -> Unit = {},
+    typingAnimationEmoji: String = "✨",
+    onTypingAnimationEmojiChange: (String) -> Unit = {},
+    typingAnimationImagePreview: android.graphics.Bitmap? = null,
+    onPickTypingAnimationImage: () -> Unit = {},
+    onClearTypingAnimationImage: () -> Unit = {},
+    // LED / Neon lighting pattern (ambient strip) + idle dimming.
+    ledPattern: LedPattern = LedPattern.NONE,
+    onLedPatternChange: (LedPattern) -> Unit = {},
+    ledIdleDimming: Boolean = true,
+    onLedIdleDimmingChange: (Boolean) -> Unit = {}
 ) {
     // Scrollable: with the Colors/Effects grids now holding more entries
     // than fit on one screen (12 colors, 9 effects), the page needs its own
@@ -174,11 +203,61 @@ fun ThemesScreen(
             onClear = onClearCustomBackground
         )
 
+        SectionHeader("Backgrounds")
+        Text(
+            "Gradient, rainbow, galaxy, smoke and more — used when no custom photo is set above.",
+            fontSize = 12.5.sp,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.padding(start = 22.dp, end = 22.dp, bottom = 10.dp)
+        )
+        BackgroundsGrid(selected = backgroundStyle, onSelect = onBackgroundStyleChange)
+
+        SectionHeader("Material You")
+        MaterialYouRow(
+            enabled = materialYouEnabled,
+            available = materialYouAvailable,
+            onToggle = onMaterialYouEnabledChange
+        )
+
         SectionHeader("Colors")
         ColorsGrid(selected = keyColorPalette, onSelect = onKeyColorPaletteChange)
 
         SectionHeader("Effects")
         EffectsGrid(selected = keyEffect, palette = keyColorPalette, onSelect = onKeyEffectChange)
+
+        SectionHeader("Typing Animation")
+        Text(
+            "An emoji or icon pops up near a key as you type.",
+            fontSize = 12.5.sp,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.padding(start = 22.dp, end = 22.dp, bottom = 10.dp)
+        )
+        TypingAnimationGrid(selected = typingAnimation, onSelect = onTypingAnimationChange)
+        if (typingAnimation == TypingAnimation.CUSTOM_EMOJI) {
+            CustomEmojiPicker(
+                emoji = typingAnimationEmoji,
+                onEmojiChange = onTypingAnimationEmojiChange
+            )
+        }
+        if (typingAnimation == TypingAnimation.CUSTOM_IMAGE) {
+            CustomImagePicker(
+                preview = typingAnimationImagePreview,
+                onPick = onPickTypingAnimationImage,
+                onClear = onClearTypingAnimationImage
+            )
+        }
+
+        SectionHeader("LED / Neon Lighting")
+        Text(
+            "An animated light strip along the top of the keyboard.",
+            fontSize = 12.5.sp,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.padding(start = 22.dp, end = 22.dp, bottom = 10.dp)
+        )
+        LedPatternGrid(selected = ledPattern, palette = keyColorPalette, onSelect = onLedPatternChange)
+        if (ledPattern != LedPattern.NONE) {
+            LedIdleDimmingRow(enabled = ledIdleDimming, onToggle = onLedIdleDimmingChange)
+        }
     }
 }
 
@@ -439,5 +518,328 @@ private fun EffectPreviewKey(letter: String, effect: KeyEffect, accent: Color, m
         contentAlignment = Alignment.Center
     ) {
         Text(letter, color = Color.White, fontSize = 15.sp)
+    }
+}
+
+/** Small preview swatch for each [BackgroundStyle], drawn with the same real renderer used on the keyboard. */
+@Composable
+private fun BackgroundsGrid(selected: BackgroundStyle, onSelect: (BackgroundStyle) -> Unit) {
+    Column(
+        modifier = Modifier.padding(horizontal = 16.dp),
+        verticalArrangement = Arrangement.spacedBy(10.dp)
+    ) {
+        BackgroundStyle.entries.chunked(3).forEach { row ->
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(10.dp),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                row.forEach { style ->
+                    val isSelected = style == selected
+                    Column(
+                        modifier = Modifier
+                            .weight(1f)
+                            .clip(RoundedCornerShape(14.dp))
+                            .border(
+                                width = if (isSelected) 2.dp else 1.dp,
+                                color = if (isSelected) MaterialTheme.colorScheme.secondary else MaterialTheme.colorScheme.outlineVariant,
+                                shape = RoundedCornerShape(14.dp)
+                            )
+                            .clickable { onSelect(style) }
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(50.dp)
+                                .clip(RoundedCornerShape(topStart = 13.dp, topEnd = 13.dp))
+                        ) {
+                            if (style == BackgroundStyle.NONE) {
+                                Box(
+                                    modifier = Modifier
+                                        .fillMaxSize()
+                                        .background(MaterialTheme.colorScheme.surfaceVariant),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Text("—", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 13.sp)
+                                }
+                            } else {
+                                com.spmods.sinkey.keyboard.KeyboardBuiltInBackground(
+                                    style = style,
+                                    isDark = false,
+                                    modifier = Modifier.fillMaxSize()
+                                )
+                            }
+                        }
+                        Text(
+                            style.label,
+                            fontSize = 11.5.sp,
+                            fontWeight = FontWeight.Medium,
+                            textAlign = TextAlign.Center,
+                            modifier = Modifier.fillMaxWidth().padding(6.dp)
+                        )
+                    }
+                }
+                repeat(3 - row.size) { Box(modifier = Modifier.weight(1f)) }
+            }
+        }
+    }
+}
+
+@Composable
+private fun MaterialYouRow(enabled: Boolean, available: Boolean, onToggle: (Boolean) -> Unit) {
+    Row(
+        modifier = Modifier
+            .padding(horizontal = 22.dp)
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(14.dp))
+            .background(MaterialTheme.colorScheme.surface)
+            .border(1.dp, MaterialTheme.colorScheme.outlineVariant, RoundedCornerShape(14.dp))
+            .padding(16.dp, 12.dp),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Column(modifier = Modifier.weight(1f)) {
+            Text("Use wallpaper colors", fontSize = 13.5.sp, fontWeight = FontWeight.SemiBold)
+            Text(
+                if (available) "Keys pick up your phone's Material You accent."
+                else "Needs Android 12 or newer.",
+                fontSize = 11.5.sp,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(top = 2.dp)
+            )
+        }
+        Switch(checked = enabled && available, onCheckedChange = onToggle, enabled = available)
+    }
+}
+
+@Composable
+private fun TypingAnimationGrid(selected: TypingAnimation, onSelect: (TypingAnimation) -> Unit) {
+    Column(
+        modifier = Modifier.padding(horizontal = 16.dp),
+        verticalArrangement = Arrangement.spacedBy(10.dp)
+    ) {
+        TypingAnimation.entries.chunked(3).forEach { row ->
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(10.dp),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                row.forEach { anim ->
+                    val isSelected = anim == selected
+                    Column(
+                        modifier = Modifier
+                            .weight(1f)
+                            .aspectRatio(1f)
+                            .clip(RoundedCornerShape(14.dp))
+                            .border(
+                                width = if (isSelected) 2.dp else 1.dp,
+                                color = if (isSelected) MaterialTheme.colorScheme.secondary else MaterialTheme.colorScheme.outlineVariant,
+                                shape = RoundedCornerShape(14.dp)
+                            )
+                            .background(MaterialTheme.colorScheme.surface)
+                            .clickable { onSelect(anim) },
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.Center
+                    ) {
+                        val glyph = when (anim) {
+                            TypingAnimation.NONE -> "—"
+                            TypingAnimation.CUSTOM_EMOJI -> "😀"
+                            TypingAnimation.CUSTOM_IMAGE -> "🖼️"
+                            else -> anim.emojiSet.firstOrNull() ?: "—"
+                        }
+                        Text(glyph, fontSize = 20.sp)
+                        Text(
+                            anim.label,
+                            fontSize = 10.5.sp,
+                            fontWeight = FontWeight.Medium,
+                            textAlign = TextAlign.Center,
+                            modifier = Modifier.padding(top = 4.dp, start = 4.dp, end = 4.dp)
+                        )
+                    }
+                }
+                repeat(3 - row.size) { Box(modifier = Modifier.weight(1f)) }
+            }
+        }
+    }
+}
+
+/** DIY Animation: lets the user type/paste a single emoji to use as their custom pop-up. */
+@Composable
+private fun CustomEmojiPicker(emoji: String, onEmojiChange: (String) -> Unit) {
+    Row(
+        modifier = Modifier
+            .padding(horizontal = 22.dp, vertical = 10.dp)
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(14.dp))
+            .background(MaterialTheme.colorScheme.surface)
+            .border(1.dp, MaterialTheme.colorScheme.outlineVariant, RoundedCornerShape(14.dp))
+            .padding(16.dp, 12.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(12.dp)
+    ) {
+        Text("Your emoji:", fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Box(
+            modifier = Modifier
+                .size(44.dp)
+                .clip(RoundedCornerShape(10.dp))
+                .background(MaterialTheme.colorScheme.surfaceVariant),
+            contentAlignment = Alignment.Center
+        ) {
+            BasicTextField(
+                value = emoji,
+                onValueChange = { new ->
+                    // Keep only the last typed character/grapheme-ish chunk so
+                    // pasting a whole sentence doesn't leave junk text behind —
+                    // this field is meant to hold exactly one emoji.
+                    val trimmed = if (new.length > 4) new.takeLast(4) else new
+                    onEmojiChange(trimmed)
+                },
+                textStyle = TextStyle(fontSize = 22.sp, textAlign = TextAlign.Center),
+                singleLine = true,
+                modifier = Modifier.fillMaxSize()
+            )
+        }
+        Text(
+            "Tap and paste or type any single emoji.",
+            fontSize = 11.sp,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+    }
+}
+
+/** DIY Animation: lets the user pick a cropped image to use as their custom pop-up. */
+@Composable
+private fun CustomImagePicker(
+    preview: android.graphics.Bitmap?,
+    onPick: () -> Unit,
+    onClear: () -> Unit
+) {
+    Row(
+        modifier = Modifier.padding(horizontal = 16.dp, vertical = 6.dp),
+        horizontalArrangement = Arrangement.spacedBy(12.dp)
+    ) {
+        Column(
+            modifier = Modifier
+                .size(88.dp)
+                .clip(RoundedCornerShape(14.dp))
+                .dashedBorder(MaterialTheme.colorScheme.outlineVariant, RoundedCornerShape(14.dp))
+                .background(MaterialTheme.colorScheme.surface)
+                .clickable { onPick() },
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.Center
+        ) {
+            Icon(
+                Icons.Filled.AddPhotoAlternate,
+                contentDescription = "Pick image",
+                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.size(24.dp)
+            )
+            Text("Pick image", fontSize = 10.sp, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = 4.dp))
+        }
+        if (preview != null) {
+            Box(modifier = Modifier.size(88.dp)) {
+                Image(
+                    bitmap = preview.asImageBitmap(),
+                    contentDescription = "Custom typing animation image",
+                    contentScale = ContentScale.Crop,
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .clip(RoundedCornerShape(14.dp))
+                        .border(2.dp, MaterialTheme.colorScheme.secondary, RoundedCornerShape(14.dp))
+                )
+                Box(
+                    modifier = Modifier
+                        .padding(6.dp)
+                        .align(Alignment.TopEnd)
+                        .size(20.dp)
+                        .clip(CircleShape)
+                        .background(Color.Black.copy(alpha = 0.55f))
+                        .clickable { onClear() },
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(Icons.Filled.Close, contentDescription = "Remove", tint = Color.White, modifier = Modifier.size(12.dp))
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun LedPatternGrid(selected: LedPattern, palette: KeyColorPalette, onSelect: (LedPattern) -> Unit) {
+    Column(
+        modifier = Modifier.padding(horizontal = 16.dp),
+        verticalArrangement = Arrangement.spacedBy(10.dp)
+    ) {
+        LedPattern.entries.chunked(3).forEach { row ->
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(10.dp),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                row.forEach { pattern ->
+                    val isSelected = pattern == selected
+                    Column(
+                        modifier = Modifier
+                            .weight(1f)
+                            .clip(RoundedCornerShape(14.dp))
+                            .border(
+                                width = if (isSelected) 2.dp else 1.dp,
+                                color = if (isSelected) palette.accent else MaterialTheme.colorScheme.outlineVariant,
+                                shape = RoundedCornerShape(14.dp)
+                            )
+                            .background(Color(0xFF1E1E1E))
+                            .clickable { onSelect(pattern) },
+                        horizontalAlignment = Alignment.CenterHorizontally
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(40.dp)
+                                .padding(vertical = 14.dp)
+                        ) {
+                            if (pattern != LedPattern.NONE) {
+                                com.spmods.sinkey.keyboard.KeyboardLedStrip(
+                                    pattern = pattern,
+                                    accent = palette.accent,
+                                    isIdle = false,
+                                    modifier = Modifier.fillMaxWidth()
+                                )
+                            }
+                        }
+                        Text(
+                            pattern.label,
+                            fontSize = 11.5.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            color = Color.White,
+                            modifier = Modifier.padding(bottom = 10.dp)
+                        )
+                    }
+                }
+                repeat(3 - row.size) { Box(modifier = Modifier.weight(1f)) }
+            }
+        }
+    }
+}
+
+@Composable
+private fun LedIdleDimmingRow(enabled: Boolean, onToggle: (Boolean) -> Unit) {
+    Row(
+        modifier = Modifier
+            .padding(horizontal = 22.dp, vertical = 10.dp)
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(14.dp))
+            .background(MaterialTheme.colorScheme.surface)
+            .border(1.dp, MaterialTheme.colorScheme.outlineVariant, RoundedCornerShape(14.dp))
+            .padding(16.dp, 12.dp),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Column(modifier = Modifier.weight(1f)) {
+            Text("Idle dimming", fontSize = 13.5.sp, fontWeight = FontWeight.SemiBold)
+            Text(
+                "Dim the light strip after a few seconds of no typing.",
+                fontSize = 11.5.sp,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(top = 2.dp)
+            )
+        }
+        Switch(checked = enabled, onCheckedChange = onToggle)
     }
 }
