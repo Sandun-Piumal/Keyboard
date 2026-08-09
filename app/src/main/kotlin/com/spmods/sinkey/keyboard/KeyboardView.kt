@@ -1134,8 +1134,7 @@ internal fun KeyboardView(
             animation = typingAnimation,
             customEmoji = typingAnimationEmoji,
             customImageBitmap = typingAnimationImageBitmap,
-            anchorOffset = popupOffsetPx,
-            modifier = Modifier.align(Alignment.BottomCenter)
+            anchorOffset = popupOffsetPx
         )
     }
 }
