@@ -6,9 +6,12 @@ import android.os.VibrationEffect
 import android.os.Vibrator
 import android.view.View
 import android.view.inputmethod.EditorInfo
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import com.spmods.sinkey.R
 import androidx.emoji2.bundled.BundledEmojiCompatConfig
 import androidx.emoji2.text.EmojiCompat
@@ -527,7 +530,40 @@ class SinKeyInputMethodService : InputMethodService() {
                 val bottomSpaceSize by prefs.bottomSpaceSize.collectAsState(initial = 0f)
                 val showKeyBorders by prefs.showKeyBorders.collectAsState(initial = true)
                 val swipeTypingEnabled by prefs.swipeTypingEnabled.collectAsState(initial = false)
+                val smoothImeTransition by prefs.smoothImeTransition.collectAsState(initial = true)
                 SinKeyTheme(themeMode = themeMode) {
+                  // "Smooth IME Transition" — a gentle fade + slide-up the
+                  // very first time this composition becomes visible after
+                  // being (re)created, echoing the kind of motion
+                  // WindowInsetsAnimationCompat drives on the app side when
+                  // the app itself animates its content in sync with the
+                  // IME. We can't attach a WindowInsetsAnimationCompat
+                  // callback to the *host app's* window from inside our own
+                  // IME process — that only runs in the app's own process —
+                  // so this is the equivalent smoothing applied to our own
+                  // keyboard content instead, which is what's actually
+                  // under this app's control. Purely cosmetic; disabled
+                  // instantly reproduces the previous instant-appear
+                  // behavior when the user turns the toggle off.
+                  // Starts false so AnimatedVisibility's enter transition
+                  // actually has a false→true edge to animate across; flips
+                  // true on the very next frame after entering composition.
+                  var contentVisible by remember { mutableStateOf(false) }
+                  LaunchedEffect(Unit) {
+                      contentVisible = true
+                  }
+                  androidx.compose.animation.AnimatedVisibility(
+                      visible = contentVisible,
+                      enter = if (smoothImeTransition) {
+                          androidx.compose.animation.fadeIn(animationSpec = androidx.compose.animation.core.tween(180)) +
+                              androidx.compose.animation.slideInVertically(
+                                  animationSpec = androidx.compose.animation.core.tween(200),
+                                  initialOffsetY = { it / 6 }
+                              )
+                      } else {
+                          androidx.compose.animation.EnterTransition.None
+                      }
+                  ) {
                     KeyboardView(
                         currentLanguage = currentLanguage.value,
                         keyboardHeight = keyboardHeight,
@@ -575,6 +611,7 @@ class SinKeyInputMethodService : InputMethodService() {
                             )
                         }
                     )
+                  }
                 }
         }
 
