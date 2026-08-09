@@ -90,10 +90,19 @@ fun StickerImage(
 }
 
 /**
- * "My themes" custom keyboard background — a user-picked photo drawn full-
- * bleed (cropped to fill, like a wallpaper) behind the whole keyboard.
- * Reuses [StickerImage]'s decode()/bitmapCache rather than duplicating the
- * content:// vs file:// handling and in-memory cache.
+ * "My themes" custom keyboard background — a user-picked photo or GIF drawn
+ * full-bleed (cropped to fill, like a wallpaper) behind the whole keyboard.
+ *
+ * Image / GIF Backgrounds: static images use the existing [decode]/
+ * [bitmapCache] path via [Image]. Animated GIFs (detected by sniffing the
+ * first bytes for the "GIF87a"/"GIF89a" header, since content:// Uris don't
+ * reliably expose a file extension) are instead played with
+ * [android.graphics.drawable.AnimatedImageDrawable] wrapped in Compose's
+ * [AndroidView] — decoding a GIF into a single static [Bitmap] would only
+ * ever show its first frame. AnimatedImageDrawable requires API 28+; below
+ * that this falls back to the first frame as a static image via the same
+ * [decode] path used for ordinary photos, so a GIF background never crashes
+ * or renders blank on an older device, it just doesn't animate.
  *
  * Deliberately shows nothing (not even the loading spinner [StickerImage]
  * uses) while decoding — for a background image a brief blank/transparent
@@ -101,23 +110,82 @@ fun StickerImage(
  * the middle of the keyboard, plus the underlying solid `colors.bg` this
  * sits in front of is already transparent so there's a coherent fallback
  * (nothing → keyboard's own board backgrounds show through) rather than a
- * jarring color swap once the bitmap finishes decoding.
+ * jarring color swap once decoding finishes.
  */
 @Composable
 fun KeyboardCustomBackground(uriString: String, modifier: Modifier = Modifier) {
     val context = LocalContext.current
+    var isAnimatedGif by remember(uriString) { mutableStateOf<Boolean?>(null) }
     var bitmap by remember(uriString) { mutableStateOf<Bitmap?>(null) }
 
     LaunchedEffect(uriString) {
-        bitmap = withContext(Dispatchers.IO) { decode(context, uriString) }
+        val animated = withContext(Dispatchers.IO) { sniffIsGif(context, uriString) }
+        isAnimatedGif = animated
+        if (!animated || android.os.Build.VERSION.SDK_INT < android.os.Build.VERSION_CODES.P) {
+            // Non-GIF, or GIF on a device too old for AnimatedImageDrawable
+            // — either way a single static frame via the normal decode path.
+            bitmap = withContext(Dispatchers.IO) { decode(context, uriString) }
+        }
     }
 
-    bitmap?.let { loaded ->
-        Image(
-            bitmap = loaded.asImageBitmap(),
-            contentDescription = null,
-            contentScale = ContentScale.Crop,
-            modifier = modifier
-        )
+    when {
+        isAnimatedGif == true && android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.P -> {
+            AnimatedGifBackground(uriString = uriString, modifier = modifier)
+        }
+        bitmap != null -> {
+            Image(
+                bitmap = bitmap!!.asImageBitmap(),
+                contentDescription = null,
+                contentScale = ContentScale.Crop,
+                modifier = modifier
+            )
+        }
+        else -> Unit
     }
+}
+
+/** Reads just enough bytes to check for the GIF magic header — no full decode needed to answer "is this a GIF". */
+private fun sniffIsGif(context: Context, uriString: String): Boolean {
+    return runCatching {
+        val header = ByteArray(6)
+        val stream = if (uriString.startsWith("content://") || uriString.startsWith("file://")) {
+            context.contentResolver.openInputStream(Uri.parse(uriString))
+        } else {
+            java.io.FileInputStream(uriString)
+        }
+        stream?.use { it.read(header) }
+        val ascii = String(header, Charsets.US_ASCII)
+        ascii == "GIF87a" || ascii == "GIF89a"
+    }.getOrDefault(false)
+}
+
+/**
+ * Plays an animated GIF full-bleed using the platform's
+ * AnimatedImageDrawable inside an AndroidView, since Compose's own Image
+ * composable has no animated-GIF support — it only ever shows a single
+ * ImageBitmap frame. API 28+ only; callers gate on the SDK check above.
+ */
+@androidx.annotation.RequiresApi(android.os.Build.VERSION_CODES.P)
+@Composable
+private fun AnimatedGifBackground(uriString: String, modifier: Modifier = Modifier) {
+    val context = LocalContext.current
+    androidx.compose.ui.viewinterop.AndroidView(
+        modifier = modifier,
+        factory = { ctx -> android.widget.ImageView(ctx).apply { scaleType = android.widget.ImageView.ScaleType.CENTER_CROP } },
+        update = { imageView ->
+            runCatching {
+                val source = if (uriString.startsWith("content://") || uriString.startsWith("file://")) {
+                    android.graphics.ImageDecoder.createSource(context.contentResolver, Uri.parse(uriString))
+                } else {
+                    android.graphics.ImageDecoder.createSource(java.io.File(uriString))
+                }
+                val drawable = android.graphics.ImageDecoder.decodeDrawable(source)
+                imageView.setImageDrawable(drawable)
+                (drawable as? android.graphics.drawable.AnimatedImageDrawable)?.apply {
+                    repeatCount = android.graphics.drawable.AnimatedImageDrawable.REPEAT_INFINITE
+                    start()
+                }
+            }
+        }
+    )
 }
