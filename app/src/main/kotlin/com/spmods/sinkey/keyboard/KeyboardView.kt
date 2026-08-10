@@ -67,6 +67,7 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -95,6 +96,7 @@ import androidx.compose.material.icons.filled.Delete
 import androidx.compose.runtime.rememberCoroutineScope
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.withTimeoutOrNull
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
@@ -910,10 +912,74 @@ internal fun KeyboardView(
                     var gesturePathPoints by remember { mutableStateOf(listOf<Offset>()) }
                     var gestureIsDragging by remember { mutableStateOf(false) }
                     val gestureScope = rememberCoroutineScope()
+                    // This outer Box's own coordinates, captured so each
+                    // key's position can be converted into ITS coordinate
+                    // space (see onKeyPositioned below) rather than staying
+                    // in whatever coordinate space `coords.positionInParent()`
+                    // would have given (that key's own direct parent Row —
+                    // several layout levels below this Box, and a different
+                    // origin for every row). RgbRippleOverlay/
+                    // KeyboardLedRipple/TypingAnimationPopup are all drawn
+                    // as direct children of THIS Box (via matchParentSize()/
+                    // Popup below), so their (0,0) origin is this Box's
+                    // top-left corner — key positions need to be measured
+                    // against that same origin or every effect anchored on
+                    // them lands in the wrong place, which is exactly what
+                    // was happening before this fix (a popup meant to sit
+                    // over the pressed key instead floating up near the
+                    // whole keyboard's top edge, offset by however far that
+                    // key's own row happened to be from this Box's origin).
+                    var boxCoordinates by remember { mutableStateOf<androidx.compose.ui.layout.LayoutCoordinates?>(null) }
+                    // Raw per-key coordinates, captured as each key is laid
+                    // out — kept separately from `keyPositions` (the
+                    // outer-Box-relative Float x/y map effects actually
+                    // read) because a key can be placed and report its own
+                    // onGloballyPositioned BEFORE this Box's own coordinates
+                    // are available yet (composition/layout ordering between
+                    // a Box and its deeply-nested children isn't guaranteed
+                    // to run parent-first). Converting eagerly at each key's
+                    // own callback and just skipping when boxCoordinates
+                    // was still null at that moment silently dropped that
+                    // key from keyPositions forever, since nothing else
+                    // would ever re-trigger THAT specific key's own
+                    // onGloballyPositioned again afterward — in practice
+                    // this meant only whichever row happened to lay out
+                    // after the Box did (typically the row nearest the
+                    // press point) ever made it into the map, which is
+                    // exactly the "only spreads along one row" bug. Storing
+                    // the raw coordinates here and recomputing the whole
+                    // keyPositions map below (in the LaunchedEffect keyed on
+                    // boxCoordinates) fixes that: the moment this Box's own
+                    // coordinates do arrive, every key captured so far gets
+                    // converted in one pass, regardless of which order
+                    // things were laid out in.
+                    val rawKeyCoords = remember { mutableStateMapOf<Char, androidx.compose.ui.layout.LayoutCoordinates>() }
+                    // Keyed on both boxCoordinates AND rawKeyCoords.size —
+                    // the box's own coordinates typically only change once
+                    // (right after the very first layout pass), but keys
+                    // keep reporting their own positions over several
+                    // subsequent frames as the rest of the board finishes
+                    // laying out; re-running this effect as that count
+                    // grows keeps catching up any key that arrived after
+                    // the last time this ran, on top of the immediate
+                    // best-effort conversion already done inline in
+                    // onKeyPositioned below.
+                    LaunchedEffect(boxCoordinates, rawKeyCoords.size) {
+                        val box = boxCoordinates ?: return@LaunchedEffect
+                        if (!box.isAttached) return@LaunchedEffect
+                        rawKeyCoords.forEach { (ch, coords) ->
+                            if (coords.isAttached) {
+                                val centerInKey = Offset(coords.size.width / 2f, coords.size.height / 2f)
+                                val centerInBox = box.localPositionOf(coords, centerInKey)
+                                keyPositions[ch] = KeyPoint(ch, centerInBox.x, centerInBox.y)
+                            }
+                        }
+                    }
 
                     Box(
                         modifier = Modifier
                             .fillMaxWidth()
+                            .onGloballyPositioned { boxCoordinates = it }
                             .let { m ->
                                 // Gesture detection lives on THIS Box —
                                 // the same node MainKeyboardKeys is a child
@@ -1088,13 +1154,23 @@ internal fun KeyboardView(
                             onLangTooltip = { showLangTooltip = true },
                             imeAction = inputType,
                             onKeyPositioned = if (needsKeyPositions) { { ch, coords ->
-                                // coords.size is an IntSize (width/height only,
-                                // no built-in .center without an extra import)
-                                // — compute the center manually instead.
-                                val centerX = coords.size.width / 2f
-                                val centerY = coords.size.height / 2f
-                                val positionInParent = coords.positionInParent()
-                                keyPositions[ch] = KeyPoint(ch, positionInParent.x + centerX, positionInParent.y + centerY)
+                                // Always record the raw coordinates (see
+                                // rawKeyCoords above) — this alone
+                                // guarantees the key is never permanently
+                                // lost even if boxCoordinates isn't ready
+                                // yet, since the LaunchedEffect(boxCoordinates)
+                                // above will pick it up as soon as it is.
+                                rawKeyCoords[ch] = coords
+                                // Also convert immediately when possible, so
+                                // the common case (Box already laid out
+                                // before most keys are) doesn't wait for an
+                                // extra recomposition it doesn't need.
+                                val box = boxCoordinates
+                                if (box != null && coords.isAttached && box.isAttached) {
+                                    val centerInKey = Offset(coords.size.width / 2f, coords.size.height / 2f)
+                                    val centerInBox = box.localPositionOf(coords, centerInKey)
+                                    keyPositions[ch] = KeyPoint(ch, centerInBox.x, centerInBox.y)
+                                }
                             } } else null
                         )
 
@@ -1192,6 +1268,22 @@ internal fun KeyboardView(
 // Content-only composables (no toolbar — toolbar is in KeyboardView)
 // ─────────────────────────────────────────────────────────────────────────────
 
+// Private-use-area Unicode sentinels used ONLY as unique `keyPositions` map
+// keys for the MAIN board's non-letter keys (Shift/Backspace/Symbols/Emoji/
+// Lang-toggle/Space) — these keys have no natural single Char of their own
+// the way a letter key does. Never shown, typed, committed, or matched
+// against real text; U+E000-U+E005 sit in the Unicode Private Use Area,
+// which is guaranteed never to collide with any real Sinhala, English, or
+// symbol character. Exists so RGB_RIPPLE / the LED ripple / the Typing
+// Animation pop-up can find these keys' real board positions too, same as
+// they already could for every letter key.
+private const val KEY_SENTINEL_SHIFT = '\uE000'
+private const val KEY_SENTINEL_BACKSPACE = '\uE001'
+private const val KEY_SENTINEL_SYMBOLS = '\uE002'
+private const val KEY_SENTINEL_EMOJI = '\uE003'
+private const val KEY_SENTINEL_LANG_TOGGLE = '\uE004'
+private const val KEY_SENTINEL_SPACE = '\uE005'
+
 @Composable
 internal fun MainKeyboardKeys(
     currentLanguage: String,
@@ -1236,6 +1328,16 @@ internal fun MainKeyboardKeys(
             // Double-tap = LOCKED, single tap = toggle ONE_SHOT
             ShiftKey(weight = 1.4f, active = shift, locked = shiftLocked,
                 keyHeight = keyHeight, colors = colors, keyShape = keyShape,
+                // Special keys (Shift/Backspace/Space/Symbols/Emoji/Lang
+                // toggle) have no natural Char of their own the way a
+                // letter key does, so each gets its own private-use-area
+                // Unicode sentinel (U+E000..U+E005) purely as a unique map
+                // key for `keyPositions` — never shown, typed, or matched
+                // against anything; only used so RGB_RIPPLE/the LED ripple/
+                // the Typing Animation pop-up can find these keys' real
+                // positions too, the same way they already could for every
+                // letter key.
+                onPositioned = onKeyPositioned?.let { cb -> { coords: androidx.compose.ui.layout.LayoutCoordinates -> cb(KEY_SENTINEL_SHIFT, coords) } },
                 onTap = { onKey("SHIFT") },
                 onDoubleTap = { onKey("SHIFT_LOCK") }
             )
@@ -1250,23 +1352,30 @@ internal fun MainKeyboardKeys(
                     if (shift && !shiftLocked) onShiftStateChange(SinKeyInputMethodService.ShiftState.OFF)
                 }
             }
-            BackspaceKey(weight = 1.4f, keyHeight = keyHeight, colors = colors, keyShape = keyShape) { onKey("BACKSPACE") }
+            BackspaceKey(weight = 1.4f, keyHeight = keyHeight, colors = colors, keyShape = keyShape,
+                onPositioned = onKeyPositioned?.let { cb -> { coords: androidx.compose.ui.layout.LayoutCoordinates -> cb(KEY_SENTINEL_BACKSPACE, coords) } }
+            ) { onKey("BACKSPACE") }
         }
         Row(
             modifier = Modifier.fillMaxWidth().padding(vertical = 3.dp),
             horizontalArrangement = Arrangement.spacedBy(6.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            SymbolsKey(weight = 1.8f, keyHeight = keyHeight, colors = colors, keyShape = keyShape) { onSymbols() }
+            SymbolsKey(weight = 1.8f, keyHeight = keyHeight, colors = colors, keyShape = keyShape,
+                onPositioned = onKeyPositioned?.let { cb -> { coords: androidx.compose.ui.layout.LayoutCoordinates -> cb(KEY_SENTINEL_SYMBOLS, coords) } }
+            ) { onSymbols() }
             EmojiKey(weight = 0.9f, keyHeight = keyHeight, colors = colors, keyShape = keyShape,
+                onPositioned = onKeyPositioned?.let { cb -> { coords: androidx.compose.ui.layout.LayoutCoordinates -> cb(KEY_SENTINEL_EMOJI, coords) } },
                 onTap = { onKey(",") }, onLongPress = { onEmojiPicker() })
             Box(modifier = Modifier.weight(0.9f)) {
                 LangToggleKey(currentLanguage = currentLanguage, keyHeight = keyHeight,
                     colors = colors, keyShape = keyShape,
+                    onPositioned = onKeyPositioned?.let { cb -> { coords: androidx.compose.ui.layout.LayoutCoordinates -> cb(KEY_SENTINEL_LANG_TOGGLE, coords) } },
                     onTap = { onKey("LANG_TOGGLE"); onLangTooltip() })
             }
             SpaceKey(weight = 5.5f, keyHeight = keyHeight, colors = colors, keyShape = keyShape,
                 showKeyBorders = showKeyBorders,
+                onPositioned = onKeyPositioned?.let { cb -> { coords: androidx.compose.ui.layout.LayoutCoordinates -> cb(KEY_SENTINEL_SPACE, coords) } },
                 onTap = { onKey("SPACE") }, onLongPress = { onKey("SWITCH_KEYBOARD") })
             SpecialKey(label = ".", weight = 0.8f, keyHeight = keyHeight, colors = colors, keyShape = keyShape) { onKey(".") }
             // FIX #8: Pass imeAction so the Enter key label reflects the current field action.
@@ -1944,6 +2053,49 @@ private fun rememberKeyBumpOffsetY(pressed: Boolean): Dp {
     return offsetY
 }
 
+/**
+ * Debounces `pressed` so the character preview bubble stays visible for at
+ * least [minVisibleMs] even when the actual physical press was much
+ * shorter — which is the normal case during fast typing (a tap-and-release
+ * well under 100ms). Without this, gating the Popup directly on `pressed`
+ * means the bubble is created and torn down again before Compose ever gets
+ * a frame to actually paint it, so it looks like the preview "doesn't show
+ * up" specifically when typing quickly, even though the exact same code
+ * works fine for a single slow, deliberate tap. Every real keyboard
+ * (Gboard, SwiftKey, etc.) does the equivalent of this — the preview
+ * bubble's fade-out is on its own timer, not hard-tied to finger-up.
+ */
+@Composable
+private fun rememberPreviewVisible(pressed: Boolean, minVisibleMs: Long = 150L): Boolean {
+    var visible by remember { mutableStateOf(false) }
+    // Bumped on every rising edge (false -> true) of `pressed`, including
+    // back-to-back presses of the same key before the previous bubble's
+    // timer finished — a plain `LaunchedEffect(pressed)` wouldn't restart
+    // for two fast taps in a row if `pressed` briefly reads true both
+    // times without Compose ever observing the false in between, so this
+    // gives every distinct press its own unmistakable trigger value.
+    var pressId by remember { mutableStateOf(0) }
+    var wasPressed by remember { mutableStateOf(false) }
+    if (pressed && !wasPressed) pressId++
+    wasPressed = pressed
+
+    // One coroutine owns this whole press's visible lifetime: show
+    // immediately, wait out the minimum, then — only once that minimum has
+    // actually elapsed — hide, but only if the finger has *also* lifted by
+    // then. If the press is still held past the minimum, this suspends on
+    // snapshotFlow until the moment `pressed` actually turns false, so a
+    // slow/long press keeps the bubble up for its whole real duration
+    // instead of hiding early at the minimum-timer mark.
+    LaunchedEffect(pressId) {
+        if (pressId == 0) return@LaunchedEffect
+        visible = true
+        delay(minVisibleMs)
+        snapshotFlow { pressed }.first { held -> !held }
+        visible = false
+    }
+    return visible
+}
+
 @Composable
 private fun KeyPreviewPopup(label: String, keyHeight: Dp, colors: KeyboardColors, keyShape: RoundedCornerShape) {
     val size = (keyHeight.value * 1.1f).dp
@@ -2032,7 +2184,7 @@ private fun RowScope.NumberedLetterKey(
         Text(text = label, fontSize = keyLabelFontSize(keyHeight), color = colors.keyText,
             fontWeight = FontWeight.Normal,
             modifier = Modifier.align(Alignment.Center))
-        if (pressed) {
+        if (rememberPreviewVisible(pressed)) {
             Popup(alignment = Alignment.TopCenter,
                 offset = IntOffset(0, -((keyHeight.value * 1.4f).toInt()))) {
                 KeyPreviewPopup(label = label, keyHeight = keyHeight, colors = colors, keyShape = keyShape)
@@ -2083,7 +2235,7 @@ private fun RowScope.LetterKey(
     ) {
         Text(text = label, fontSize = keyLabelFontSize(keyHeight), color = colors.keyText,
             fontWeight = FontWeight.Normal)
-        if (pressed) {
+        if (rememberPreviewVisible(pressed)) {
             Popup(alignment = Alignment.TopCenter,
                 offset = IntOffset(0, -((keyHeight.value * 1.4f).toInt()))) {
                 KeyPreviewPopup(label = label, keyHeight = keyHeight, colors = colors, keyShape = keyShape)
@@ -2097,6 +2249,7 @@ private fun RowScope.LetterKey(
 private fun RowScope.ShiftKey(
     weight: Float, active: Boolean, locked: Boolean,
     keyHeight: Dp, colors: KeyboardColors, keyShape: RoundedCornerShape,
+    onPositioned: ((androidx.compose.ui.layout.LayoutCoordinates) -> Unit)? = null,
     onTap: () -> Unit,
     onDoubleTap: () -> Unit
 ) {
@@ -2114,6 +2267,7 @@ private fun RowScope.ShiftKey(
             .scale(bumpScale)
             .offset(y = bumpOffsetY)
             .clip(keyShape).background(bg)
+            .let { m -> if (onPositioned != null) m.onGloballyPositioned(onPositioned) else m }
             .combinedClickable(
                 onClick = onTap,
                 onDoubleClick = onDoubleTap
@@ -2141,6 +2295,7 @@ private fun RowScope.ShiftKey(
 private fun RowScope.BackspaceKey(
     weight: Float,
     keyHeight: Dp, colors: KeyboardColors, keyShape: RoundedCornerShape,
+    onPositioned: ((androidx.compose.ui.layout.LayoutCoordinates) -> Unit)? = null,
     onTap: () -> Unit
 ) {
     var pressed by remember { mutableStateOf(false) }
@@ -2152,6 +2307,7 @@ private fun RowScope.BackspaceKey(
             .scale(bumpScale)
             .offset(y = bumpOffsetY)
             .clip(keyShape).background(colors.specialKeyBg)
+            .let { m -> if (onPositioned != null) m.onGloballyPositioned(onPositioned) else m }
             .pointerInput(Unit) {
                 detectTapGestures(
                     onPress = { _ ->
@@ -2215,7 +2371,7 @@ private fun RowScope.SpecialKey(
         contentAlignment = Alignment.Center
     ) {
         Text(text = label, fontSize = keyLabelFontSize(keyHeight), fontWeight = FontWeight.Medium, color = colors.specialKeyText)
-        if (pressed) {
+        if (rememberPreviewVisible(pressed)) {
             Popup(alignment = Alignment.TopCenter,
                 offset = IntOffset(0, -((keyHeight.value * 1.4f).toInt()))) {
                 KeyPreviewPopup(label = label, keyHeight = keyHeight, colors = colors, keyShape = keyShape)
@@ -2228,6 +2384,7 @@ private fun RowScope.SpecialKey(
 private fun RowScope.SymbolsKey(
     weight: Float,
     keyHeight: Dp, colors: KeyboardColors, keyShape: RoundedCornerShape,
+    onPositioned: ((androidx.compose.ui.layout.LayoutCoordinates) -> Unit)? = null,
     onTap: () -> Unit
 ) {
     var pressed by remember { mutableStateOf(false) }
@@ -2240,6 +2397,7 @@ private fun RowScope.SymbolsKey(
             .offset(y = bumpOffsetY)
             .clip(keyShape)
             .background(if (pressed) colors.specialKeyBg.copy(alpha = 0.6f) else colors.specialKeyBg)
+            .let { m -> if (onPositioned != null) m.onGloballyPositioned(onPositioned) else m }
             .clickable { onTap() }
             .pointerInput(Unit) {
                 awaitEachGesture {
@@ -2264,6 +2422,7 @@ private fun RowScope.SymbolsKey(
 private fun LangToggleKey(
     currentLanguage: String,
     keyHeight: Dp, colors: KeyboardColors, keyShape: RoundedCornerShape,
+    onPositioned: ((androidx.compose.ui.layout.LayoutCoordinates) -> Unit)? = null,
     onTap: () -> Unit
 ) {
     val isSinhala = currentLanguage == "si"
@@ -2283,6 +2442,7 @@ private fun LangToggleKey(
             .offset(y = bumpOffsetY)
             .clip(keyShape)
             .background(if (pressed) colors.specialKeyBg.copy(alpha = 0.6f) else colors.specialKeyBg)
+            .let { m -> if (onPositioned != null) m.onGloballyPositioned(onPositioned) else m }
             .clickable { onTap() }
             .pointerInput(Unit) {
                 awaitEachGesture {
@@ -2318,6 +2478,7 @@ private fun LangToggleKey(
 private fun RowScope.EmojiKey(
     weight: Float,
     keyHeight: Dp, colors: KeyboardColors, keyShape: RoundedCornerShape,
+    onPositioned: ((androidx.compose.ui.layout.LayoutCoordinates) -> Unit)? = null,
     onTap: () -> Unit, onLongPress: () -> Unit
 ) {
     var pressed by remember { mutableStateOf(false) }
@@ -2330,6 +2491,7 @@ private fun RowScope.EmojiKey(
             .offset(y = bumpOffsetY)
             .clip(keyShape)
             .background(if (pressed) colors.specialKeyBg.copy(alpha = 0.6f) else colors.specialKeyBg)
+            .let { m -> if (onPositioned != null) m.onGloballyPositioned(onPositioned) else m }
             .combinedClickable(onClick = { onTap() }, onLongClick = { onLongPress() })
             .pointerInput(Unit) {
                 awaitEachGesture {
@@ -2359,6 +2521,7 @@ private fun RowScope.SpaceKey(
     weight: Float,
     keyHeight: Dp, colors: KeyboardColors, keyShape: RoundedCornerShape,
     showKeyBorders: Boolean = true,
+    onPositioned: ((androidx.compose.ui.layout.LayoutCoordinates) -> Unit)? = null,
     onTap: () -> Unit, onLongPress: () -> Unit
 ) {
     var pressed by remember { mutableStateOf(false) }
@@ -2370,6 +2533,7 @@ private fun RowScope.SpaceKey(
             .height(keyHeight).weight(weight)
             .clip(spaceShape)
             .background(if (pressed) colors.spaceKeyBg.copy(alpha = 0.6f) else colors.spaceKeyBg)
+            .let { m -> if (onPositioned != null) m.onGloballyPositioned(onPositioned) else m }
             .combinedClickable(onClick = { onTap() }, onLongClick = { onLongPress() })
             .pointerInput(Unit) {
                 awaitEachGesture {
