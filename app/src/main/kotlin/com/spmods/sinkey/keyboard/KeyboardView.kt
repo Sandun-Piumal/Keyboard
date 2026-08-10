@@ -94,6 +94,7 @@ import androidx.compose.material.icons.filled.PushPin
 import androidx.compose.material.icons.outlined.PushPin
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.rememberUpdatedState
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.first
@@ -2079,18 +2080,35 @@ private fun rememberPreviewVisible(pressed: Boolean, minVisibleMs: Long = 150L):
     if (pressed && !wasPressed) pressId++
     wasPressed = pressed
 
-    // One coroutine owns this whole press's visible lifetime: show
-    // immediately, wait out the minimum, then — only once that minimum has
-    // actually elapsed — hide, but only if the finger has *also* lifted by
-    // then. If the press is still held past the minimum, this suspends on
-    // snapshotFlow until the moment `pressed` actually turns false, so a
-    // slow/long press keeps the bubble up for its whole real duration
-    // instead of hiding early at the minimum-timer mark.
+    // `pressed` is a plain Boolean *parameter*, not a Compose State object.
+    // A LaunchedEffect coroutine captures whatever value a parameter held
+    // at the moment the coroutine's suspend lambda started running, and
+    // keeps reading that same frozen value for its entire lifetime unless
+    // the effect's own key changes and it restarts — recomposing this
+    // composable with a new `pressed` argument does NOT push that new
+    // value into an already-running coroutine. Two earlier versions of
+    // this function hit that same trap from different angles: one used
+    // `snapshotFlow { pressed }.first { !it }` (snapshotFlow only re-runs
+    // its block on a State *read inside the block* changing, and a
+    // captured lambda parameter isn't one, so it emitted once and then
+    // hung forever waiting for a release it could never observe); another
+    // used `while (pressed) { delay(16) }` directly, which has the exact
+    // same problem — the loop condition re-reads the same frozen snapshot
+    // every iteration. Both left the bubble stuck visible forever once a
+    // key was released, exactly the bug this fixes. rememberUpdatedState
+    // is the documented, correct tool for this: it hands back a
+    // State<Boolean> whose backing value DOES update on every
+    // recomposition, so reading currentPressed.value inside the
+    // long-lived coroutine below always sees the real, current value.
+    val currentPressed = rememberUpdatedState(pressed)
+
     LaunchedEffect(pressId) {
         if (pressId == 0) return@LaunchedEffect
         visible = true
         delay(minVisibleMs)
-        snapshotFlow { pressed }.first { held -> !held }
+        while (currentPressed.value) {
+            delay(16L) // ~1 frame; just needs to notice release promptly
+        }
         visible = false
     }
     return visible
