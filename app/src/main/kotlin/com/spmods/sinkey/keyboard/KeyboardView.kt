@@ -532,22 +532,6 @@ internal fun KeyboardView(
     val bottomPadding = if (bottomSpaceEnabled) stepToBottomPadding(bottomSpaceSize) else 4.dp
     val keyShape = RoundedCornerShape(6.dp)
 
-    // Approximate (width, height) of one letter key in px, for
-    // KeyboardLedRipple's border-outline drawing — KeyPoint only stores a
-    // key's center, not its true measured bounds (each key is a weighted
-    // child of a Row, so its exact width isn't known outside that Row's
-    // own layout pass without restructuring this into a BoxWithConstraints).
-    // A typical letter row has 10 keys, so screen width / 10 is a close
-    // enough estimate for a glow that's meant to trace loosely along a
-    // key's edge, not align to it pixel-perfectly.
-    val ledKeySizePx = run {
-        val density = LocalDensity.current
-        val screenWidthPx = androidx.compose.ui.platform.LocalConfiguration.current.screenWidthDp * density.density
-        val approxKeyWidthPx = screenWidthPx / 10f
-        val keyHeightPx = with(density) { keyHeight.toPx() }
-        androidx.compose.ui.geometry.Size(approxKeyWidthPx, keyHeightPx)
-    }
-
     // ── Shared "a key was just pressed here" state for the three features
     // that all need to react to real touch positions rather than to
     // onKey's post-commit callback: Typing Animation (pop-up over the
@@ -565,6 +549,21 @@ internal fun KeyboardView(
     // makes the LaunchedEffect(triggerId) in each consumer actually restart
     // every time rather than silently no-op when origin didn't change.
     val keyPositions = remember { mutableStateMapOf<Char, KeyPoint>() }
+    // Real measured (width, height) in px of each key, captured alongside
+    // keyPositions — see the two places that write into it below (the
+    // recompute LaunchedEffect and the immediate best-effort conversion in
+    // onKeyPositioned) for why this needs the same "record raw, convert
+    // when ready" two-step as positions do. This replaced an earlier
+    // version that used one hardcoded (screenWidth/10, keyHeight) estimate
+    // for every key on the board — that estimate didn't account for rows
+    // whose keys are genuinely a different height/width than the main
+    // letter rows (the quick-toggle row of ?123/emoji/lang-toggle/Space/./
+    // Enter being the most visibly wrong case, since Space in particular is
+    // both much wider AND not necessarily the same height as a letter key),
+    // so the border-glow outline this drives ended up too big/small and
+    // misaligned specifically on that row — using each key's own real
+    // measured size fixes that at the source rather than special-casing it.
+    val keySizes = remember { mutableStateMapOf<Char, androidx.compose.ui.geometry.Size>() }
     var pressOrigin by remember { mutableStateOf<Offset?>(null) }
     var pressTriggerId by remember { mutableStateOf(0) }
     var lastActivityAtMs by remember { mutableStateOf(0L) }
@@ -973,6 +972,10 @@ internal fun KeyboardView(
                                 val centerInKey = Offset(coords.size.width / 2f, coords.size.height / 2f)
                                 val centerInBox = box.localPositionOf(coords, centerInKey)
                                 keyPositions[ch] = KeyPoint(ch, centerInBox.x, centerInBox.y)
+                                keySizes[ch] = androidx.compose.ui.geometry.Size(
+                                    coords.size.width.toFloat(),
+                                    coords.size.height.toFloat()
+                                )
                             }
                         }
                     }
@@ -1171,6 +1174,10 @@ internal fun KeyboardView(
                                     val centerInKey = Offset(coords.size.width / 2f, coords.size.height / 2f)
                                     val centerInBox = box.localPositionOf(coords, centerInKey)
                                     keyPositions[ch] = KeyPoint(ch, centerInBox.x, centerInBox.y)
+                                    keySizes[ch] = androidx.compose.ui.geometry.Size(
+                                        coords.size.width.toFloat(),
+                                        coords.size.height.toFloat()
+                                    )
                                 }
                             } } else null
                         )
@@ -1201,7 +1208,7 @@ internal fun KeyboardView(
                                 origin = pressOrigin,
                                 triggerId = pressTriggerId,
                                 keyPositions = keyPositions.values.toList(),
-                                keySize = ledKeySizePx,
+                                keySizes = keySizes,
                                 accent = colors.accent,
                                 isIdle = isLedIdle,
                                 modifier = Modifier.matchParentSize()
