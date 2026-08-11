@@ -132,12 +132,16 @@ fun materialYouAccentColor(context: Context, isDark: Boolean): Color {
  * the light visibly originates at the pressed key and travels outward
  * across the board through neighboring keys' borders.
  *
- * [keySize] is the approximate (width, height) of one key in px, used to
- * size each outline — KeyPoint only stores a key's center, not its exact
- * bounds, so this is a shared estimate (roughly a row's key width x
- * keyHeight) rather than each key's true measured size; close enough for
- * a border glow, since exact pixel-perfect alignment isn't critical for a
- * fading light effect.
+ * [keySizes] gives each key's real measured (width, height) in px, keyed
+ * by the same Char used in [keyPositions] — captured from that key's own
+ * onGloballyPositioned callback in KeyboardView, not estimated, so the
+ * glow outline matches each key's actual size and shape, including rows
+ * (like the bottom quick-toggle row with Space/./Enter) whose keys are a
+ * genuinely different size than the main letter rows. A key missing from
+ * this map (e.g. its own position hasn't been measured yet on the very
+ * first frame after a board switch) falls back to an average of whatever
+ * sizes are already known, computed once per draw call rather than passed
+ * in, so this stays a pure function of its two map arguments.
  *
  * [origin] is the pressed key's center (this Box's local coordinates,
  * matching [keyPositions]'s coordinate space) and [triggerId] is bumped by
@@ -166,7 +170,7 @@ internal fun KeyboardLedRipple(
     origin: Offset?,
     triggerId: Int,
     keyPositions: List<KeyPoint>,
-    keySize: androidx.compose.ui.geometry.Size,
+    keySizes: Map<Char, androidx.compose.ui.geometry.Size>,
     accent: Color,
     isIdle: Boolean,
     modifier: Modifier = Modifier
@@ -194,12 +198,26 @@ internal fun KeyboardLedRipple(
     )
 
     Canvas(modifier = modifier) {
+        // Fallback for the rare key whose real size hasn't been measured
+        // yet (e.g. the very first frame right after a board switch) — an
+        // average of whatever sizes ARE known so far, so that one key
+        // isn't drawn with a wildly wrong placeholder box while the rest
+        // use their real size. Falls back further to keyPositions' own
+        // count-based default only if literally nothing has been measured.
+        val fallbackSize = if (keySizes.isNotEmpty()) {
+            androidx.compose.ui.geometry.Size(
+                keySizes.values.map { it.width }.average().toFloat(),
+                keySizes.values.map { it.height }.average().toFloat()
+            )
+        } else {
+            androidx.compose.ui.geometry.Size(size.width / 10f, size.height / 4f)
+        }
         when (pattern) {
             LedPattern.NONE -> Unit
-            LedPattern.BREATHING -> drawBreathingBorders(origin, keyPositions, keySize, accent, progress.value, idleAlpha)
-            LedPattern.WAVE -> drawWaveBorders(origin, keyPositions, keySize, accent, progress.value, idleAlpha)
-            LedPattern.CYCLE -> drawCycleBorders(origin, keyPositions, keySize, progress.value, idleAlpha)
-            LedPattern.STARS -> drawStarsBorders(origin, keyPositions, keySize, accent, progress.value, idleAlpha)
+            LedPattern.BREATHING -> drawBreathingBorders(origin, keyPositions, keySizes, fallbackSize, accent, progress.value, idleAlpha)
+            LedPattern.WAVE -> drawWaveBorders(origin, keyPositions, keySizes, fallbackSize, accent, progress.value, idleAlpha)
+            LedPattern.CYCLE -> drawCycleBorders(origin, keyPositions, keySizes, fallbackSize, progress.value, idleAlpha)
+            LedPattern.STARS -> drawStarsBorders(origin, keyPositions, keySizes, fallbackSize, accent, progress.value, idleAlpha)
         }
     }
 }
@@ -234,7 +252,7 @@ private fun androidx.compose.ui.graphics.drawscope.DrawScope.drawKeyBorderGlow(
 
 /** BREATHING: every key's border softly pulses in unison, brightest near the origin, fading together as progress ages. */
 private fun androidx.compose.ui.graphics.drawscope.DrawScope.drawBreathingBorders(
-    origin: Offset, keyPositions: List<KeyPoint>, keySize: androidx.compose.ui.geometry.Size, accent: Color, progress: Float, idleAlpha: Float
+    origin: Offset, keyPositions: List<KeyPoint>, keySizes: Map<Char, androidx.compose.ui.geometry.Size>, fallbackSize: androidx.compose.ui.geometry.Size, accent: Color, progress: Float, idleAlpha: Float
 ) {
     val maxDist = LED_RIPPLE_MAX_RADIUS_DP.dp.toPx()
     // A single breath cycle (brighten then dim) over the whole animation,
@@ -248,14 +266,14 @@ private fun androidx.compose.ui.graphics.drawscope.DrawScope.drawBreathingBorder
         val falloff = (1f - (dist / maxDist)).coerceIn(0f, 1f)
         val alpha = (breath * falloff * idleAlpha).coerceIn(0f, 1f)
         if (alpha > 0.02f) {
-            drawKeyBorderGlow(key, keySize, accent, alpha)
+            drawKeyBorderGlow(key, keySizes[key.char] ?: fallbackSize, accent, alpha)
         }
     }
 }
 
 /** WAVE: a ring of light expands outward from the pressed key, lighting each key's border as the front passes over it. */
 private fun androidx.compose.ui.graphics.drawscope.DrawScope.drawWaveBorders(
-    origin: Offset, keyPositions: List<KeyPoint>, keySize: androidx.compose.ui.geometry.Size, accent: Color, progress: Float, idleAlpha: Float
+    origin: Offset, keyPositions: List<KeyPoint>, keySizes: Map<Char, androidx.compose.ui.geometry.Size>, fallbackSize: androidx.compose.ui.geometry.Size, accent: Color, progress: Float, idleAlpha: Float
 ) {
     val maxRadiusPx = LED_RIPPLE_MAX_RADIUS_DP.dp.toPx()
     val waveFrontRadius = progress * maxRadiusPx
@@ -270,7 +288,7 @@ private fun androidx.compose.ui.graphics.drawscope.DrawScope.drawWaveBorders(
             val overallFade = 1f - progress
             val alpha = (bandStrength * overallFade * idleAlpha).coerceIn(0f, 1f)
             if (alpha > 0.02f) {
-                drawKeyBorderGlow(key, keySize, accent, alpha)
+                drawKeyBorderGlow(key, keySizes[key.char] ?: fallbackSize, accent, alpha)
             }
         }
     }
@@ -278,7 +296,7 @@ private fun androidx.compose.ui.graphics.drawscope.DrawScope.drawWaveBorders(
 
 /** CYCLE: same expanding-ring wave as WAVE, but each border's hue rotates through the rainbow by distance instead of using a single accent color. */
 private fun androidx.compose.ui.graphics.drawscope.DrawScope.drawCycleBorders(
-    origin: Offset, keyPositions: List<KeyPoint>, keySize: androidx.compose.ui.geometry.Size, progress: Float, idleAlpha: Float
+    origin: Offset, keyPositions: List<KeyPoint>, keySizes: Map<Char, androidx.compose.ui.geometry.Size>, fallbackSize: androidx.compose.ui.geometry.Size, progress: Float, idleAlpha: Float
 ) {
     val maxRadiusPx = LED_RIPPLE_MAX_RADIUS_DP.dp.toPx()
     val waveFrontRadius = progress * maxRadiusPx
@@ -294,7 +312,7 @@ private fun androidx.compose.ui.graphics.drawscope.DrawScope.drawCycleBorders(
             val alpha = (bandStrength * overallFade * idleAlpha).coerceIn(0f, 1f)
             if (alpha > 0.02f) {
                 val hue = (dist / maxRadiusPx * 360f) % 360f
-                drawKeyBorderGlow(key, keySize, Color.hsv(hue, 0.85f, 1f), alpha)
+                drawKeyBorderGlow(key, keySizes[key.char] ?: fallbackSize, Color.hsv(hue, 0.85f, 1f), alpha)
             }
         }
     }
@@ -302,7 +320,7 @@ private fun androidx.compose.ui.graphics.drawscope.DrawScope.drawCycleBorders(
 
 /** STARS: a handful of keys near the pressed one have their borders twinkle briefly and independently, rather than one continuous front. */
 private fun androidx.compose.ui.graphics.drawscope.DrawScope.drawStarsBorders(
-    origin: Offset, keyPositions: List<KeyPoint>, keySize: androidx.compose.ui.geometry.Size, accent: Color, progress: Float, idleAlpha: Float
+    origin: Offset, keyPositions: List<KeyPoint>, keySizes: Map<Char, androidx.compose.ui.geometry.Size>, fallbackSize: androidx.compose.ui.geometry.Size, accent: Color, progress: Float, idleAlpha: Float
 ) {
     val maxDist = LED_RIPPLE_MAX_RADIUS_DP.dp.toPx()
     keyPositions.forEach { key ->
@@ -319,7 +337,7 @@ private fun androidx.compose.ui.graphics.drawscope.DrawScope.drawStarsBorders(
         val falloff = (1f - (dist / maxDist)).coerceIn(0f, 1f)
         val alpha = (twinkle * falloff * idleAlpha).coerceIn(0f, 1f)
         if (alpha > 0.05f) {
-            drawKeyBorderGlow(key, keySize, accent, alpha)
+            drawKeyBorderGlow(key, keySizes[key.char] ?: fallbackSize, accent, alpha)
         }
     }
 }
