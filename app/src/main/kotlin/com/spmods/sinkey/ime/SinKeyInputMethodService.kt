@@ -958,16 +958,43 @@ class SinKeyInputMethodService : InputMethodService() {
                     // so it's safe to call unconditionally here.
                     updateSuggestions()
                 } else {
-                    if (englishBuffer.isNotEmpty()) englishBuffer.deleteCharAt(englishBuffer.length - 1)
-                    val beforeCursor = ic.getTextBeforeCursor(4, 0)
-                    if (!beforeCursor.isNullOrEmpty()) {
-                        val lastCodePoint = Character.codePointBefore(beforeCursor, beforeCursor.length)
-                        val charCount = Character.charCount(lastCodePoint)
-                        ic.deleteSurroundingText(charCount, 0)
+                    // BUG FIX: English letters are now sent via
+                    // setComposingText() (see the letter-key branch below),
+                    // not commitText() per character, so they're still
+                    // in-progress composing text while a word is being
+                    // typed — not yet final text in the field. This branch
+                    // used to always fall through to deleteSurroundingText(),
+                    // which deletes actual committed characters; while a
+                    // word was still composing that deleted the wrong
+                    // thing (or nothing, on editors that don't report
+                    // composing text as "surrounding text" yet). Mirror the
+                    // Sinhala wordBuffer branch above: while englishBuffer
+                    // still has characters, backspace should just re-render
+                    // the shrunken composing text; only fall through to
+                    // deleteSurroundingText once englishBuffer is already
+                    // empty (deleting a previously committed word/character
+                    // that's no longer part of any active composition).
+                    if (englishBuffer.isNotEmpty()) {
+                        englishBuffer.deleteCharAt(englishBuffer.length - 1)
+                        if (englishBuffer.isEmpty()) {
+                            ic.setComposingText("", 1)
+                            ic.finishComposingText()
+                        } else {
+                            val styled = com.spmods.sinkey.keyboard.FancyTextMapper.apply(englishBuffer.toString(), cachedFancyTextStyle)
+                            ic.setComposingText(styled, 1)
+                        }
+                        updateSuggestions()
                     } else {
-                        ic.deleteSurroundingText(1, 0)
+                        val beforeCursor = ic.getTextBeforeCursor(4, 0)
+                        if (!beforeCursor.isNullOrEmpty()) {
+                            val lastCodePoint = Character.codePointBefore(beforeCursor, beforeCursor.length)
+                            val charCount = Character.charCount(lastCodePoint)
+                            ic.deleteSurroundingText(charCount, 0)
+                        } else {
+                            ic.deleteSurroundingText(1, 0)
+                        }
+                        updateSuggestions()
                     }
-                    updateSuggestions()
                 }
                 // After backspace, check if we're now at a sentence start
                 updateAutoShift(ic)
@@ -987,7 +1014,21 @@ class SinKeyInputMethodService : InputMethodService() {
             }
             "ENTER" -> {
                 if (isSinhalaTyping()) commitPendingWord()
-                else { learnWord(englishBuffer.toString(), "en"); englishBuffer.clear(); clearSuggestions() }
+                else {
+                    // BUG FIX: englishBuffer.clear() alone doesn't end the
+                    // composing span now that English letters go through
+                    // setComposingText() (see letter-key branch below). The
+                    // "\n" commitText() below replaces it fine when ENTER
+                    // inserts a newline, but performEditorAction() (send/
+                    // done/search on single-line fields) doesn't touch the
+                    // composing region at all — leaving the just-typed word
+                    // stuck as an uncommitted composing span. finishComposingText()
+                    // finalizes it as real text before we decide which path to take.
+                    learnWord(englishBuffer.toString(), "en")
+                    englishBuffer.clear()
+                    ic.finishComposingText()
+                    clearSuggestions()
+                }
 
                 val editorInfo = currentInputEditorInfo
                 val action = editorInfo?.imeOptions?.and(EditorInfo.IME_MASK_ACTION) ?: EditorInfo.IME_ACTION_NONE
@@ -1031,6 +1072,11 @@ class SinKeyInputMethodService : InputMethodService() {
             }
             "LANG_TOGGLE" -> {
                 commitPendingWord()
+                // BUG FIX: same issue as ENTER above — switching language
+                // mid-word left an unfinalized English composing span
+                // behind since nothing here calls commitText()/
+                // finishComposingText() afterward.
+                ic.finishComposingText()
                 englishBuffer.clear()
                 clearSuggestions()
                 currentLanguage.value = when (currentLanguage.value) {
@@ -1108,10 +1154,32 @@ class SinKeyInputMethodService : InputMethodService() {
                     if (shiftState.value == ShiftState.ONE_SHOT) { shiftState.value = ShiftState.OFF; wasExplicitShift = false }
                 } else {
                     // Apply shift to English letter
+                    //
+                    // BUG FIX (word doubles on SPACE): this used to call
+                    // ic.commitText(styled, 1) for every single letter as it
+                    // was typed, committing each character immediately as
+                    // FINAL text — not composing text. That meant by the
+                    // time SPACE was pressed, the whole word was already
+                    // sitting in the field. maybeAutocorrectAndCommitSpace()
+                    // then does its own ic.commitText(committedWord, 1) to
+                    // finalize/autocorrect the word — which, since nothing
+                    // was composing, doesn't replace anything, it just
+                    // inserts the word a second time right after the first
+                    // (e.g. "hello" -> "hellohello "). Sinhala/mix mode
+                    // never had this problem because it already routes
+                    // through setComposingText() per letter (see the
+                    // isSinhalaTyping() branch above / setComposingTextStyled),
+                    // so its later commitText() at SPACE correctly REPLACES
+                    // the in-progress composing region instead of appending
+                    // next to already-final text. Switching English to the
+                    // same composing-text pattern fixes the duplication and
+                    // also means the whole word is selectable/replaceable as
+                    // a unit (e.g. for IME suggestion-strip taps) exactly
+                    // like Sinhala already is.
                     val typed = if (shiftState.value != ShiftState.OFF) key.uppercase() else key.lowercase()
                     englishBuffer.append(typed)
-                    val styled = com.spmods.sinkey.keyboard.FancyTextMapper.apply(typed, cachedFancyTextStyle)
-                    ic.commitText(styled, 1)
+                    val styled = com.spmods.sinkey.keyboard.FancyTextMapper.apply(englishBuffer.toString(), cachedFancyTextStyle)
+                    ic.setComposingText(styled, 1)
                     updateSuggestions()
                     // Consume one-shot shift after letter
                     if (shiftState.value == ShiftState.ONE_SHOT) shiftState.value = ShiftState.OFF
@@ -1279,6 +1347,11 @@ class SinKeyInputMethodService : InputMethodService() {
     private fun maybeAutocorrectAndCommitSpace(ic: android.view.inputmethod.InputConnection) {
         val typed = englishBuffer.toString()
         if (typed.isBlank()) {
+            // Nothing composing (englishBuffer is empty) — just insert the
+            // space as-is. Explicitly clear any stray composing region
+            // first so a leftover empty composing span can't merge oddly
+            // with the space.
+            ic.setComposingText("", 1)
             ic.commitText(" ", 1)
             return
         }
