@@ -501,22 +501,44 @@ class SinKeyInputMethodService : InputMethodService() {
     }
 
     // The single ImeComposeView instance reused for the lifetime of the
-    // service. THE FIX for the duplicate/"ghost" keyboard rendering bug:
-    // onCreateInputView() can be invoked more than once per service
-    // instance (fullscreen-mode toggles, config changes, IME re-attach).
-    // Creating a brand-new ImeComposeView each time left the *previous*
-    // view's Compose composition alive and still subscribed to the
-    // collectAsState() flows below (nothing had ever called
-    // disposeComposition() on it), so for a frame or more two live
-    // ComposeViews could both be attached/recomposing, rendering the
-    // keyboard twice, stacked on top of itself. Building the composable
-    // once and returning the same view instance from every
-    // onCreateInputView() call means there is only ever one composition,
-    // so this can no longer happen.
+    // service.
     private var imeComposeView: ImeComposeView? = null
 
-    override fun onCreateInputView(): View {
-        imeComposeView?.let { return it }
+    // BUG FIX (real root cause of the double/"ghost" keyboard flash that
+    // happens on EVERY host-app button tap — call button, attach button,
+    // any UI element that moves focus): this used to `return` the
+    // ImeComposeView from onCreateInputView() and let
+    // InputMethodService's OWN internal setInputView()/mInputFrame
+    // attach-swap machinery own placing it in the window. That framework
+    // mechanism runs a detach-old/attach-new sequence on the *same
+    // window* every time the input view needs to (re)appear — including
+    // on every focus-changing tap in the host app, which is exactly what
+    // re-triggers onStartInputView(). On many devices that swap is not
+    // atomic from the compositor's point of view: the previous frame
+    // (still showing the old attached view) and the newly attached view
+    // can both be composited for one frame during the swap, producing a
+    // brief "two keyboards" flash — consistent, on every button tap,
+    // exactly as reported. This has nothing to do with our own Compose
+    // composition being duplicated (that part was already fixed by
+    // caching a single ImeComposeView above) — it's the *framework's*
+    // own default input-view swap that's the second source.
+    //
+    // florisboard avoids this entirely by never handing a view back to
+    // InputMethodService's default mechanism at all: onCreateInputView()
+    // adds its root view directly to the IME window's own content view
+    // ONCE, and returns null so InputMethodService never performs its
+    // own attach/detach swap on subsequent calls. We do the same below —
+    // this bypasses the framework's swap machinery completely, so there
+    // is no framework-driven attach/detach transition left for a
+    // compositor to render two frames of.
+    override fun onCreateInputView(): View? {
+        if (imeComposeView != null) {
+            // Already installed directly into the window content in a
+            // previous onCreateInputView() call — nothing to do. Returning
+            // null here (same as the very first call) tells
+            // InputMethodService not to touch mInputFrame at all.
+            return null
+        }
 
         val composeView = ImeComposeView(this, lifecycleOwner) {
                 val themeMode by prefs.themeMode.collectAsState(initial = com.spmods.sinkey.data.ThemeMode.SYSTEM)
@@ -616,23 +638,59 @@ class SinKeyInputMethodService : InputMethodService() {
         }
 
         imeComposeView = composeView
-        return composeView
+
+        // Set the ViewTree owners on the decorView BEFORE attaching, same
+        // as onCreate() already does — needed here too since this is the
+        // point where the view actually enters the window for the first
+        // (and only) time now.
+        window?.window?.decorView?.let { decor ->
+            decor.setViewTreeLifecycleOwner(lifecycleOwner)
+            decor.setViewTreeSavedStateRegistryOwner(lifecycleOwner)
+            decor.setViewTreeViewModelStoreOwner(lifecycleOwner)
+        }
+
+        // THE ACTUAL FIX: add the compose view directly to the IME
+        // window's own content view, ONCE, instead of returning it here
+        // for InputMethodService to manage via its own
+        // setInputView()/mInputFrame swap logic (see the long comment on
+        // onCreateInputView() above for why that framework mechanism is
+        // the real source of the double-keyboard flash). Matches
+        // florisboard's ImeRootView/FlorisImeService.onCreateInputView
+        // pattern.
+        composeView.layoutParams = android.widget.FrameLayout.LayoutParams(
+            android.widget.FrameLayout.LayoutParams.MATCH_PARENT,
+            android.widget.FrameLayout.LayoutParams.WRAP_CONTENT
+        )
+        window?.window?.findViewById<android.view.ViewGroup>(android.R.id.content)
+            ?.addView(composeView)
+
+        // Returning null tells InputMethodService we're handling our own
+        // input view placement — it will not create/attach/swap any
+        // mInputFrame child of its own, so there is no framework-driven
+        // attach/detach transition left to race.
+        return null
     }
 
-    // NOTE: no setInputView() override. InputMethodService.setInputView()
-    // already does the correct attach/detach dance internally (it removes
-    // any existing child of its own mInputFrame before adding the new
-    // view). A previous version of this code overrode setInputView() to
-    // manually detach the incoming view's *current* parent first — but on
-    // some devices/apps the framework calls setInputView() with a view
-    // that's still attached to the *previous* mInputFrame mid-transition;
-    // ripping it out of that frame at the wrong moment (rather than
-    // letting the framework's own addView/removeView sequence handle it
-    // atomically) was itself the cause of two input frames briefly
-    // co-existing on screen — intermittent and app-dependent, matching
-    // "happens in some apps, sometimes". Now that onCreateInputView()
-    // always returns the same stable ImeComposeView instance, the
-    // framework's default handling is sufficient on its own.
+    // Required alongside the onCreateInputView() change above: since we no
+    // longer hand InputMethodService a view to manage, the framework has
+    // no way to know how tall our keyboard actually is, which it needs to
+    // tell the host app how much to resize/avoid (adjustResize) and where
+    // touches are allowed to land. florisboard needs the same override
+    // for the same reason (see ImeWindowController.onComputeInsets) —
+    // this is a minimal version of that, just reporting our composeView's
+    // real measured height instead of florisboard's full window-config
+    // system, since Sinkey doesn't have floating/resizable windows.
+    override fun onComputeInsets(outInsets: InputMethodService.Insets) {
+        super.onComputeInsets(outInsets)
+        val view = imeComposeView ?: return
+        val height = view.height
+        if (height <= 0) return
+        val screenHeight = window?.window?.decorView?.height ?: return
+        val top = screenHeight - height
+        outInsets.contentTopInsets = top
+        outInsets.visibleTopInsets = top
+        outInsets.touchableInsets = InputMethodService.Insets.TOUCHABLE_INSETS_CONTENT
+    }
 
     override fun onWindowShown() {
         super.onWindowShown()
@@ -899,8 +957,14 @@ class SinKeyInputMethodService : InputMethodService() {
         // Dispose the Compose composition explicitly now that the service
         // (and therefore this view) is truly being torn down, so it stops
         // observing state and releases its composition resources instead
-        // of lingering as a zombie collector.
-        imeComposeView?.disposeComposition()
+        // of lingering as a zombie collector. Also explicitly remove it
+        // from the window content we manually added it to in
+        // onCreateInputView() — the window is being torn down anyway, but
+        // this avoids relying on that implicitly.
+        imeComposeView?.let { view ->
+            (view.parent as? android.view.ViewGroup)?.removeView(view)
+            view.disposeComposition()
+        }
         imeComposeView = null
         super.onDestroy()
     }
