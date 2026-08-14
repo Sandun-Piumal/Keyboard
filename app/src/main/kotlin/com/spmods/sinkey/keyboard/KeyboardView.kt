@@ -7,6 +7,7 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
 import androidx.compose.animation.togetherWith
+import androidx.compose.animation.animateContentSize
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.animateFloatAsState
@@ -666,7 +667,41 @@ internal fun KeyboardView(
             )
         }
         Column(
-            modifier = Modifier.fillMaxWidth().wrapContentHeight().background(colors.bg)
+            // BUG FIX (keyboard "becomes two" when tapping another button
+            // in the host app, e.g. WhatsApp): this Column used to be
+            // wrapContentHeight() with NO animation. Its actual height
+            // changes on plenty of ordinary events during normal chat
+            // typing — not just full board switches (MAIN/EMOJI/STICKER/
+            // etc.) but also isPhoneInput toggling when focus moves to a
+            // different field type, the suggestion strip/undo-chip
+            // appearing or disappearing, and the recent-emoji row showing
+            // or hiding. Every one of those was an ABRUPT, same-frame
+            // resize of the real IME window (InputMethodService resizes
+            // its window to match this content's measured height). Some
+            // OEM window managers/compositors briefly compositor-blend the
+            // pre-resize and post-resize frame when a window resizes
+            // same-frame as a visibility/focus change — which is exactly
+            // what a "duplicate keyboard, stacked, for an instant" looks
+            // like, and matches happening specifically when tapping
+            // something else in the host app (that's what changes
+            // isPhoneInput / triggers onStartInputView again while
+            // boardStack/suggestions are in a different state than last
+            // time). animateContentSize() turns every one of those content
+            // height changes into a smooth, interpolated resize instead of
+            // an instant jump, which removes the same-frame resize the
+            // compositor was racing on. This is a strict superset of (and
+            // subsumes) the earlier AppsMicBar fixed-48dp fix above — that
+            // fix only covered one specific height mismatch; this covers
+            // every current and future source of height change in one place.
+            modifier = Modifier
+                .fillMaxWidth()
+                .animateContentSize(
+                    animationSpec = spring(
+                        dampingRatio = Spring.DampingRatioNoBouncy,
+                        stiffness = Spring.StiffnessMediumLow
+                    )
+                )
+                .background(colors.bg)
         ) {
             // ── Toolbar (always visible, never re-created on pad switch,
             // except for the Emoji board — which moves its own category
@@ -2061,6 +2096,23 @@ private fun rememberKeyBumpOffsetY(pressed: Boolean): Dp {
     return offsetY
 }
 
+// BUG FIX (key-preview misalignment / "key looks raised" while typing):
+// This used to be applied to keys via `Modifier.offset(y = bumpOffsetY)`,
+// which is a LAYOUT offset — it actually moves the key Box's position in
+// its parent, not just how it's drawn. Each key hosts its own KeyPreviewPopup
+// as a child, and Popup's TopCenter anchor is computed from the key's
+// layout position *after* that offset is applied. So every press shifted
+// the key's real layout position by a few dp, which shifted the popup's
+// anchor by the same amount, producing a small but visible mismatch
+// between the key and its preview bubble on every single keystroke —
+// worse at high typing speed since presses overlap more.
+// Fix: apply the bump as a graphicsLayer translation instead (draw-time
+// only, like the existing `.scale()`), so the key's layout position never
+// moves and the Popup anchor stays exactly where the key actually is.
+private fun Modifier.keyBumpTranslation(offsetY: Dp) = this.graphicsLayer {
+    translationY = offsetY.toPx()
+}
+
 /**
  * Debounces `pressed` so the character preview bubble stays visible for at
  * least [minVisibleMs] even when the actual physical press was much
@@ -2188,7 +2240,7 @@ private fun RowScope.NumberedLetterKey(
         modifier = Modifier
             .height(keyHeight).weight(weight)
             .scale(bumpScale * popScale)
-            .offset(y = bumpOffsetY)
+            .keyBumpTranslation(bumpOffsetY)
             .clip(keyShape)
             .background(if (pressed) colors.keyBg.copy(alpha = 0.6f) else colors.keyBg)
             .keyEffectDecoration(colors, keyShape)
@@ -2239,7 +2291,7 @@ private fun RowScope.LetterKey(
         modifier = Modifier
             .height(keyHeight).weight(weight)
             .scale(bumpScale * popScale)
-            .offset(y = bumpOffsetY)
+            .keyBumpTranslation(bumpOffsetY)
             .clip(keyShape)
             .background(if (pressed) colors.keyBg.copy(alpha = 0.6f) else colors.keyBg)
             .keyEffectDecoration(colors, keyShape)
@@ -2290,7 +2342,7 @@ private fun RowScope.ShiftKey(
         modifier = Modifier
             .height(keyHeight).weight(weight)
             .scale(bumpScale)
-            .offset(y = bumpOffsetY)
+            .keyBumpTranslation(bumpOffsetY)
             .clip(keyShape).background(bg)
             .let { m -> if (onPositioned != null) m.onGloballyPositioned(onPositioned) else m }
             .combinedClickable(
@@ -2330,7 +2382,7 @@ private fun RowScope.BackspaceKey(
         modifier = Modifier
             .height(keyHeight).weight(weight)
             .scale(bumpScale)
-            .offset(y = bumpOffsetY)
+            .keyBumpTranslation(bumpOffsetY)
             .clip(keyShape).background(colors.specialKeyBg)
             .let { m -> if (onPositioned != null) m.onGloballyPositioned(onPositioned) else m }
             .pointerInput(Unit) {
@@ -2381,7 +2433,7 @@ private fun RowScope.SpecialKey(
         modifier = Modifier
             .height(keyHeight).weight(weight)
             .scale(bumpScale)
-            .offset(y = bumpOffsetY)
+            .keyBumpTranslation(bumpOffsetY)
             .clip(keyShape)
             .background(if (pressed) colors.specialKeyBg.copy(alpha = 0.6f) else colors.specialKeyBg)
             .clickable { onTap() }
@@ -2419,7 +2471,7 @@ private fun RowScope.SymbolsKey(
         modifier = Modifier
             .height(keyHeight).weight(weight)
             .scale(bumpScale)
-            .offset(y = bumpOffsetY)
+            .keyBumpTranslation(bumpOffsetY)
             .clip(keyShape)
             .background(if (pressed) colors.specialKeyBg.copy(alpha = 0.6f) else colors.specialKeyBg)
             .let { m -> if (onPositioned != null) m.onGloballyPositioned(onPositioned) else m }
@@ -2464,7 +2516,7 @@ private fun LangToggleKey(
         modifier = Modifier
             .height(keyHeight).fillMaxWidth()
             .scale(bumpScale)
-            .offset(y = bumpOffsetY)
+            .keyBumpTranslation(bumpOffsetY)
             .clip(keyShape)
             .background(if (pressed) colors.specialKeyBg.copy(alpha = 0.6f) else colors.specialKeyBg)
             .let { m -> if (onPositioned != null) m.onGloballyPositioned(onPositioned) else m }
@@ -2513,7 +2565,7 @@ private fun RowScope.EmojiKey(
         modifier = Modifier
             .height(keyHeight).weight(weight)
             .scale(bumpScale)
-            .offset(y = bumpOffsetY)
+            .keyBumpTranslation(bumpOffsetY)
             .clip(keyShape)
             .background(if (pressed) colors.specialKeyBg.copy(alpha = 0.6f) else colors.specialKeyBg)
             .let { m -> if (onPositioned != null) m.onGloballyPositioned(onPositioned) else m }
@@ -2614,7 +2666,7 @@ private fun RowScope.EnterKey(
                 modifier = Modifier
                     .size(circleSize)
                     .scale(bumpScale)
-                    .offset(y = bumpOffsetY)
+                    .keyBumpTranslation(bumpOffsetY)
                     .clip(androidx.compose.foundation.shape.CircleShape)
                     .background(if (pressed) DeshGreen.copy(alpha = 0.8f) else DeshGreen)
                     .clickable { onTap() }
@@ -2671,7 +2723,7 @@ private fun RowScope.EnterKey(
         modifier = Modifier
             .height(keyHeight).weight(weight)
             .scale(bumpScale)
-            .offset(y = bumpOffsetY)
+            .keyBumpTranslation(bumpOffsetY)
             .clip(keyShape)
             .background(if (pressed) DeshGreen.copy(alpha = 0.8f) else DeshGreen)
             .clickable { onTap() }
@@ -3008,7 +3060,7 @@ private fun RowScope.NumpadDigitKey(
         modifier = Modifier
             .height(keyHeight).weight(1f)
             .scale(bumpScale)
-            .offset(y = bumpOffsetY)
+            .keyBumpTranslation(bumpOffsetY)
             .clip(keyShape)
             .background(if (pressed) colors.keyBg.copy(alpha = 0.6f) else colors.keyBg)
             .keyEffectDecoration(colors, keyShape)
