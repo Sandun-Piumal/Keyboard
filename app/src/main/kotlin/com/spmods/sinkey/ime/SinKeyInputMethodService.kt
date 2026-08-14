@@ -5,6 +5,7 @@ import android.media.AudioManager
 import android.os.VibrationEffect
 import android.os.Vibrator
 import android.view.View
+import android.view.ViewGroup
 import android.view.inputmethod.EditorInfo
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -501,44 +502,22 @@ class SinKeyInputMethodService : InputMethodService() {
     }
 
     // The single ImeComposeView instance reused for the lifetime of the
-    // service.
+    // service. THE FIX for the duplicate/"ghost" keyboard rendering bug:
+    // onCreateInputView() can be invoked more than once per service
+    // instance (fullscreen-mode toggles, config changes, IME re-attach).
+    // Creating a brand-new ImeComposeView each time left the *previous*
+    // view's Compose composition alive and still subscribed to the
+    // collectAsState() flows below (nothing had ever called
+    // disposeComposition() on it), so for a frame or more two live
+    // ComposeViews could both be attached/recomposing, rendering the
+    // keyboard twice, stacked on top of itself. Building the composable
+    // once and returning the same view instance from every
+    // onCreateInputView() call means there is only ever one composition,
+    // so this can no longer happen.
     private var imeComposeView: ImeComposeView? = null
 
-    // BUG FIX (real root cause of the double/"ghost" keyboard flash that
-    // happens on EVERY host-app button tap — call button, attach button,
-    // any UI element that moves focus): this used to `return` the
-    // ImeComposeView from onCreateInputView() and let
-    // InputMethodService's OWN internal setInputView()/mInputFrame
-    // attach-swap machinery own placing it in the window. That framework
-    // mechanism runs a detach-old/attach-new sequence on the *same
-    // window* every time the input view needs to (re)appear — including
-    // on every focus-changing tap in the host app, which is exactly what
-    // re-triggers onStartInputView(). On many devices that swap is not
-    // atomic from the compositor's point of view: the previous frame
-    // (still showing the old attached view) and the newly attached view
-    // can both be composited for one frame during the swap, producing a
-    // brief "two keyboards" flash — consistent, on every button tap,
-    // exactly as reported. This has nothing to do with our own Compose
-    // composition being duplicated (that part was already fixed by
-    // caching a single ImeComposeView above) — it's the *framework's*
-    // own default input-view swap that's the second source.
-    //
-    // florisboard avoids this entirely by never handing a view back to
-    // InputMethodService's default mechanism at all: onCreateInputView()
-    // adds its root view directly to the IME window's own content view
-    // ONCE, and returns null so InputMethodService never performs its
-    // own attach/detach swap on subsequent calls. We do the same below —
-    // this bypasses the framework's swap machinery completely, so there
-    // is no framework-driven attach/detach transition left for a
-    // compositor to render two frames of.
-    override fun onCreateInputView(): View? {
-        if (imeComposeView != null) {
-            // Already installed directly into the window content in a
-            // previous onCreateInputView() call — nothing to do. Returning
-            // null here (same as the very first call) tells
-            // InputMethodService not to touch mInputFrame at all.
-            return null
-        }
+    override fun onCreateInputView(): View {
+        imeComposeView?.let { return it }
 
         val composeView = ImeComposeView(this, lifecycleOwner) {
                 val themeMode by prefs.themeMode.collectAsState(initial = com.spmods.sinkey.data.ThemeMode.SYSTEM)
@@ -638,59 +617,23 @@ class SinKeyInputMethodService : InputMethodService() {
         }
 
         imeComposeView = composeView
-
-        // Set the ViewTree owners on the decorView BEFORE attaching, same
-        // as onCreate() already does — needed here too since this is the
-        // point where the view actually enters the window for the first
-        // (and only) time now.
-        window?.window?.decorView?.let { decor ->
-            decor.setViewTreeLifecycleOwner(lifecycleOwner)
-            decor.setViewTreeSavedStateRegistryOwner(lifecycleOwner)
-            decor.setViewTreeViewModelStoreOwner(lifecycleOwner)
-        }
-
-        // THE ACTUAL FIX: add the compose view directly to the IME
-        // window's own content view, ONCE, instead of returning it here
-        // for InputMethodService to manage via its own
-        // setInputView()/mInputFrame swap logic (see the long comment on
-        // onCreateInputView() above for why that framework mechanism is
-        // the real source of the double-keyboard flash). Matches
-        // florisboard's ImeRootView/FlorisImeService.onCreateInputView
-        // pattern.
-        composeView.layoutParams = android.widget.FrameLayout.LayoutParams(
-            android.widget.FrameLayout.LayoutParams.MATCH_PARENT,
-            android.widget.FrameLayout.LayoutParams.WRAP_CONTENT
-        )
-        window?.window?.findViewById<android.view.ViewGroup>(android.R.id.content)
-            ?.addView(composeView)
-
-        // Returning null tells InputMethodService we're handling our own
-        // input view placement — it will not create/attach/swap any
-        // mInputFrame child of its own, so there is no framework-driven
-        // attach/detach transition left to race.
-        return null
+        return composeView
     }
 
-    // Required alongside the onCreateInputView() change above: since we no
-    // longer hand InputMethodService a view to manage, the framework has
-    // no way to know how tall our keyboard actually is, which it needs to
-    // tell the host app how much to resize/avoid (adjustResize) and where
-    // touches are allowed to land. florisboard needs the same override
-    // for the same reason (see ImeWindowController.onComputeInsets) —
-    // this is a minimal version of that, just reporting our composeView's
-    // real measured height instead of florisboard's full window-config
-    // system, since Sinkey doesn't have floating/resizable windows.
-    override fun onComputeInsets(outInsets: InputMethodService.Insets) {
-        super.onComputeInsets(outInsets)
-        val view = imeComposeView ?: return
-        val height = view.height
-        if (height <= 0) return
-        val screenHeight = window?.window?.decorView?.height ?: return
-        val top = screenHeight - height
-        outInsets.contentTopInsets = top
-        outInsets.visibleTopInsets = top
-        outInsets.touchableInsets = InputMethodService.Insets.TOUCHABLE_INSETS_CONTENT
-    }
+    // NOTE: no setInputView() override. InputMethodService.setInputView()
+    // already does the correct attach/detach dance internally (it removes
+    // any existing child of its own mInputFrame before adding the new
+    // view). A previous version of this code overrode setInputView() to
+    // manually detach the incoming view's *current* parent first — but on
+    // some devices/apps the framework calls setInputView() with a view
+    // that's still attached to the *previous* mInputFrame mid-transition;
+    // ripping it out of that frame at the wrong moment (rather than
+    // letting the framework's own addView/removeView sequence handle it
+    // atomically) was itself the cause of two input frames briefly
+    // co-existing on screen — intermittent and app-dependent, matching
+    // "happens in some apps, sometimes". Now that onCreateInputView()
+    // always returns the same stable ImeComposeView instance, the
+    // framework's default handling is sufficient on its own.
 
     override fun onWindowShown() {
         super.onWindowShown()
@@ -715,6 +658,42 @@ class SinKeyInputMethodService : InputMethodService() {
             decor.setViewTreeSavedStateRegistryOwner(lifecycleOwner)
             decor.setViewTreeViewModelStoreOwner(lifecycleOwner)
         }
+
+        // BUG FIX (double/ghost keyboard on WhatsApp call/back-button taps):
+        // The decorView-tag check above assumes that if the tag is already
+        // correct, the *view* underneath is still the same live view the
+        // compositor is drawing. That assumption breaks on some OEM window
+        // managers during exactly this kind of transition: WhatsApp's own
+        // chrome buttons (call icon, back button, overflow menu) can cause
+        // the WindowManager to swap in a *new* decorView/surface for the
+        // IME window while the *old* one — with our fully-composed,
+        // still-recomposing ImeComposeView still attached as a child and
+        // still being drawn — hasn't been torn down yet. The tag check
+        // sees "already correct" (because tags/owners got carried over or
+        // re-set) and skips everything, so nothing here ever notices the
+        // old attachment and detaches it. Result: old and new frames of
+        // the keyboard both get composited for a frame or two — a visible
+        // duplicate keyboard that resolves itself a moment later.
+        //
+        // Fix: check the *view's own current parent* (its real attachment
+        // state), not just the decorView's tag. If imeComposeView is
+        // attached to a ViewGroup that is no longer the current decorView's
+        // input frame, that parent is stale — explicitly remove the view
+        // from it before Android's own setInputView()/addView() sequence
+        // runs. This does NOT repeat the earlier setInputView() override
+        // mistake (see the NOTE above onWindowShown's declaration): that
+        // override ran during the framework's own addView/removeView
+        // sequence and raced with it. This runs in onWindowShown(), before
+        // the framework re-attaches anything for this show, so there is no
+        // race — we're only ever cleaning up a leftover from the *previous*
+        // window instance, never fighting the current one.
+        imeComposeView?.let { composeView ->
+            val parent = composeView.parent as? ViewGroup
+            if (parent != null && parent !== decor && !parent.isAttachedToWindow) {
+                parent.removeView(composeView)
+            }
+        }
+
         if (lifecycleOwner.lifecycle.currentState != Lifecycle.State.RESUMED) {
             lifecycleOwner.handleLifecycleEvent(Lifecycle.Event.ON_RESUME)
         }
@@ -957,14 +936,8 @@ class SinKeyInputMethodService : InputMethodService() {
         // Dispose the Compose composition explicitly now that the service
         // (and therefore this view) is truly being torn down, so it stops
         // observing state and releases its composition resources instead
-        // of lingering as a zombie collector. Also explicitly remove it
-        // from the window content we manually added it to in
-        // onCreateInputView() — the window is being torn down anyway, but
-        // this avoids relying on that implicitly.
-        imeComposeView?.let { view ->
-            (view.parent as? android.view.ViewGroup)?.removeView(view)
-            view.disposeComposition()
-        }
+        // of lingering as a zombie collector.
+        imeComposeView?.disposeComposition()
         imeComposeView = null
         super.onDestroy()
     }
@@ -1022,43 +995,16 @@ class SinKeyInputMethodService : InputMethodService() {
                     // so it's safe to call unconditionally here.
                     updateSuggestions()
                 } else {
-                    // BUG FIX: English letters are now sent via
-                    // setComposingText() (see the letter-key branch below),
-                    // not commitText() per character, so they're still
-                    // in-progress composing text while a word is being
-                    // typed — not yet final text in the field. This branch
-                    // used to always fall through to deleteSurroundingText(),
-                    // which deletes actual committed characters; while a
-                    // word was still composing that deleted the wrong
-                    // thing (or nothing, on editors that don't report
-                    // composing text as "surrounding text" yet). Mirror the
-                    // Sinhala wordBuffer branch above: while englishBuffer
-                    // still has characters, backspace should just re-render
-                    // the shrunken composing text; only fall through to
-                    // deleteSurroundingText once englishBuffer is already
-                    // empty (deleting a previously committed word/character
-                    // that's no longer part of any active composition).
-                    if (englishBuffer.isNotEmpty()) {
-                        englishBuffer.deleteCharAt(englishBuffer.length - 1)
-                        if (englishBuffer.isEmpty()) {
-                            ic.setComposingText("", 1)
-                            ic.finishComposingText()
-                        } else {
-                            val styled = com.spmods.sinkey.keyboard.FancyTextMapper.apply(englishBuffer.toString(), cachedFancyTextStyle)
-                            ic.setComposingText(styled, 1)
-                        }
-                        updateSuggestions()
+                    if (englishBuffer.isNotEmpty()) englishBuffer.deleteCharAt(englishBuffer.length - 1)
+                    val beforeCursor = ic.getTextBeforeCursor(4, 0)
+                    if (!beforeCursor.isNullOrEmpty()) {
+                        val lastCodePoint = Character.codePointBefore(beforeCursor, beforeCursor.length)
+                        val charCount = Character.charCount(lastCodePoint)
+                        ic.deleteSurroundingText(charCount, 0)
                     } else {
-                        val beforeCursor = ic.getTextBeforeCursor(4, 0)
-                        if (!beforeCursor.isNullOrEmpty()) {
-                            val lastCodePoint = Character.codePointBefore(beforeCursor, beforeCursor.length)
-                            val charCount = Character.charCount(lastCodePoint)
-                            ic.deleteSurroundingText(charCount, 0)
-                        } else {
-                            ic.deleteSurroundingText(1, 0)
-                        }
-                        updateSuggestions()
+                        ic.deleteSurroundingText(1, 0)
                     }
+                    updateSuggestions()
                 }
                 // After backspace, check if we're now at a sentence start
                 updateAutoShift(ic)
@@ -1078,21 +1024,7 @@ class SinKeyInputMethodService : InputMethodService() {
             }
             "ENTER" -> {
                 if (isSinhalaTyping()) commitPendingWord()
-                else {
-                    // BUG FIX: englishBuffer.clear() alone doesn't end the
-                    // composing span now that English letters go through
-                    // setComposingText() (see letter-key branch below). The
-                    // "\n" commitText() below replaces it fine when ENTER
-                    // inserts a newline, but performEditorAction() (send/
-                    // done/search on single-line fields) doesn't touch the
-                    // composing region at all — leaving the just-typed word
-                    // stuck as an uncommitted composing span. finishComposingText()
-                    // finalizes it as real text before we decide which path to take.
-                    learnWord(englishBuffer.toString(), "en")
-                    englishBuffer.clear()
-                    ic.finishComposingText()
-                    clearSuggestions()
-                }
+                else { learnWord(englishBuffer.toString(), "en"); englishBuffer.clear(); clearSuggestions() }
 
                 val editorInfo = currentInputEditorInfo
                 val action = editorInfo?.imeOptions?.and(EditorInfo.IME_MASK_ACTION) ?: EditorInfo.IME_ACTION_NONE
@@ -1136,11 +1068,6 @@ class SinKeyInputMethodService : InputMethodService() {
             }
             "LANG_TOGGLE" -> {
                 commitPendingWord()
-                // BUG FIX: same issue as ENTER above — switching language
-                // mid-word left an unfinalized English composing span
-                // behind since nothing here calls commitText()/
-                // finishComposingText() afterward.
-                ic.finishComposingText()
                 englishBuffer.clear()
                 clearSuggestions()
                 currentLanguage.value = when (currentLanguage.value) {
@@ -1218,32 +1145,10 @@ class SinKeyInputMethodService : InputMethodService() {
                     if (shiftState.value == ShiftState.ONE_SHOT) { shiftState.value = ShiftState.OFF; wasExplicitShift = false }
                 } else {
                     // Apply shift to English letter
-                    //
-                    // BUG FIX (word doubles on SPACE): this used to call
-                    // ic.commitText(styled, 1) for every single letter as it
-                    // was typed, committing each character immediately as
-                    // FINAL text — not composing text. That meant by the
-                    // time SPACE was pressed, the whole word was already
-                    // sitting in the field. maybeAutocorrectAndCommitSpace()
-                    // then does its own ic.commitText(committedWord, 1) to
-                    // finalize/autocorrect the word — which, since nothing
-                    // was composing, doesn't replace anything, it just
-                    // inserts the word a second time right after the first
-                    // (e.g. "hello" -> "hellohello "). Sinhala/mix mode
-                    // never had this problem because it already routes
-                    // through setComposingText() per letter (see the
-                    // isSinhalaTyping() branch above / setComposingTextStyled),
-                    // so its later commitText() at SPACE correctly REPLACES
-                    // the in-progress composing region instead of appending
-                    // next to already-final text. Switching English to the
-                    // same composing-text pattern fixes the duplication and
-                    // also means the whole word is selectable/replaceable as
-                    // a unit (e.g. for IME suggestion-strip taps) exactly
-                    // like Sinhala already is.
                     val typed = if (shiftState.value != ShiftState.OFF) key.uppercase() else key.lowercase()
                     englishBuffer.append(typed)
-                    val styled = com.spmods.sinkey.keyboard.FancyTextMapper.apply(englishBuffer.toString(), cachedFancyTextStyle)
-                    ic.setComposingText(styled, 1)
+                    val styled = com.spmods.sinkey.keyboard.FancyTextMapper.apply(typed, cachedFancyTextStyle)
+                    ic.commitText(styled, 1)
                     updateSuggestions()
                     // Consume one-shot shift after letter
                     if (shiftState.value == ShiftState.ONE_SHOT) shiftState.value = ShiftState.OFF
@@ -1411,11 +1316,6 @@ class SinKeyInputMethodService : InputMethodService() {
     private fun maybeAutocorrectAndCommitSpace(ic: android.view.inputmethod.InputConnection) {
         val typed = englishBuffer.toString()
         if (typed.isBlank()) {
-            // Nothing composing (englishBuffer is empty) — just insert the
-            // space as-is. Explicitly clear any stray composing region
-            // first so a leftover empty composing span can't merge oddly
-            // with the space.
-            ic.setComposingText("", 1)
             ic.commitText(" ", 1)
             return
         }
