@@ -7,7 +7,6 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
 import androidx.compose.animation.togetherWith
-import androidx.compose.animation.animateContentSize
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.animateFloatAsState
@@ -95,7 +94,6 @@ import androidx.compose.material.icons.filled.PushPin
 import androidx.compose.material.icons.outlined.PushPin
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.runtime.rememberCoroutineScope
-import androidx.compose.runtime.rememberUpdatedState
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.first
@@ -667,41 +665,7 @@ internal fun KeyboardView(
             )
         }
         Column(
-            // BUG FIX (keyboard "becomes two" when tapping another button
-            // in the host app, e.g. WhatsApp): this Column used to be
-            // wrapContentHeight() with NO animation. Its actual height
-            // changes on plenty of ordinary events during normal chat
-            // typing — not just full board switches (MAIN/EMOJI/STICKER/
-            // etc.) but also isPhoneInput toggling when focus moves to a
-            // different field type, the suggestion strip/undo-chip
-            // appearing or disappearing, and the recent-emoji row showing
-            // or hiding. Every one of those was an ABRUPT, same-frame
-            // resize of the real IME window (InputMethodService resizes
-            // its window to match this content's measured height). Some
-            // OEM window managers/compositors briefly compositor-blend the
-            // pre-resize and post-resize frame when a window resizes
-            // same-frame as a visibility/focus change — which is exactly
-            // what a "duplicate keyboard, stacked, for an instant" looks
-            // like, and matches happening specifically when tapping
-            // something else in the host app (that's what changes
-            // isPhoneInput / triggers onStartInputView again while
-            // boardStack/suggestions are in a different state than last
-            // time). animateContentSize() turns every one of those content
-            // height changes into a smooth, interpolated resize instead of
-            // an instant jump, which removes the same-frame resize the
-            // compositor was racing on. This is a strict superset of (and
-            // subsumes) the earlier AppsMicBar fixed-48dp fix above — that
-            // fix only covered one specific height mismatch; this covers
-            // every current and future source of height change in one place.
-            modifier = Modifier
-                .fillMaxWidth()
-                .animateContentSize(
-                    animationSpec = spring(
-                        dampingRatio = Spring.DampingRatioNoBouncy,
-                        stiffness = Spring.StiffnessMediumLow
-                    )
-                )
-                .background(colors.bg)
+            modifier = Modifier.fillMaxWidth().wrapContentHeight().background(colors.bg)
         ) {
             // ── Toolbar (always visible, never re-created on pad switch,
             // except for the Emoji board — which moves its own category
@@ -2096,78 +2060,41 @@ private fun rememberKeyBumpOffsetY(pressed: Boolean): Dp {
     return offsetY
 }
 
-// BUG FIX (key-preview misalignment / "key looks raised" while typing):
-// This used to be applied to keys via `Modifier.offset(y = bumpOffsetY)`,
-// which is a LAYOUT offset — it actually moves the key Box's position in
-// its parent, not just how it's drawn. Each key hosts its own KeyPreviewPopup
-// as a child, and Popup's TopCenter anchor is computed from the key's
-// layout position *after* that offset is applied. So every press shifted
-// the key's real layout position by a few dp, which shifted the popup's
-// anchor by the same amount, producing a small but visible mismatch
-// between the key and its preview bubble on every single keystroke —
-// worse at high typing speed since presses overlap more.
-// Fix: apply the bump as a graphicsLayer translation instead (draw-time
-// only, like the existing `.scale()`), so the key's layout position never
-// moves and the Popup anchor stays exactly where the key actually is.
-private fun Modifier.keyBumpTranslation(offsetY: Dp) = this.graphicsLayer {
-    translationY = offsetY.toPx()
-}
-
 /**
- * Debounces `pressed` so the character preview bubble stays visible for at
- * least [minVisibleMs] even when the actual physical press was much
- * shorter — which is the normal case during fast typing (a tap-and-release
- * well under 100ms). Without this, gating the Popup directly on `pressed`
- * means the bubble is created and torn down again before Compose ever gets
- * a frame to actually paint it, so it looks like the preview "doesn't show
- * up" specifically when typing quickly, even though the exact same code
- * works fine for a single slow, deliberate tap. Every real keyboard
- * (Gboard, SwiftKey, etc.) does the equivalent of this — the preview
- * bubble's fade-out is on its own timer, not hard-tied to finger-up.
+ * Shows the character preview bubble for [minVisibleMs] every time
+ * [pressTick] changes, regardless of how long the underlying physical
+ * press actually lasted.
+ *
+ * Originally this was keyed off a live `pressed: Boolean` and stayed
+ * visible for "at least minVisibleMs, or until release, whichever is
+ * longer" — the intent being that a real key-preview bubble's fade-out
+ * runs on its own timer, not hard-tied to finger-up. In practice that
+ * still required `pressed` to reach a composed frame as `true` at all,
+ * and during fast typing the down+up pair can complete in under one
+ * frame — clickable's own gesture detector and this composable's
+ * pointerInput block are both racing the same events, and on a fast tap
+ * the up can land before Compose ever renders the intermediate
+ * pressed=true state. The bubble would then never trigger at all, not
+ * even briefly — reproducing exactly as "works on a slow deliberate tap,
+ * never shows during normal-speed typing".
+ *
+ * Fixed by decoupling entirely from `pressed` surviving into a frame:
+ * the call site now bumps [pressTick] the instant `awaitFirstDown` fires,
+ * before `pressed` is even set — a plain state write Compose is
+ * guaranteed to observe as a rising edge on the very next recomposition,
+ * independent of how quickly the matching up event follows. The bubble's
+ * visible window is now unconditionally minVisibleMs long, timed purely
+ * from the down event, which better matches how Gboard/SwiftKey behave
+ * anyway (their preview bubble length doesn't visibly depend on press
+ * duration either).
  */
 @Composable
-private fun rememberPreviewVisible(pressed: Boolean, minVisibleMs: Long = 150L): Boolean {
+private fun rememberPreviewVisible(pressTick: Int, minVisibleMs: Long = 150L): Boolean {
     var visible by remember { mutableStateOf(false) }
-    // Bumped on every rising edge (false -> true) of `pressed`, including
-    // back-to-back presses of the same key before the previous bubble's
-    // timer finished — a plain `LaunchedEffect(pressed)` wouldn't restart
-    // for two fast taps in a row if `pressed` briefly reads true both
-    // times without Compose ever observing the false in between, so this
-    // gives every distinct press its own unmistakable trigger value.
-    var pressId by remember { mutableStateOf(0) }
-    var wasPressed by remember { mutableStateOf(false) }
-    if (pressed && !wasPressed) pressId++
-    wasPressed = pressed
-
-    // `pressed` is a plain Boolean *parameter*, not a Compose State object.
-    // A LaunchedEffect coroutine captures whatever value a parameter held
-    // at the moment the coroutine's suspend lambda started running, and
-    // keeps reading that same frozen value for its entire lifetime unless
-    // the effect's own key changes and it restarts — recomposing this
-    // composable with a new `pressed` argument does NOT push that new
-    // value into an already-running coroutine. Two earlier versions of
-    // this function hit that same trap from different angles: one used
-    // `snapshotFlow { pressed }.first { !it }` (snapshotFlow only re-runs
-    // its block on a State *read inside the block* changing, and a
-    // captured lambda parameter isn't one, so it emitted once and then
-    // hung forever waiting for a release it could never observe); another
-    // used `while (pressed) { delay(16) }` directly, which has the exact
-    // same problem — the loop condition re-reads the same frozen snapshot
-    // every iteration. Both left the bubble stuck visible forever once a
-    // key was released, exactly the bug this fixes. rememberUpdatedState
-    // is the documented, correct tool for this: it hands back a
-    // State<Boolean> whose backing value DOES update on every
-    // recomposition, so reading currentPressed.value inside the
-    // long-lived coroutine below always sees the real, current value.
-    val currentPressed = rememberUpdatedState(pressed)
-
-    LaunchedEffect(pressId) {
-        if (pressId == 0) return@LaunchedEffect
+    LaunchedEffect(pressTick) {
+        if (pressTick == 0) return@LaunchedEffect
         visible = true
         delay(minVisibleMs)
-        while (currentPressed.value) {
-            delay(16L) // ~1 frame; just needs to notice release promptly
-        }
         visible = false
     }
     return visible
@@ -2233,6 +2160,7 @@ private fun RowScope.NumberedLetterKey(
     onTap: () -> Unit, onLongPress: () -> Unit
 ) {
     var pressed by remember { mutableStateOf(false) }
+    var pressTick by remember { mutableStateOf(0) } // see LetterKey for why the preview triggers off this, not `pressed`
     val bumpScale = rememberKeyBumpScale(pressed)
     val bumpOffsetY = rememberKeyBumpOffsetY(pressed)
     val popScale = keyPopScaleMultiplier(pressed, colors.keyEffect)
@@ -2240,7 +2168,7 @@ private fun RowScope.NumberedLetterKey(
         modifier = Modifier
             .height(keyHeight).weight(weight)
             .scale(bumpScale * popScale)
-            .keyBumpTranslation(bumpOffsetY)
+            .offset(y = bumpOffsetY)
             .clip(keyShape)
             .background(if (pressed) colors.keyBg.copy(alpha = 0.6f) else colors.keyBg)
             .keyEffectDecoration(colors, keyShape)
@@ -2251,6 +2179,7 @@ private fun RowScope.NumberedLetterKey(
                 awaitEachGesture {
                     awaitFirstDown(requireUnconsumed = false)
                     pressed = true
+                    pressTick++
                     waitForUpOrCancellation()
                     pressed = false
                 }
@@ -2261,7 +2190,7 @@ private fun RowScope.NumberedLetterKey(
         Text(text = label, fontSize = keyLabelFontSize(keyHeight), color = colors.keyText,
             fontWeight = FontWeight.Normal,
             modifier = Modifier.align(Alignment.Center))
-        if (rememberPreviewVisible(pressed)) {
+        if (rememberPreviewVisible(pressTick)) {
             Popup(alignment = Alignment.TopCenter,
                 offset = IntOffset(0, -((keyHeight.value * 1.4f).toInt()))) {
                 KeyPreviewPopup(label = label, keyHeight = keyHeight, colors = colors, keyShape = keyShape)
@@ -2284,6 +2213,26 @@ private fun RowScope.LetterKey(
     onTap: () -> Unit
 ) {
     var pressed by remember { mutableStateOf(false) }
+    // BUG FIX (preview bubble doesn't show during fast typing): `pressed`
+    // used to be driven only from the awaitEachGesture block below, which
+    // runs on the SAME pointerInput pass as `.clickable`'s own internal
+    // gesture detector — both are racing to react to the same down/up
+    // events. On a slow, deliberate tap there's enough time between down
+    // and up for `pressed = true` to actually reach a composition and for
+    // rememberPreviewVisible's LaunchedEffect to start before the up event
+    // arrives. During fast typing, the up event can follow the down event
+    // by less than one frame — clickable's own detector can finish the
+    // whole gesture and this block's `pressed = true` / `pressed = false`
+    // can both apply before Compose ever composes an intermediate frame
+    // with pressed=true, so rememberPreviewVisible's rising-edge detection
+    // never observes a true value at all and the bubble silently never
+    // appears — exactly the "works on a slow tap, never shows when typing
+    // normally" symptom. Fix: bump a dedicated counter the INSTANT a down
+    // event is detected, in the same place, so the preview's trigger no
+    // longer depends on `pressed` surviving into a rendered frame — only
+    // the raw fact that a down event happened has to reach state, which
+    // awaitFirstDown always sees regardless of how quickly up follows.
+    var pressTick by remember { mutableStateOf(0) }
     val bumpScale = rememberKeyBumpScale(pressed)
     val bumpOffsetY = rememberKeyBumpOffsetY(pressed)
     val popScale = keyPopScaleMultiplier(pressed, colors.keyEffect)
@@ -2291,7 +2240,7 @@ private fun RowScope.LetterKey(
         modifier = Modifier
             .height(keyHeight).weight(weight)
             .scale(bumpScale * popScale)
-            .keyBumpTranslation(bumpOffsetY)
+            .offset(y = bumpOffsetY)
             .clip(keyShape)
             .background(if (pressed) colors.keyBg.copy(alpha = 0.6f) else colors.keyBg)
             .keyEffectDecoration(colors, keyShape)
@@ -2304,6 +2253,7 @@ private fun RowScope.LetterKey(
                 awaitEachGesture {
                     awaitFirstDown(requireUnconsumed = false)
                     pressed = true
+                    pressTick++
                     waitForUpOrCancellation()
                     pressed = false
                 }
@@ -2312,7 +2262,7 @@ private fun RowScope.LetterKey(
     ) {
         Text(text = label, fontSize = keyLabelFontSize(keyHeight), color = colors.keyText,
             fontWeight = FontWeight.Normal)
-        if (rememberPreviewVisible(pressed)) {
+        if (rememberPreviewVisible(pressTick)) {
             Popup(alignment = Alignment.TopCenter,
                 offset = IntOffset(0, -((keyHeight.value * 1.4f).toInt()))) {
                 KeyPreviewPopup(label = label, keyHeight = keyHeight, colors = colors, keyShape = keyShape)
@@ -2342,7 +2292,7 @@ private fun RowScope.ShiftKey(
         modifier = Modifier
             .height(keyHeight).weight(weight)
             .scale(bumpScale)
-            .keyBumpTranslation(bumpOffsetY)
+            .offset(y = bumpOffsetY)
             .clip(keyShape).background(bg)
             .let { m -> if (onPositioned != null) m.onGloballyPositioned(onPositioned) else m }
             .combinedClickable(
@@ -2382,7 +2332,7 @@ private fun RowScope.BackspaceKey(
         modifier = Modifier
             .height(keyHeight).weight(weight)
             .scale(bumpScale)
-            .keyBumpTranslation(bumpOffsetY)
+            .offset(y = bumpOffsetY)
             .clip(keyShape).background(colors.specialKeyBg)
             .let { m -> if (onPositioned != null) m.onGloballyPositioned(onPositioned) else m }
             .pointerInput(Unit) {
@@ -2427,13 +2377,14 @@ private fun RowScope.SpecialKey(
     onTap: () -> Unit
 ) {
     var pressed by remember { mutableStateOf(false) }
+    var pressTick by remember { mutableStateOf(0) } // see LetterKey for why the preview triggers off this, not `pressed`
     val bumpScale = rememberKeyBumpScale(pressed)
     val bumpOffsetY = rememberKeyBumpOffsetY(pressed)
     Box(
         modifier = Modifier
             .height(keyHeight).weight(weight)
             .scale(bumpScale)
-            .keyBumpTranslation(bumpOffsetY)
+            .offset(y = bumpOffsetY)
             .clip(keyShape)
             .background(if (pressed) colors.specialKeyBg.copy(alpha = 0.6f) else colors.specialKeyBg)
             .clickable { onTap() }
@@ -2441,6 +2392,7 @@ private fun RowScope.SpecialKey(
                 awaitEachGesture {
                     awaitFirstDown(requireUnconsumed = false)
                     pressed = true
+                    pressTick++
                     waitForUpOrCancellation()
                     pressed = false
                 }
@@ -2448,7 +2400,7 @@ private fun RowScope.SpecialKey(
         contentAlignment = Alignment.Center
     ) {
         Text(text = label, fontSize = keyLabelFontSize(keyHeight), fontWeight = FontWeight.Medium, color = colors.specialKeyText)
-        if (rememberPreviewVisible(pressed)) {
+        if (rememberPreviewVisible(pressTick)) {
             Popup(alignment = Alignment.TopCenter,
                 offset = IntOffset(0, -((keyHeight.value * 1.4f).toInt()))) {
                 KeyPreviewPopup(label = label, keyHeight = keyHeight, colors = colors, keyShape = keyShape)
@@ -2471,7 +2423,7 @@ private fun RowScope.SymbolsKey(
         modifier = Modifier
             .height(keyHeight).weight(weight)
             .scale(bumpScale)
-            .keyBumpTranslation(bumpOffsetY)
+            .offset(y = bumpOffsetY)
             .clip(keyShape)
             .background(if (pressed) colors.specialKeyBg.copy(alpha = 0.6f) else colors.specialKeyBg)
             .let { m -> if (onPositioned != null) m.onGloballyPositioned(onPositioned) else m }
@@ -2516,7 +2468,7 @@ private fun LangToggleKey(
         modifier = Modifier
             .height(keyHeight).fillMaxWidth()
             .scale(bumpScale)
-            .keyBumpTranslation(bumpOffsetY)
+            .offset(y = bumpOffsetY)
             .clip(keyShape)
             .background(if (pressed) colors.specialKeyBg.copy(alpha = 0.6f) else colors.specialKeyBg)
             .let { m -> if (onPositioned != null) m.onGloballyPositioned(onPositioned) else m }
@@ -2565,7 +2517,7 @@ private fun RowScope.EmojiKey(
         modifier = Modifier
             .height(keyHeight).weight(weight)
             .scale(bumpScale)
-            .keyBumpTranslation(bumpOffsetY)
+            .offset(y = bumpOffsetY)
             .clip(keyShape)
             .background(if (pressed) colors.specialKeyBg.copy(alpha = 0.6f) else colors.specialKeyBg)
             .let { m -> if (onPositioned != null) m.onGloballyPositioned(onPositioned) else m }
@@ -2666,7 +2618,7 @@ private fun RowScope.EnterKey(
                 modifier = Modifier
                     .size(circleSize)
                     .scale(bumpScale)
-                    .keyBumpTranslation(bumpOffsetY)
+                    .offset(y = bumpOffsetY)
                     .clip(androidx.compose.foundation.shape.CircleShape)
                     .background(if (pressed) DeshGreen.copy(alpha = 0.8f) else DeshGreen)
                     .clickable { onTap() }
@@ -2723,7 +2675,7 @@ private fun RowScope.EnterKey(
         modifier = Modifier
             .height(keyHeight).weight(weight)
             .scale(bumpScale)
-            .keyBumpTranslation(bumpOffsetY)
+            .offset(y = bumpOffsetY)
             .clip(keyShape)
             .background(if (pressed) DeshGreen.copy(alpha = 0.8f) else DeshGreen)
             .clickable { onTap() }
@@ -3060,7 +3012,7 @@ private fun RowScope.NumpadDigitKey(
         modifier = Modifier
             .height(keyHeight).weight(1f)
             .scale(bumpScale)
-            .keyBumpTranslation(bumpOffsetY)
+            .offset(y = bumpOffsetY)
             .clip(keyShape)
             .background(if (pressed) colors.keyBg.copy(alpha = 0.6f) else colors.keyBg)
             .keyEffectDecoration(colors, keyShape)
