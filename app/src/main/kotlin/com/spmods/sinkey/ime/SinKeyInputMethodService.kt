@@ -74,6 +74,18 @@ class SinKeyInputMethodService : InputMethodService() {
 
     private var wordBuffer = StringBuilder()
     private var englishBuffer = StringBuilder()
+    // Set by reseedSuggestionsForWordAtCursor when the cursor lands inside/
+    // after an EXISTING word already sitting in the field as plain text
+    // (the user tapped back into something already typed) — holds exactly
+    // that on-screen word so the next commitPendingWord()/
+    // maybeAutocorrectAndCommitSpace() knows to delete it before committing
+    // the (possibly-corrected) word instead of inserting a second copy
+    // beside it. null in the ordinary case (word being typed fresh, never
+    // resumed), so those commit paths behave exactly as before. Cleared
+    // after being consumed, and any time the buffers themselves are cleared
+    // for an unrelated reason, so it can never apply to a different word
+    // than the one it was captured for.
+    private var resumedWordBeforeCursor: String? = null
     // The most recently committed word and the language it was committed in,
     // used as context for next-word prediction (see learnWordWithContext /
     // updateSuggestions). Reset whenever the cursor moves or the field
@@ -871,6 +883,7 @@ class SinKeyInputMethodService : InputMethodService() {
 
         wordBuffer.clear()
         englishBuffer.clear()
+        resumedWordBeforeCursor = null
         clearSuggestions()
         // A pending undo chip refers to text in the field we're leaving —
         // meaningless (and potentially actionable-on-the-wrong-field) once
@@ -965,6 +978,12 @@ class SinKeyInputMethodService : InputMethodService() {
                 // matching expectedCursorPosition) finds nothing left to do.
                 wordBuffer.clear()
                 englishBuffer.clear()
+                // Whatever word was previously resumed (if any) is no
+                // longer relevant — this cursor move has abandoned it, same
+                // as the buffers themselves just above. Prevents a stale
+                // value here from wrongly deleting text near an unrelated
+                // later commit.
+                resumedWordBeforeCursor = null
                 currentInputConnection?.finishComposingText()
             }
             clearSuggestions()
@@ -1038,25 +1057,18 @@ class SinKeyInputMethodService : InputMethodService() {
             return
         }
         // The word is still sitting in the field as plain committed text —
-        // only wordBuffer/englishBuffer now also hold a copy of it, purely
-        // for driving the suggestion strip. If we left it as-is, the next
-        // SPACE would call commitPendingWord()/maybeAutocorrectAndCommitSpace(),
-        // which unconditionally COMMIT the buffer's text at the cursor —
-        // inserting a second copy right next to the original instead of
-        // replacing it, since there's no composing span here for
-        // setComposingText("") to clear. Deleting the on-screen word here
-        // and re-adding it as an actual composing span (same call every
-        // other per-letter keystroke uses) makes it behave exactly like the
-        // user is still mid-typing it: the next commit replaces this span
-        // instead of appending beside it.
-        ic.deleteSurroundingText(word.length, 0)
-        if (script == "si" && isSinhalaTyping()) {
-            setComposingTextStyled(ic, renderStyledBuffer())
-        } else {
-            val styled = com.spmods.sinkey.keyboard.FancyTextMapper.apply(word, cachedFancyTextStyle)
-            ic.setComposingText(styled, 1)
-        }
-        syncExpectedCursorPosition(ic)
+        // wordBuffer/englishBuffer now also hold a copy of it, purely to
+        // drive the suggestion strip as if the user were still mid-typing
+        // it. Deliberately NOT touching the field itself here (no delete/
+        // recompose): this function runs from onUpdateSelection on every
+        // cursor move onUpdateSelection classifies as "external", which can
+        // fire more often/eagerly than just deliberate user taps into old
+        // text (including races during fast typing) — mutating the field on
+        // every such call previously caused text to vanish mid-type. See
+        // resumedWordBeforeCursor below, which is what actually makes the
+        // next SPACE replace this word instead of duplicating it, without
+        // needing to touch the field until SPACE is really pressed.
+        resumedWordBeforeCursor = word
         updateSuggestions()
     }
 
@@ -1140,6 +1152,8 @@ class SinKeyInputMethodService : InputMethodService() {
                 val selectedText = ic.getSelectedText(0)
                 if (!selectedText.isNullOrEmpty()) {
                     wordBuffer.clear()
+                    englishBuffer.clear()
+                    resumedWordBeforeCursor = null
                     ic.finishComposingText()
                     ic.commitText("", 1)
                     // Same bug as the wordBuffer branch below: clearing the
@@ -1192,7 +1206,7 @@ class SinKeyInputMethodService : InputMethodService() {
             }
             "ENTER" -> {
                 if (isSinhalaTyping()) commitPendingWord()
-                else { learnWord(englishBuffer.toString(), "en"); englishBuffer.clear(); clearSuggestions() }
+                else { learnWord(englishBuffer.toString(), "en"); englishBuffer.clear(); resumedWordBeforeCursor = null; clearSuggestions() }
 
                 val editorInfo = currentInputEditorInfo
                 val action = editorInfo?.imeOptions?.and(EditorInfo.IME_MASK_ACTION) ?: EditorInfo.IME_ACTION_NONE
@@ -1237,6 +1251,7 @@ class SinKeyInputMethodService : InputMethodService() {
             "LANG_TOGGLE" -> {
                 commitPendingWord()
                 englishBuffer.clear()
+                resumedWordBeforeCursor = null
                 clearSuggestions()
                 currentLanguage.value = when (currentLanguage.value) {
                     "mix" -> "en"
@@ -1247,6 +1262,7 @@ class SinKeyInputMethodService : InputMethodService() {
             "," , "." -> {
                 commitPendingWord()
                 englishBuffer.clear()
+                resumedWordBeforeCursor = null
                 clearSuggestions()
                 ic.commitText(key, 1)
                 // Period → next word should be capitalized
@@ -1264,6 +1280,7 @@ class SinKeyInputMethodService : InputMethodService() {
                     if (text.isNotEmpty()) {
                         commitPendingWord()
                         englishBuffer.clear()
+                        resumedWordBeforeCursor = null
                         clearSuggestions()
                         ic.commitText(text, 1)
                     }
@@ -1274,6 +1291,7 @@ class SinKeyInputMethodService : InputMethodService() {
                 if (isSinglePrintable) {
                     commitPendingWord()
                     englishBuffer.clear()
+                    resumedWordBeforeCursor = null
                     ic.commitText(key, 1)
                     // Check sentence-ending punctuation (! ?)
                     if (key == "!" || key == "?") {
@@ -1451,6 +1469,15 @@ class SinKeyInputMethodService : InputMethodService() {
             else -> com.spmods.sinkey.keyboard.FancyTextMapper.apply(raw, cachedFancyTextStyle)
         }
         ic?.setComposingText("", 1)
+        // If this word was resumed from an existing on-screen word (cursor
+        // tapped back into it — see reseedSuggestionsForWordAtCursor), that
+        // original text is still sitting in the field as plain committed
+        // text; delete exactly it before committing finalWord, or this
+        // would insert a second copy right beside the first instead of
+        // replacing it. Ordinary fresh-typed words never set this, so this
+        // is a no-op for the normal case.
+        resumedWordBeforeCursor?.let { ic?.deleteSurroundingText(it.length, 0) }
+        resumedWordBeforeCursor = null
         ic?.commitText(finalWord, 1)
         wordBuffer.clear()
         clearSuggestions()
@@ -1506,15 +1533,24 @@ class SinKeyInputMethodService : InputMethodService() {
         // composing span for it to replace. Only touch the field at all when
         // autocorrect actually changes the word: delete exactly what's
         // already on screen first, then commit the correction in its place.
-        // Must delete by the STYLED text's length, not typed.length — several
-        // fancy styles (bold, italic, script, double-struck, monospace...)
-        // map each plain letter to an astral-plane code point, which is 2
-        // UTF-16 chars, so the on-screen text can be longer than the raw
-        // typed word.
+        //
+        // If this word was instead resumed from an existing on-screen word
+        // (cursor tapped back into it — see reseedSuggestionsForWordAtCursor),
+        // resumedWordBeforeCursor holds the ACTUAL on-screen text for it,
+        // which is what must be deleted — not a re-derivation through
+        // FancyTextMapper, since the original text on screen may not have
+        // been produced by the currently-cached style at all.
+        val onScreenOriginal = resumedWordBeforeCursor
+            ?: com.spmods.sinkey.keyboard.FancyTextMapper.apply(typed, cachedFancyTextStyle)
+        // Must delete by the on-screen text's real length, not typed.length —
+        // several fancy styles (bold, italic, script, double-struck,
+        // monospace...) map each plain letter to an astral-plane code point,
+        // which is 2 UTF-16 chars, so the on-screen text can be longer than
+        // the raw typed word.
         if (shouldAutocorrect) {
-            val originalStyled = com.spmods.sinkey.keyboard.FancyTextMapper.apply(typed, cachedFancyTextStyle)
-            ic.deleteSurroundingText(originalStyled.length, 0)
+            ic.deleteSurroundingText(onScreenOriginal.length, 0)
         }
+        resumedWordBeforeCursor = null
         val styled = com.spmods.sinkey.keyboard.FancyTextMapper.apply(committedWord, cachedFancyTextStyle)
         if (shouldAutocorrect) {
             ic.commitText(styled, 1)
@@ -1708,6 +1744,7 @@ class SinKeyInputMethodService : InputMethodService() {
         clearAutocorrectUndoIfAny()
         wordBuffer.clear()
         englishBuffer.clear()
+        resumedWordBeforeCursor = null
         val language = if (isSinhalaTyping()) "si" else "en"
         val styled = if (language == "en") {
             com.spmods.sinkey.keyboard.FancyTextMapper.apply(word, cachedFancyTextStyle)
@@ -1747,6 +1784,7 @@ class SinKeyInputMethodService : InputMethodService() {
             ic.setComposingText("", 1)
             ic.commitText(toCommit, 1)
             wordBuffer.clear()
+            resumedWordBeforeCursor = null
             // BUG FIX: previously the mix-mode suggestion buckets
             // (mixSinhalaSuggestions/mixEnglishSuggestions) weren't reset
             // here. wordBuffer.clear() alone doesn't stop a still-in-flight
@@ -1771,6 +1809,7 @@ class SinKeyInputMethodService : InputMethodService() {
             val styled = com.spmods.sinkey.keyboard.FancyTextMapper.apply(word, cachedFancyTextStyle)
             ic.commitText(styled, 1)
             englishBuffer.clear()
+            resumedWordBeforeCursor = null
             clearSuggestions()
             learnWord(word, "en")
         }
