@@ -1356,14 +1356,15 @@ internal fun MainKeyboardKeys(
                 LetterKey(
                     label = display, weight = 1f, keyHeight = keyHeight, colors = colors, keyShape = keyShape,
                     onPositioned = onKeyPositioned?.let { cb -> { coords: androidx.compose.ui.layout.LayoutCoordinates -> cb(k.lowercase().firstOrNull() ?: ' ', coords) } },
+                    onTap = {
+                        onKey(display)
+                        if (shift && !shiftLocked) onShiftStateChange(SinKeyInputMethodService.ShiftState.OFF)
+                    },
                     onAlternateSelected = { alt ->
                         onKey(alt)
                         if (shift && !shiftLocked) onShiftStateChange(SinKeyInputMethodService.ShiftState.OFF)
                     }
-                ) {
-                    onKey(display)
-                    if (shift && !shiftLocked) onShiftStateChange(SinKeyInputMethodService.ShiftState.OFF)
-                }
+                )
             }
             BackspaceKey(weight = 1.4f, keyHeight = keyHeight, colors = colors, keyShape = keyShape,
                 onPositioned = onKeyPositioned?.let { cb -> { coords: androidx.compose.ui.layout.LayoutCoordinates -> cb(KEY_SENTINEL_BACKSPACE, coords) } }
@@ -2002,8 +2003,9 @@ private fun KeyRow(
             LetterKey(
                 label = display, weight = 1f, keyHeight = keyHeight, colors = colors, keyShape = keyShape,
                 onPositioned = onKeyPositioned?.let { cb -> { coords: androidx.compose.ui.layout.LayoutCoordinates -> cb(k.lowercase().firstOrNull() ?: ' ', coords) } },
+                onTap = { onKey(display) },
                 onAlternateSelected = { alt -> onKey(alt) }
-            ) { onKey(display) }
+            )
         }
         Box(modifier = Modifier.weight(0.5f))
     }
