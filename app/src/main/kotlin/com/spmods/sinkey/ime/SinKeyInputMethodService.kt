@@ -503,8 +503,6 @@ class SinKeyInputMethodService : InputMethodService() {
 
     // The single ImeComposeView instance reused for the lifetime of the
     // service.
-    //
-    // THE ACTUAL FIX for the duplicate/"ghost" keyboard rendering bug
     // (ported from FlorisBoard's proven approach — see
     // FlorisImeService.onCreateInputView()): the previous approach here
     // tried to keep onCreateInputView() returning a normal View and then
@@ -530,6 +528,31 @@ class SinKeyInputMethodService : InputMethodService() {
     // once for the service's whole lifetime and never re-attached, so two
     // live copies can never be composited together.
     private var imeComposeView: ImeComposeView? = null
+
+    // BUG FIX (WhatsApp-header-tap double/ghost keyboard): confirmed via
+    // logcat instrumentation that onCreateInputView never re-fires and the
+    // content ViewGroup's childCount stays constant (2) across this
+    // transition — there is genuinely only ONE live keyboard view at all
+    // times, so this was never a duplicate-attachment bug on our side.
+    // Screen recording of the bug frame-by-frame showed the "second"
+    // keyboard is a snapshot/screenshot of the outgoing chat screen (which
+    // visually includes our docked keyboard) that WhatsApp's own Activity
+    // transition animates off-screen when navigating to/from
+    // ContactInfoActivity — Android's screenshot-transition machinery
+    // captures whatever is currently composited on screen, including our
+    // IME window, before our window has actually been torn down for this
+    // transition. We cannot prevent WhatsApp from taking that screenshot,
+    // but we CAN make sure our content is already blank at the moment it's
+    // taken: this flag drives the composition to render nothing the instant
+    // the *host app's* window loses focus, which happens at the START of
+    // that transition — well before WhatsApp's screenshot is captured.
+    // Driven from a View.OnWindowFocusChangeListener on the decorView
+    // (attached in onCreateInputView below), NOT from onWindowShown/
+    // onWindowHidden — those fire on OUR window's own show/hide, which for
+    // a transient blip like this often lags behind or never fires at all,
+    // since our window may never actually be told to hide for a same-app
+    // Activity transition.
+    private var hostWindowFocused = mutableStateOf(true)
 
     override fun onCreateInputView(): View? {
         android.util.Log.d("SinKeyDebug", "onCreateInputView called, imeComposeView is null? ${imeComposeView == null}")
@@ -607,7 +630,20 @@ class SinKeyInputMethodService : InputMethodService() {
                   // Animatable, which does NOT trigger a lookahead pass) is
                   // wanted back later.
                   run {
+                    val focused by hostWindowFocused
 
+                    // BUG FIX (WhatsApp-header-tap double/ghost keyboard):
+                    // render nothing while the host app's window is
+                    // unfocused. See hostWindowFocused field comment for
+                    // the full mechanism. This means our content goes
+                    // blank an instant before WhatsApp's own screenshot-
+                    // transition captures the screen, so the "second"
+                    // keyboard that transition animates away is blank —
+                    // no visible duplicate. Content reappears the instant
+                    // focus returns, which happens fast enough (same
+                    // frame budget as any other keyboard show) that it
+                    // reads as an ordinary keyboard show, not a flicker.
+                    if (focused) {
                     KeyboardView(
                         currentLanguage = currentLanguage.value,
                         keyboardHeight = keyboardHeight,
@@ -655,6 +691,7 @@ class SinKeyInputMethodService : InputMethodService() {
                             )
                         }
                     )
+                    }
                   }
                 }
         }
@@ -665,6 +702,20 @@ class SinKeyInputMethodService : InputMethodService() {
             decor.setViewTreeLifecycleOwner(lifecycleOwner)
             decor.setViewTreeSavedStateRegistryOwner(lifecycleOwner)
             decor.setViewTreeViewModelStoreOwner(lifecycleOwner)
+
+            // See hostWindowFocused field comment above for why this is
+            // driven from a raw window-focus listener rather than
+            // onWindowShown/onWindowHidden. hasWindowFocus() here reflects
+            // OUR IME window's focus state — which Android reliably flips
+            // to false at the very start of a same-app Activity transition
+            // (e.g. WhatsApp navigating to ContactInfoActivity and back),
+            // even in cases where onWindowHidden/onWindowShown don't fire
+            // for the transition at all because our window is never fully
+            // torn down.
+            decor.viewTreeObserver.addOnWindowFocusChangeListener { hasFocus ->
+                android.util.Log.d("SinKeyDebug", "decor window focus changed: hasFocus=$hasFocus")
+                hostWindowFocused.value = hasFocus
+            }
         }
 
         composeView.layoutParams = android.view.ViewGroup.LayoutParams(
