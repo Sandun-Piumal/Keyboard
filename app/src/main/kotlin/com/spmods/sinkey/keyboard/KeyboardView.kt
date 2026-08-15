@@ -2329,18 +2329,46 @@ private fun RowScope.NumberedLetterKey(
     val bumpOffsetY = rememberKeyBumpOffsetY(pressed)
     val popScale = keyPopScaleMultiplier(pressed, colors.keyEffect)
 
-    // Long-press popup (accented alternates) — identical setup to
-    // LetterKey's own (see LongPressPopupData.kt / LetterKey's doc
-    // comments for the full explanation); duplicated here rather than
-    // sharing a helper because RowScope.LetterKey and RowScope.
-    // NumberedLetterKey differ in what they render around the popup
-    // (the small number hint in the corner) and in what a plain
-    // long-press-with-no-alternates falls back to (retype base char vs
-    // type the row's number).
-    val alternates = remember(label) {
-        longPressPopupAlternates[label.lowercase().firstOrNull() ?: ' ']
+    // Long-press popup (accented alternates PLUS this key's own row
+    // number, inserted as an extra cell in the middle of the bottom row —
+    // see rowNumberForKey in LongPressPopupData.kt). Base accent list is
+    // ported the same as LetterKey's own (see that composable's doc
+    // comments); duplicated here rather than sharing a helper because
+    // RowScope.LetterKey and RowScope.NumberedLetterKey differ in what
+    // they render around the popup (the small number hint in the corner)
+    // and in what a plain long-press-with-no-alternates-AND-no-number
+    // falls back to.
+    val alternates = remember(label, number) {
+        val baseAlts = longPressPopupAlternates[label.lowercase().firstOrNull() ?: ' ']
             ?.let { alts -> if (label.firstOrNull()?.isUpperCase() == true) alts.map { it.uppercase() } else alts }
             ?: emptyList()
+        if (number.isEmpty()) {
+            baseAlts
+        } else if (baseAlts.isEmpty()) {
+            // No accents at all (q, w, r, t, y, p) — the popup still
+            // shows, just with the number as its only cell, so every
+            // row-0 key's number stays reachable via long-press the same
+            // way.
+            listOf(number)
+        } else {
+            // Insert the number into the middle of the LAST baseAlts.size/2
+            // items (which the row-splitting math below always assigns to
+            // the bottom row) so it lands in the middle of the bottom row
+            // specifically — matches the reference layout (e.g. "e" → top
+            // row ē ê ë, bottom row è 3 é), not just "somewhere in the
+            // combined list".
+            val withNumber = baseAlts.toMutableList()
+            val n = withNumber.size + 1
+            val newRow0count = when {
+                n <= 5 -> n
+                n % 2 == 1 -> (n + 1) / 2
+                else -> n / 2
+            }
+            val bottomRowStart = withNumber.size - (newRow0count - 1)
+            val insertAt = bottomRowStart + (newRow0count - 1) / 2
+            withNumber.add(insertAt.coerceIn(0, withNumber.size), number)
+            withNumber
+        }
     }
     var popupVisible by remember { mutableStateOf(false) }
     var selectedAltIndex by remember { mutableStateOf(0) }
