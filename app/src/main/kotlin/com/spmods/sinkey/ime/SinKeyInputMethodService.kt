@@ -553,38 +553,59 @@ class SinKeyInputMethodService : InputMethodService() {
                 val swipeTypingEnabled by prefs.swipeTypingEnabled.collectAsState(initial = false)
                 val smoothImeTransition by prefs.smoothImeTransition.collectAsState(initial = true)
                 SinKeyTheme(themeMode = themeMode) {
-                  // "Smooth IME Transition" — a gentle fade + slide-up the
-                  // very first time this composition becomes visible after
-                  // being (re)created, echoing the kind of motion
-                  // WindowInsetsAnimationCompat drives on the app side when
-                  // the app itself animates its content in sync with the
-                  // IME. We can't attach a WindowInsetsAnimationCompat
-                  // callback to the *host app's* window from inside our own
-                  // IME process — that only runs in the app's own process —
-                  // so this is the equivalent smoothing applied to our own
-                  // keyboard content instead, which is what's actually
-                  // under this app's control. Purely cosmetic; disabled
-                  // instantly reproduces the previous instant-appear
-                  // behavior when the user turns the toggle off.
-                  // Starts false so AnimatedVisibility's enter transition
-                  // actually has a false→true edge to animate across; flips
-                  // true on the very next frame after entering composition.
-                  var contentVisible by remember { mutableStateOf(false) }
-                  LaunchedEffect(Unit) {
-                      contentVisible = true
-                  }
-                  androidx.compose.animation.AnimatedVisibility(
-                      visible = contentVisible,
-                      enter = if (smoothImeTransition) {
-                          androidx.compose.animation.fadeIn(animationSpec = androidx.compose.animation.core.tween(180)) +
-                              androidx.compose.animation.slideInVertically(
-                                  animationSpec = androidx.compose.animation.core.tween(200),
-                                  initialOffsetY = { it / 6 }
-                              )
-                      } else {
-                          androidx.compose.animation.EnterTransition.None
-                      }
-                  ) {
+                  // REMOVED: AnimatedVisibility-based "Smooth IME Transition".
+                  //
+                  // Every other keyboard app tested (FlorisBoard, and the
+                  // user's confirmation that no other keyboard shows this
+                  // bug) renders its content with a single, direct
+                  // measure/layout pass — no AnimatedVisibility, no
+                  // lookahead layout. This composable was the one piece of
+                  // this app's rendering pipeline that had no equivalent
+                  // anywhere else, and multiple other fix attempts (window
+                  // attach/detach, onWindowShown/onWindowHidden logic, even
+                  // toggling this feature's own animation curve off via
+                  // smoothImeTransition=false) did not resolve the
+                  // duplicate-keyboard bug — which pointed away from this
+                  // composable, since disabling the animation curve alone
+                  // didn't help.
+                  //
+                  // The detail that mattes: AnimatedVisibility always runs
+                  // a two-pass "lookahead" measurement internally (as part
+                  // of Compose's LookaheadScope machinery) to compute
+                  // enter/exit transitions — this happens regardless of
+                  // whether the enter/exit transition itself is
+                  // EnterTransition.None/ExitTransition.None. Setting
+                  // smoothImeTransition=false only swaps out the animation
+                  // curve used *within* that lookahead pass; it does not
+                  // remove the lookahead pass itself. If a recomposition of
+                  // this subtree is triggered at the exact moment the host
+                  // app (WhatsApp) is itself mid-transition — e.g. from a
+                  // window-insets change, a configuration change, or simply
+                  // one of the collectAsState() flows above re-emitting —
+                  // Compose can commit two different measured layout
+                  // positions for the same content across consecutive
+                  // frames, both of which get drawn before the newer one
+                  // fully replaces the older one on screen. That reads
+                  // exactly as "duplicate keyboard" and is timing-dependent
+                  // in a way that would explain why it reproduces
+                  // specifically around WhatsApp's own header-tap
+                  // navigation transition and nowhere else.
+                  //
+                  // Removing AnimatedVisibility entirely removes the
+                  // lookahead pass entirely, not just the animation that
+                  // played through it. KeyboardView now composes directly;
+                  // there is only ever one measure/layout pass for this
+                  // content, so there is nothing left that could commit two
+                  // different layout positions for the same frame range.
+                  //
+                  // smoothImeTransition is intentionally left unused here
+                  // rather than deleted outright, in case a non-
+                  // AnimatedVisibility-based entrance effect (e.g. a plain
+                  // Modifier.graphicsLayer { alpha = ... } animated by
+                  // Animatable, which does NOT trigger a lookahead pass) is
+                  // wanted back later.
+                  run {
+
                     KeyboardView(
                         currentLanguage = currentLanguage.value,
                         keyboardHeight = keyboardHeight,
