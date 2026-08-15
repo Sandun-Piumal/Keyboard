@@ -1082,6 +1082,35 @@ internal fun KeyboardView(
                                             }
                                             var dragging = false
                                             val touchSlop = viewConfiguration.touchSlop
+                                            // A finger that has been held down at
+                                            // roughly the same spot for longer than
+                                            // the system long-press threshold is a
+                                            // long-press, never a swipe — even if it
+                                            // has drifted a little past touchSlop in
+                                            // the meantime (natural hand tremor while
+                                            // holding a key does this constantly).
+                                            // Without this guard, a long-press on
+                                            // e/u/i/o/a/s (or any letter) would very
+                                            // often get reinterpreted as the start of
+                                            // a swipe right as the long-press timer in
+                                            // LetterKey was about to fire, this outer
+                                            // handler would consume() that event, and
+                                            // LetterKey's own pointerInput — a sibling
+                                            // further down this same pointer stream —
+                                            // would never see the up event it needs to
+                                            // show the popup or commit an alternate.
+                                            // Capturing downTimeMs up front and
+                                            // checking elapsed time on every event
+                                            // means: once the long-press threshold
+                                            // has passed, this handler simply stops
+                                            // trying to claim the gesture as a swipe
+                                            // at all, letting the tap/long-press
+                                            // machinery in MainKeyboardKeys' own keys
+                                            // handle it exactly as if swipe typing
+                                            // were off.
+                                            val downTimeMs = System.currentTimeMillis()
+                                            val longPressThresholdMs =
+                                                android.view.ViewConfiguration.getLongPressTimeout().toLong()
 
                                             while (true) {
                                                 val event = awaitPointerEvent()
@@ -1107,33 +1136,39 @@ internal fun KeyboardView(
                                                 }
 
                                                 if (!dragging) {
+                                                    val elapsed = System.currentTimeMillis() - downTimeMs
                                                     val travelled = (change.position - down.position).getDistance()
-                                                    if (travelled > touchSlop) {
-                                                        // Past the slop threshold —
-                                                        // this is now unambiguously a
-                                                        // swipe, not a tap. Start
-                                                        // claiming the gesture from
-                                                        // here on. Because this
-                                                        // pointerInput lives on the
-                                                        // Box ABOVE MainKeyboardKeys
-                                                        // (not a sibling beside it),
-                                                        // consuming here also stops
+                                                    if (elapsed < longPressThresholdMs && travelled > touchSlop) {
+                                                        // Past the slop threshold
+                                                        // while still well inside the
+                                                        // long-press window — this is
+                                                        // unambiguously a fast swipe,
+                                                        // not a hold. Start claiming
+                                                        // the gesture from here on.
+                                                        // Because this pointerInput
+                                                        // lives on the Box ABOVE
+                                                        // MainKeyboardKeys (not a
+                                                        // sibling beside it), consuming
+                                                        // here also stops
                                                         // MainKeyboardKeys' own
-                                                        // clickable handlers from
-                                                        // ever starting a press for
-                                                        // this pointer — exactly the
-                                                        // "swipe wins once it's
-                                                        // clearly a swipe" behavior
-                                                        // this needs, without ever
-                                                        // blocking plain taps.
+                                                        // clickable handlers from ever
+                                                        // starting a press for this
+                                                        // pointer — exactly the "swipe
+                                                        // wins once it's clearly a
+                                                        // swipe" behavior this needs,
+                                                        // without ever blocking plain
+                                                        // taps or long-presses.
                                                         dragging = true
                                                         gestureIsDragging = true
                                                         gesturePathPoints = listOf(down.position, change.position)
                                                         change.consume()
                                                     }
-                                                    // Still under slop: leave the
-                                                    // change unconsumed so a tap
-                                                    // still reaches MainKeyboardKeys.
+                                                    // Still under slop, or the
+                                                    // long-press threshold has already
+                                                    // passed: leave the change
+                                                    // unconsumed so a tap OR a
+                                                    // long-press (and its popup) still
+                                                    // reaches MainKeyboardKeys.
                                                 } else {
                                                     gesturePathPoints = gesturePathPoints + change.position
                                                     change.consume()
@@ -2138,45 +2173,26 @@ private fun rememberPreviewVisible(pressTick: Int, minVisibleMs: Long = 150L): B
     return visible
 }
 
+/**
+ * The small single-character bubble shown the instant a key is pressed —
+ * ported 1:1 (visually) from FlorisBoard's PopupUiController.show() /
+ * PopupBaseBox (ime/popup/PopupUi.kt + PopupUiController.kt): a plain
+ * elevated box, no spring/scale-in choreography, roughly 10% taller than
+ * the key itself, holding just the key's own label centered — real
+ * FlorisBoard doesn't animate this in with a bounce, it's simply present
+ * or not, so this doesn't either (the earlier scale+fade version here was
+ * a deviation from FlorisBoard's actual look, not a match for it).
+ */
 @Composable
 private fun KeyPreviewPopup(label: String, keyHeight: Dp, colors: KeyboardColors, keyShape: RoundedCornerShape) {
-    val size = (keyHeight.value * 1.1f).dp
-    // Real keyboards (Gboard/SwiftKey) pop this bubble in with a quick
-    // scale+fade rather than having it snap fully-formed into place, which
-    // reads as more "alive"/responsive even though the key itself already
-    // has its own bump animation. Animate from freshly-composed (this
-    // popup is created and destroyed each press, so `remember`ing false
-    // and flipping true right after first composition via LaunchedEffect
-    // is what actually triggers the transition — starting `true`
-    // immediately would skip it, since animateFloatAsState only animates
-    // on subsequent target changes).
-    var shown by remember { mutableStateOf(false) }
-    LaunchedEffect(Unit) { shown = true }
-    val animScale by animateFloatAsState(
-        targetValue = if (shown) 1f else 0.4f,
-        animationSpec = spring(dampingRatio = Spring.DampingRatioMediumBouncy, stiffness = Spring.StiffnessHigh),
-        label = "keyPreviewScale"
-    )
-    val animAlpha by animateFloatAsState(
-        targetValue = if (shown) 1f else 0f,
-        animationSpec = spring(stiffness = Spring.StiffnessHigh),
-        label = "keyPreviewAlpha"
-    )
+    val width = keyHeight
+    val height = (keyHeight.value * 1.1f).dp
     Box(
         modifier = Modifier
-            .graphicsLayer {
-                scaleX = animScale
-                scaleY = animScale
-                alpha = animAlpha
-                // Scale from the bottom edge (closest to the key/finger)
-                // rather than dead-center, so the bubble reads as growing
-                // up out of the key instead of expanding from its own
-                // middle — matches how real keyboard preview bubbles move.
-                transformOrigin = TransformOrigin(0.5f, 1f)
-            }
-            .defaultMinSize(minWidth = size, minHeight = size)
+            .defaultMinSize(minWidth = width, minHeight = height)
+            .shadow(elevation = 2.dp, shape = keyShape)
             .clip(keyShape)
-            .background(colors.keyBg)
+            .background(colors.specialKeyBg)
             .padding(horizontal = 8.dp, vertical = 2.dp),
         contentAlignment = Alignment.Center
     ) {
@@ -2190,26 +2206,32 @@ private fun KeyPreviewPopup(label: String, keyHeight: Dp, colors: KeyboardColors
 }
 
 /**
- * The row of alternate characters shown when a letter key is long-pressed
- * (e.g. long-pressing "a" shows "æ ã å ā à á â ä"). Ported behavior-wise
- * from FlorisBoard's popup interaction (ime/popup/PopupUiController.kt):
- * the row appears directly above the key, the currently-highlighted
- * character follows the finger as it drags left/right across the row
- * (clamped to the row's bounds — dragging past either end just keeps the
- * end item selected rather than dismissing), and lifting the finger
- * commits whichever character is highlighted at that moment. The row is
- * always shown, but with a single character (the key's own base label)
- * when there are no popup alternates for a key so callers don't need to
- * branch — see `alternates` handling in LetterKey below for when this is
- * actually invoked.
+ * The extended popup grid shown once a long-press on a key with alternates
+ * (e.g. "a" → æ ã å ā à á â ä) crosses the system long-press threshold —
+ * ported behavior-wise from FlorisBoard's PopupUiController.extend() +
+ * PopupExtBox (ime/popup/PopupUiController.kt lines ~139-307 and
+ * PopupUi.kt's PopupExtBox). FlorisBoard's own layout rule for the number
+ * of alternates n:
+ *   - n <= 5:  single row, all n keys, row0 only.
+ *   - n > 5 and odd:  two rows, row0 (bottom, closer to the key) has one
+ *     MORE key than row1 (top) — row0count = (n+1)/2, row1count = (n-1)/2.
+ *   - n > 5 and even: two equal rows of n/2 each.
+ * Row0 is always the one closer to the key (bottom row visually, since
+ * this whole popup sits above the key and is built "bottom row first" —
+ * hence `elements` is iterated `.asReversed()` when drawing, matching
+ * PopupExtBox in PopupUi.kt). The row that's one longer as an anchor
+ * offset toward whichever half of the keyboard the key sits in (left keys
+ * anchor left, right keys anchor right) is a screen-edge-avoidance detail
+ * from the original that matters far less on a single key row this size,
+ * so this port keeps the row-count split exactly but always centers the
+ * whole grid above the key — simpler, and visually indistinguishable at
+ * these small popup counts (max 8 for any letter here).
  *
- * @param alternates the characters to show, in display order, left to right.
- * @param keyHeight used to size each cell to roughly match the real key
- *   below it, so the row doesn't look mismatched in scale.
- * @param onSelectionChange called with the index currently under the
- *   finger every time it changes, purely so LetterKey can highlight it.
- * @param onCommit called once, when the finger lifts, with the character
- *   that was highlighted at that moment.
+ * @param alternates the characters to show, in FlorisBoard's own left-to-
+ *   right display order (see LongPressPopupData.kt — already ported
+ *   directly from FlorisBoard's en.json).
+ * @param selectedIndex index into [alternates] of the character currently
+ *   under the finger, supplied by the caller's own drag tracking.
  */
 @Composable
 private fun LongPressPopupRow(
@@ -2219,49 +2241,69 @@ private fun LongPressPopupRow(
     keyShape: RoundedCornerShape,
     selectedIndex: Int,
 ) {
-    val cellSize = (keyHeight.value * 0.95f).dp
-    var shown by remember { mutableStateOf(false) }
-    LaunchedEffect(Unit) { shown = true }
-    val animScale by animateFloatAsState(
-        targetValue = if (shown) 1f else 0.5f,
-        animationSpec = spring(dampingRatio = Spring.DampingRatioMediumBouncy, stiffness = Spring.StiffnessHigh),
-        label = "popupRowScale"
-    )
-    val animAlpha by animateFloatAsState(
-        targetValue = if (shown) 1f else 0f,
-        animationSpec = spring(stiffness = Spring.StiffnessHigh),
-        label = "popupRowAlpha"
-    )
-    Row(
+    val n = alternates.size
+    val row0count: Int
+    val row1count: Int
+    when {
+        n <= 5 -> { row0count = n; row1count = 0 }
+        n % 2 == 1 -> { row0count = (n + 1) / 2; row1count = (n - 1) / 2 }
+        else -> { row0count = n / 2; row1count = n / 2 }
+    }
+    // row0 = bottom (closer to key, indices [0, row0count)),
+    // row1 = top (indices [row0count, n)) — matches FlorisBoard's own
+    // uiIndex convention where row1 (if present) comes first in reading
+    // order but renders above row0.
+    val row0 = alternates.subList(0, row0count)
+    val row1 = if (row1count > 0) alternates.subList(row0count, n) else emptyList()
+
+    val cellWidth = (keyHeight.value * 0.85f).dp
+    val cellHeight = (keyHeight.value * 0.85f).dp
+
+    Column(
         modifier = Modifier
-            .graphicsLayer {
-                scaleX = animScale
-                scaleY = animScale
-                alpha = animAlpha
-                transformOrigin = TransformOrigin(0.5f, 1f)
-            }
+            .shadow(elevation = 2.dp, shape = keyShape)
             .clip(keyShape)
-            .background(colors.keyBg)
-            .padding(3.dp),
-        horizontalArrangement = Arrangement.spacedBy(2.dp)
+            .background(colors.specialKeyBg),
     ) {
-        alternates.forEachIndexed { index, alt ->
-            val isSelected = index == selectedIndex
-            Box(
-                modifier = Modifier
-                    .size(cellSize)
-                    .clip(RoundedCornerShape((cellSize.value * 0.3f).dp))
-                    .background(if (isSelected) colors.accent.copy(alpha = 0.35f) else Color.Transparent),
-                contentAlignment = Alignment.Center
-            ) {
-                Text(
-                    text = alt,
-                    fontSize = (cellSize.value * 0.5f).sp,
-                    color = colors.keyText,
-                    fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal
-                )
+        if (row1.isNotEmpty()) {
+            Row {
+                row1.forEachIndexed { i, alt ->
+                    PopupCell(alt, i, selectedIndex, cellWidth, cellHeight, colors, keyShape)
+                }
             }
         }
+        Row {
+            row0.forEachIndexed { i, alt ->
+                PopupCell(alt, row1count + i, selectedIndex, cellWidth, cellHeight, colors, keyShape)
+            }
+        }
+    }
+}
+
+/** One character cell inside [LongPressPopupRow] — plain highlight on focus, no per-cell rounding beyond the parent's own shape, matching PopupUi.kt's PopupExtBox/SnyggBox-per-element approach. */
+@Composable
+private fun PopupCell(
+    alt: String,
+    index: Int,
+    selectedIndex: Int,
+    cellWidth: Dp,
+    cellHeight: Dp,
+    colors: KeyboardColors,
+    keyShape: RoundedCornerShape,
+) {
+    val isSelected = index == selectedIndex
+    Box(
+        modifier = Modifier
+            .size(cellWidth, cellHeight)
+            .let { if (isSelected) it.clip(keyShape).background(colors.accent) else it },
+        contentAlignment = Alignment.Center
+    ) {
+        Text(
+            text = alt,
+            fontSize = (cellHeight.value * 0.5f).sp,
+            color = if (isSelected) colors.spaceKeyText else colors.keyText,
+            fontWeight = FontWeight.Normal
+        )
     }
 }
 
@@ -2373,12 +2415,33 @@ private fun RowScope.LetterKey(
     // popup-row cells has the finger moved across". Updated by
     // onSizeChanged below; read from the gesture loop.
     var keyWidthPx by remember { mutableStateOf(0) }
-    // Cell width used both here and in LongPressPopupRow — kept as one
+    // Row split, mirroring LongPressPopupRow's own row0count/row1count math
+    // exactly (see that composable's doc comment for the FlorisBoard rule
+    // this ports) — needed here too so the drag-to-select hit-testing below
+    // agrees with what's actually being drawn: row0 (bottom, closer to the
+    // key) holds indices [0, row0count), row1 (top) holds the rest.
+    val row0count = remember(alternates) {
+        val n = alternates.size
+        when {
+            n <= 5 -> n
+            n % 2 == 1 -> (n + 1) / 2
+            else -> n / 2
+        }
+    }
+    val row1count = alternates.size - row0count
+    // Cell size used both here and in LongPressPopupRow — kept as one
     // shared calculation so the two never drift out of sync with each
-    // other (2.dp horizontal spacing between cells, matching the Row spacedBy
-    // in LongPressPopupRow above).
+    // other (matches PopupCell's 0.85x keyHeight sizing, no inter-cell
+    // spacing — FlorisBoard's own PopupExtBox cells sit flush against
+    // each other).
     val density = LocalDensity.current
-    val cellStridePx = with(density) { ((keyHeight.value * 0.95f).dp + 2.dp).toPx() }
+    val cellStridePx = with(density) { (keyHeight.value * 0.85f).dp.toPx() }
+    val cellHeightPx = cellStridePx
+    // How far above the key's top edge the popup's own bottom edge sits —
+    // shared between the Popup(...) call's own offset and the drag-to-row
+    // hit-testing above, so the two can never disagree about where the
+    // popup actually is on screen.
+    val popupYOffsetPx = with(density) { (keyHeight.value * 0.15f).dp.toPx() }
 
     Box(
         modifier = Modifier
@@ -2471,23 +2534,35 @@ private fun RowScope.LetterKey(
                             break
                         }
                         if (popupVisible && alternates.isNotEmpty() && keyWidthPx > 0) {
-                            // The popup row is centered above the key. To
-                            // find which cell is under the finger: take
-                            // the finger's x position (relative to this
-                            // key's own left edge, which is what
-                            // change.position.x already is, since we're
-                            // inside this key's own pointerInput), shift
-                            // it into the row's coordinate space by
-                            // correcting for the row being wider/narrower
-                            // than the key and centered rather than
-                            // left-aligned, then divide by one cell's
-                            // stride to get an index.
-                            val rowWidthPx = cellStridePx * alternates.size
+                            // Which of the popup's up to two rows is under
+                            // the finger. change.position.y is relative to
+                            // THIS key's own top edge and, since Compose
+                            // keeps reporting positions even once the
+                            // finger has moved outside the key's own
+                            // bounds, goes negative as the finger moves up
+                            // above the key — exactly where the popup is.
+                            // The popup's bottom edge sits popupYOffsetPx
+                            // above the key's top edge (see the matching
+                            // offsetYPx in the Popup(...) call below), and
+                            // row0 (bottom/closer row) occupies the
+                            // cellHeightPx nearest that bottom edge, with
+                            // row1 (if present) directly above it.
+                            val distAboveKeyTopPx = -change.position.y
+                            val distAbovePopupBottomPx = distAboveKeyTopPx - popupYOffsetPx
+                            val inRow1 = row1count > 0 && distAbovePopupBottomPx > cellHeightPx
+                            val rowAlts = if (inRow1) row1count else row0count
+                            val rowStartIndex = if (inRow1) 0 else row1count
+
+                            // Column within that row: same centered-row
+                            // horizontal math as before, just using that
+                            // row's own cell count instead of the full
+                            // alternates.size.
+                            val rowWidthPx = cellStridePx * rowAlts
                             val keyCenterPx = keyWidthPx / 2f
                             val rowLeftEdgePx = keyCenterPx - rowWidthPx / 2f
                             val posInRowPx = change.position.x - rowLeftEdgePx
-                            val rawIndex = (posInRowPx / cellStridePx).toInt()
-                            selectedAltIndex = rawIndex.coerceIn(0, alternates.lastIndex)
+                            val rawCol = (posInRowPx / cellStridePx).toInt().coerceIn(0, rowAlts - 1)
+                            selectedAltIndex = (rowStartIndex + rawCol).coerceIn(0, alternates.lastIndex)
                         }
                         change.consume()
                     }
@@ -2498,8 +2573,16 @@ private fun RowScope.LetterKey(
         Text(text = label, fontSize = keyLabelFontSize(keyHeight), color = colors.keyText,
             fontWeight = FontWeight.Normal)
         if (popupVisible && alternates.isNotEmpty()) {
+            // Popup height depends on row count (1 or 2 rows of
+            // cellHeightPx each — see LongPressPopupRow) plus the fixed
+            // gap above the key (popupYOffsetPx), so the offset here must
+            // match the row-count-aware math used for drag hit-testing
+            // above, or the visible popup and the "which cell is the
+            // finger over" calculation would silently disagree.
+            val rowCount = if (row1count > 0) 2 else 1
+            val offsetYPx = -(cellHeightPx * rowCount + popupYOffsetPx)
             Popup(alignment = Alignment.TopCenter,
-                offset = IntOffset(0, -((keyHeight.value * 1.4f).toInt()))) {
+                offset = IntOffset(0, offsetYPx.toInt())) {
                 LongPressPopupRow(
                     alternates = alternates,
                     keyHeight = keyHeight,
