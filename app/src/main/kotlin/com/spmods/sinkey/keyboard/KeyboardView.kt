@@ -2269,13 +2269,13 @@ private fun LongPressPopupRow(
         if (row1.isNotEmpty()) {
             Row {
                 row1.forEachIndexed { i, alt ->
-                    PopupCell(alt, i, selectedIndex, cellWidth, cellHeight, colors, keyShape)
+                    PopupCell(alt, row0count + i, selectedIndex, cellWidth, cellHeight, colors, keyShape)
                 }
             }
         }
         Row {
             row0.forEachIndexed { i, alt ->
-                PopupCell(alt, row1count + i, selectedIndex, cellWidth, cellHeight, colors, keyShape)
+                PopupCell(alt, i, selectedIndex, cellWidth, cellHeight, colors, keyShape)
             }
         }
     }
