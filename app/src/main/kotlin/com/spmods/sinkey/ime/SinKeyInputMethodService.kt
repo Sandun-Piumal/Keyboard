@@ -2275,11 +2275,34 @@ class SinKeyInputMethodService : InputMethodService() {
      * FIX #1: No more runBlocking. Reads cached in-memory values (updated via
      * Flow collectors in onCreate) — zero blocking, zero DataStore I/O per tap.
      * FIX #3: Key sound now actually implemented using AudioManager.FX_KEYPRESS_STANDARD.
+     *
+     * Vibration duration/strength now matches FlorisBoard's own defaults
+     * exactly (ime/input/InputFeedbackController.kt's keyPress(), and the
+     * underlying Vibrator.vibrate(duration, strength, factor) extension in
+     * lib/android/.../Vibrator.kt): 50ms at 50% strength, using amplitude
+     * control when the device supports it rather than always firing at
+     * full/default amplitude regardless of the configured strength. The
+     * previous 12ms/DEFAULT_AMPLITUDE was both much shorter and, on
+     * amplitude-capable hardware, effectively always "full strength"
+     * (DEFAULT_AMPLITUDE ignores any strength setting entirely) — together
+     * that read as a single abrupt, same-feeling click no matter how hard
+     * or fast you were typing, rather than the fuller, slightly softer tap
+     * FlorisBoard (and most other keyboards) actually produce.
      */
     private fun maybeFeedback() {
         if (cachedVibrateEnabled) {
             val vibrator = getSystemService(Vibrator::class.java)
-            vibrator?.vibrate(VibrationEffect.createOneShot(12, VibrationEffect.DEFAULT_AMPLITUDE))
+            if (vibrator != null) {
+                // FlorisBoard defaults: duration=50ms, strength=50 (of 100).
+                val durationMs = 50L
+                val strengthPercent = 50
+                val amplitude = if (vibrator.hasAmplitudeControl()) {
+                    (255.0 * (strengthPercent / 100.0)).toInt().coerceIn(1, 255)
+                } else {
+                    VibrationEffect.DEFAULT_AMPLITUDE
+                }
+                vibrator.vibrate(VibrationEffect.createOneShot(durationMs, amplitude))
+            }
         }
         if (cachedSoundEnabled) {
             val audio = getSystemService(AudioManager::class.java)
