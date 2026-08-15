@@ -2293,16 +2293,21 @@ private fun PopupCell(
     keyShape: RoundedCornerShape,
 ) {
     val isSelected = index == selectedIndex
+    // Fixed blue highlight (Gboard/iOS-style) for the popup's selected cell —
+    // deliberately not colors.accent, since that's the user's chosen theme
+    // accent and reusing it here would tie the popup highlight to whatever
+    // theme color is picked instead of staying a consistent, predictable blue.
+    val selectedCellColor = Color(0xFF4285F4)
     Box(
         modifier = Modifier
             .size(cellWidth, cellHeight)
-            .let { if (isSelected) it.clip(keyShape).background(colors.accent) else it },
+            .let { if (isSelected) it.clip(keyShape).background(selectedCellColor) else it },
         contentAlignment = Alignment.Center
     ) {
         Text(
             text = alt,
             fontSize = (cellHeight.value * 0.5f).sp,
-            color = if (isSelected) colors.spaceKeyText else colors.keyText,
+            color = if (isSelected) Color.White else colors.keyText,
             fontWeight = FontWeight.Normal
         )
     }
@@ -2454,9 +2459,15 @@ private fun RowScope.NumberedLetterKey(
                         if (popupVisible && alternates.isNotEmpty() && keyWidthPx > 0) {
                             val distAboveKeyTopPx = -change.position.y
                             val distAbovePopupBottomPx = distAboveKeyTopPx - popupYOffsetPx
+                            // Matches LongPressPopupRow's actual layout: row0
+                            // (indices [0, row0count)) renders as the BOTTOM row
+                            // (closer to the key), row1 (indices [row0count, n))
+                            // renders as the TOP row. So a finger higher up
+                            // (inRow1) must map to indices starting at row0count,
+                            // not 0 — the reverse of what row0/bottom uses.
                             val inRow1 = row1count > 0 && distAbovePopupBottomPx > cellHeightPx
                             val rowAlts = if (inRow1) row1count else row0count
-                            val rowStartIndex = if (inRow1) 0 else row1count
+                            val rowStartIndex = if (inRow1) row0count else 0
 
                             val rowWidthPx = cellStridePx * rowAlts
                             val keyCenterPx = keyWidthPx / 2f
@@ -2691,9 +2702,14 @@ private fun RowScope.LetterKey(
                             // row1 (if present) directly above it.
                             val distAboveKeyTopPx = -change.position.y
                             val distAbovePopupBottomPx = distAboveKeyTopPx - popupYOffsetPx
+                            // row0 (bottom/closer row) is indices [0, row0count)
+                            // in LongPressPopupRow's actual rendering, with row1
+                            // (top row, if any) starting at row0count — so a
+                            // finger higher up (inRow1) must map to indices
+                            // starting at row0count, not 0.
                             val inRow1 = row1count > 0 && distAbovePopupBottomPx > cellHeightPx
                             val rowAlts = if (inRow1) row1count else row0count
-                            val rowStartIndex = if (inRow1) 0 else row1count
+                            val rowStartIndex = if (inRow1) row0count else 0
 
                             // Column within that row: same centered-row
                             // horizontal math as before, just using that
