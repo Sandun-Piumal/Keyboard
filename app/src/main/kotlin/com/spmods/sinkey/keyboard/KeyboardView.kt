@@ -15,6 +15,7 @@ import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.tween
+import androidx.compose.animation.core.LinearOutSlowInEasing
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.Animatable
 import androidx.compose.ui.composed
@@ -75,6 +76,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Dp
@@ -1353,7 +1355,11 @@ internal fun MainKeyboardKeys(
                 // FIX #5: Reset shift after each letter (one-shot shift behaviour).
                 LetterKey(
                     label = display, weight = 1f, keyHeight = keyHeight, colors = colors, keyShape = keyShape,
-                    onPositioned = onKeyPositioned?.let { cb -> { coords: androidx.compose.ui.layout.LayoutCoordinates -> cb(k.lowercase().firstOrNull() ?: ' ', coords) } }
+                    onPositioned = onKeyPositioned?.let { cb -> { coords: androidx.compose.ui.layout.LayoutCoordinates -> cb(k.lowercase().firstOrNull() ?: ' ', coords) } },
+                    onAlternateSelected = { alt ->
+                        onKey(alt)
+                        if (shift && !shiftLocked) onShiftStateChange(SinKeyInputMethodService.ShiftState.OFF)
+                    }
                 ) {
                     onKey(display)
                     if (shift && !shiftLocked) onShiftStateChange(SinKeyInputMethodService.ShiftState.OFF)
@@ -1995,7 +2001,8 @@ private fun KeyRow(
             val display = if (shift) k.uppercase() else k
             LetterKey(
                 label = display, weight = 1f, keyHeight = keyHeight, colors = colors, keyShape = keyShape,
-                onPositioned = onKeyPositioned?.let { cb -> { coords: androidx.compose.ui.layout.LayoutCoordinates -> cb(k.lowercase().firstOrNull() ?: ' ', coords) } }
+                onPositioned = onKeyPositioned?.let { cb -> { coords: androidx.compose.ui.layout.LayoutCoordinates -> cb(k.lowercase().firstOrNull() ?: ' ', coords) } },
+                onAlternateSelected = { alt -> onKey(alt) }
             ) { onKey(display) }
         }
         Box(modifier = Modifier.weight(0.5f))
@@ -2020,11 +2027,36 @@ private fun keyNumberFontSize(keyHeight: Dp): androidx.compose.ui.unit.TextUnit 
  * springs back up with a slight overshoot on release.
  */
 @Composable
+/**
+ * The key's press-down scale bump. Matches FlorisBoard's actual feel for
+ * fast typing: FlorisBoard's own key rendering (ime/text/keyboard/
+ * TextKeyboardLayout.kt) doesn't animate the pressed state at all — it's
+ * a Canvas-drawn View that flips `key.isPressed = true/false` and
+ * repaints on the very next frame, so there's no transition curve that
+ * can ever fall behind. A spring-based animation, however fast, still has
+ * a nonzero settle time; during fast typing (taps arriving well under
+ * 100ms apart) a new press can start before the previous key's spring
+ * finished settling, which reads as the key's press-down feeling "late"
+ * or the visual bump "not keeping up" with the finger — this is what
+ * showed up as a complaint about vibration/animation not matching fast
+ * typing speed.
+ *
+ * Fix: press-DOWN now uses a very short (40ms) linear tween instead of a
+ * spring — short enough that even at typing speeds well beyond normal
+ * human tapping (multiple presses within 40ms of each other), the
+ * previous key's down-transition has already finished or is imperceptibly
+ * close to finished before a new one can start, so it never visibly
+ * "lags". Release still uses the original bouncier spring, since the
+ * release animation isn't gating anything time-sensitive — it plays out
+ * after the character's already been typed, so a little extra visual
+ * flourish there doesn't cost anything.
+ */
+@Composable
 private fun rememberKeyBumpScale(pressed: Boolean): Float {
     val scale by animateFloatAsState(
         targetValue = if (pressed) 0.82f else 1f,
         animationSpec = if (pressed) {
-            spring(dampingRatio = Spring.DampingRatioNoBouncy, stiffness = Spring.StiffnessHigh * 1.5f)
+            tween(durationMillis = 40, easing = LinearOutSlowInEasing)
         } else {
             spring(dampingRatio = Spring.DampingRatioMediumBouncy, stiffness = Spring.StiffnessMedium)
         },
@@ -2045,13 +2077,19 @@ private fun rememberKeyBumpScale(pressed: Boolean): Float {
  * previous release animation finished, each get their own correct
  * down-then-up motion rather than sharing one animation that would glitch
  * or restart oddly under fast typing.
+ *
+ * Press-down uses the same short linear tween as rememberKeyBumpScale, for
+ * the same reason (see that function's doc comment) — kept in sync so the
+ * scale-shrink and the downward offset always finish their press-down
+ * transition at exactly the same moment rather than drifting apart under
+ * fast typing.
  */
 @Composable
 private fun rememberKeyBumpOffsetY(pressed: Boolean): Dp {
     val offsetY by animateDpAsState(
         targetValue = if (pressed) 3.dp else 0.dp,
         animationSpec = if (pressed) {
-            spring(dampingRatio = Spring.DampingRatioNoBouncy, stiffness = Spring.StiffnessHigh * 1.5f)
+            tween(durationMillis = 40, easing = LinearOutSlowInEasing)
         } else {
             spring(dampingRatio = Spring.DampingRatioMediumBouncy, stiffness = Spring.StiffnessMedium)
         },
@@ -2151,6 +2189,82 @@ private fun KeyPreviewPopup(label: String, keyHeight: Dp, colors: KeyboardColors
     }
 }
 
+/**
+ * The row of alternate characters shown when a letter key is long-pressed
+ * (e.g. long-pressing "a" shows "æ ã å ā à á â ä"). Ported behavior-wise
+ * from FlorisBoard's popup interaction (ime/popup/PopupUiController.kt):
+ * the row appears directly above the key, the currently-highlighted
+ * character follows the finger as it drags left/right across the row
+ * (clamped to the row's bounds — dragging past either end just keeps the
+ * end item selected rather than dismissing), and lifting the finger
+ * commits whichever character is highlighted at that moment. The row is
+ * always shown, but with a single character (the key's own base label)
+ * when there are no popup alternates for a key so callers don't need to
+ * branch — see `alternates` handling in LetterKey below for when this is
+ * actually invoked.
+ *
+ * @param alternates the characters to show, in display order, left to right.
+ * @param keyHeight used to size each cell to roughly match the real key
+ *   below it, so the row doesn't look mismatched in scale.
+ * @param onSelectionChange called with the index currently under the
+ *   finger every time it changes, purely so LetterKey can highlight it.
+ * @param onCommit called once, when the finger lifts, with the character
+ *   that was highlighted at that moment.
+ */
+@Composable
+private fun LongPressPopupRow(
+    alternates: List<String>,
+    keyHeight: Dp,
+    colors: KeyboardColors,
+    keyShape: RoundedCornerShape,
+    selectedIndex: Int,
+) {
+    val cellSize = (keyHeight.value * 0.95f).dp
+    var shown by remember { mutableStateOf(false) }
+    LaunchedEffect(Unit) { shown = true }
+    val animScale by animateFloatAsState(
+        targetValue = if (shown) 1f else 0.5f,
+        animationSpec = spring(dampingRatio = Spring.DampingRatioMediumBouncy, stiffness = Spring.StiffnessHigh),
+        label = "popupRowScale"
+    )
+    val animAlpha by animateFloatAsState(
+        targetValue = if (shown) 1f else 0f,
+        animationSpec = spring(stiffness = Spring.StiffnessHigh),
+        label = "popupRowAlpha"
+    )
+    Row(
+        modifier = Modifier
+            .graphicsLayer {
+                scaleX = animScale
+                scaleY = animScale
+                alpha = animAlpha
+                transformOrigin = TransformOrigin(0.5f, 1f)
+            }
+            .clip(keyShape)
+            .background(colors.keyBg)
+            .padding(3.dp),
+        horizontalArrangement = Arrangement.spacedBy(2.dp)
+    ) {
+        alternates.forEachIndexed { index, alt ->
+            val isSelected = index == selectedIndex
+            Box(
+                modifier = Modifier
+                    .size(cellSize)
+                    .clip(RoundedCornerShape((cellSize.value * 0.3f).dp))
+                    .background(if (isSelected) colors.accent.copy(alpha = 0.35f) else Color.Transparent),
+                contentAlignment = Alignment.Center
+            ) {
+                Text(
+                    text = alt,
+                    fontSize = (cellSize.value * 0.5f).sp,
+                    color = colors.keyText,
+                    fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal
+                )
+            }
+        }
+    }
+}
+
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun RowScope.NumberedLetterKey(
@@ -2210,7 +2324,12 @@ private fun RowScope.LetterKey(
     // isn't relevant (symbol/numpad keys, previews) so this stays a no-op
     // there instead of needing every LetterKey call site updated.
     onPositioned: ((androidx.compose.ui.layout.LayoutCoordinates) -> Unit)? = null,
-    onTap: () -> Unit
+    onTap: () -> Unit,
+    // Called instead of onTap when the user long-presses this key, drags
+    // to one of the popup alternates, and releases over it. Left null at
+    // call sites that don't want the feature (kept optional rather than
+    // wiring it through every LetterKey call site at once).
+    onAlternateSelected: ((String) -> Unit)? = null
 ) {
     var pressed by remember { mutableStateOf(false) }
     // BUG FIX (preview bubble doesn't show during fast typing): `pressed`
@@ -2236,6 +2355,31 @@ private fun RowScope.LetterKey(
     val bumpScale = rememberKeyBumpScale(pressed)
     val bumpOffsetY = rememberKeyBumpOffsetY(pressed)
     val popScale = keyPopScaleMultiplier(pressed, colors.keyEffect)
+
+    // Long-press popup (accented alternates — see LongPressPopupData.kt).
+    // Looked up from the key's own base (lowercase) character; empty when
+    // this key has no alternates, in which case the popup path below is
+    // never entered at all and behavior is identical to before this
+    // feature existed.
+    val alternates = remember(label) {
+        longPressPopupAlternates[label.lowercase().firstOrNull() ?: ' ']
+            ?.let { alts -> if (label.firstOrNull()?.isUpperCase() == true) alts.map { it.uppercase() } else alts }
+            ?: emptyList()
+    }
+    var popupVisible by remember { mutableStateOf(false) }
+    var selectedAltIndex by remember { mutableStateOf(0) }
+    // The key's own on-screen width, needed to translate a drag offset
+    // (in px, relative to where the finger went down) into "how many
+    // popup-row cells has the finger moved across". Updated by
+    // onSizeChanged below; read from the gesture loop.
+    var keyWidthPx by remember { mutableStateOf(0) }
+    // Cell width used both here and in LongPressPopupRow — kept as one
+    // shared calculation so the two never drift out of sync with each
+    // other (2.dp horizontal spacing between cells, matching the Row spacedBy
+    // in LongPressPopupRow above).
+    val density = LocalDensity.current
+    val cellStridePx = with(density) { ((keyHeight.value * 0.95f).dp + 2.dp).toPx() }
+
     Box(
         modifier = Modifier
             .height(keyHeight).weight(weight)
@@ -2246,23 +2390,125 @@ private fun RowScope.LetterKey(
             .keyEffectDecoration(colors, keyShape)
             .keyRippleEffect(colors, pressed)
             .let { m -> if (onPositioned != null) m.onGloballyPositioned(onPositioned) else m }
-            // clickable handles the actual tap/long-press logic reliably.
-            // pointerInput only tracks down/up for the visual pressed state.
-            .clickable { onTap() }
-            .pointerInput(Unit) {
+            .onSizeChanged { keyWidthPx = it.width }
+            .pointerInput(alternates) {
                 awaitEachGesture {
-                    awaitFirstDown(requireUnconsumed = false)
+                    val down = awaitFirstDown(requireUnconsumed = false)
                     pressed = true
                     pressTick++
-                    waitForUpOrCancellation()
-                    pressed = false
+                    popupVisible = false
+                    selectedAltIndex = 0
+
+                    // Race a long-press timer against the finger lifting.
+                    // withTimeoutOrNull returns null (timed out — meaning
+                    // the long-press threshold was reached while still
+                    // down) or the UP event (finger lifted before the
+                    // threshold). This mirrors what .clickable/detectTapGestures
+                    // do internally, but written out explicitly because we
+                    // need to keep tracking drag position *after* the
+                    // long-press fires, which clickable's own long-press
+                    // callback doesn't support.
+                    val longPressThresholdMs = android.view.ViewConfiguration.getLongPressTimeout().toLong()
+                    // withTimeoutOrNull's own return value is null only
+                    // when it timed out (long-press threshold reached
+                    // while still down) — proceed to long-press/popup
+                    // handling below in that case. A non-null Boolean
+                    // means the finger was released (true) or the gesture
+                    // was cancelled, e.g. scrolled away (false) before
+                    // that threshold — an ordinary tap either way, just
+                    // only actually type the character if it wasn't
+                    // cancelled.
+                    val releasedBeforeLongPress: Boolean? = withTimeoutOrNull(longPressThresholdMs) {
+                        waitForUpOrCancellation() != null
+                    }
+
+                    if (releasedBeforeLongPress != null) {
+                        // Ordinary tap — released (or cancelled) before
+                        // the long-press threshold. Behaves exactly as it
+                        // always has.
+                        pressed = false
+                        if (releasedBeforeLongPress) {
+                            onTap()
+                        }
+                        return@awaitEachGesture
+                    }
+
+                    // Long-press threshold reached while still down. Only
+                    // actually show the popup if this key has alternates
+                    // to offer — otherwise fall through to normal
+                    // press-and-hold-then-release-still-taps behavior,
+                    // unchanged from before this feature existed.
+                    if (alternates.isNotEmpty()) {
+                        popupVisible = true
+                    }
+
+                    // Keep tracking the finger (drag across the popup row
+                    // to change selection) until it's lifted or cancelled.
+                    while (true) {
+                        val event = awaitPointerEvent()
+                        val change = event.changes.firstOrNull { it.id == down.id } ?: break
+                        if (!change.pressed) {
+                            // Finger lifted. Commit whichever alternate is
+                            // currently selected, if the popup was showing
+                            // at all — otherwise this was a long-press on
+                            // a key with no alternates, which still just
+                            // types the base character (matches existing
+                            // long-press-does-nothing-special behavior for
+                            // those keys).
+                            if (popupVisible && alternates.isNotEmpty()) {
+                                val chosen = alternates.getOrNull(selectedAltIndex)
+                                if (chosen != null && onAlternateSelected != null) {
+                                    onAlternateSelected(chosen)
+                                } else {
+                                    onTap()
+                                }
+                            } else {
+                                onTap()
+                            }
+                            pressed = false
+                            popupVisible = false
+                            change.consume()
+                            break
+                        }
+                        if (popupVisible && alternates.isNotEmpty() && keyWidthPx > 0) {
+                            // The popup row is centered above the key. To
+                            // find which cell is under the finger: take
+                            // the finger's x position (relative to this
+                            // key's own left edge, which is what
+                            // change.position.x already is, since we're
+                            // inside this key's own pointerInput), shift
+                            // it into the row's coordinate space by
+                            // correcting for the row being wider/narrower
+                            // than the key and centered rather than
+                            // left-aligned, then divide by one cell's
+                            // stride to get an index.
+                            val rowWidthPx = cellStridePx * alternates.size
+                            val keyCenterPx = keyWidthPx / 2f
+                            val rowLeftEdgePx = keyCenterPx - rowWidthPx / 2f
+                            val posInRowPx = change.position.x - rowLeftEdgePx
+                            val rawIndex = (posInRowPx / cellStridePx).toInt()
+                            selectedAltIndex = rawIndex.coerceIn(0, alternates.lastIndex)
+                        }
+                        change.consume()
+                    }
                 }
             },
         contentAlignment = Alignment.Center
     ) {
         Text(text = label, fontSize = keyLabelFontSize(keyHeight), color = colors.keyText,
             fontWeight = FontWeight.Normal)
-        if (rememberPreviewVisible(pressTick)) {
+        if (popupVisible && alternates.isNotEmpty()) {
+            Popup(alignment = Alignment.TopCenter,
+                offset = IntOffset(0, -((keyHeight.value * 1.4f).toInt()))) {
+                LongPressPopupRow(
+                    alternates = alternates,
+                    keyHeight = keyHeight,
+                    colors = colors,
+                    keyShape = keyShape,
+                    selectedIndex = selectedAltIndex
+                )
+            }
+        } else if (rememberPreviewVisible(pressTick)) {
             Popup(alignment = Alignment.TopCenter,
                 offset = IntOffset(0, -((keyHeight.value * 1.4f).toInt()))) {
                 KeyPreviewPopup(label = label, keyHeight = keyHeight, colors = colors, keyShape = keyShape)
