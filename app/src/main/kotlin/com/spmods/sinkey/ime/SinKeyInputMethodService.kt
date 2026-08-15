@@ -1037,6 +1037,26 @@ class SinKeyInputMethodService : InputMethodService() {
             // empty rather than guess.
             return
         }
+        // The word is still sitting in the field as plain committed text —
+        // only wordBuffer/englishBuffer now also hold a copy of it, purely
+        // for driving the suggestion strip. If we left it as-is, the next
+        // SPACE would call commitPendingWord()/maybeAutocorrectAndCommitSpace(),
+        // which unconditionally COMMIT the buffer's text at the cursor —
+        // inserting a second copy right next to the original instead of
+        // replacing it, since there's no composing span here for
+        // setComposingText("") to clear. Deleting the on-screen word here
+        // and re-adding it as an actual composing span (same call every
+        // other per-letter keystroke uses) makes it behave exactly like the
+        // user is still mid-typing it: the next commit replaces this span
+        // instead of appending beside it.
+        ic.deleteSurroundingText(word.length, 0)
+        if (script == "si" && isSinhalaTyping()) {
+            setComposingTextStyled(ic, renderStyledBuffer())
+        } else {
+            val styled = com.spmods.sinkey.keyboard.FancyTextMapper.apply(word, cachedFancyTextStyle)
+            ic.setComposingText(styled, 1)
+        }
+        syncExpectedCursorPosition(ic)
         updateSuggestions()
     }
 
@@ -1477,8 +1497,28 @@ class SinKeyInputMethodService : InputMethodService() {
             !correction.equals(typed, ignoreCase = true)
 
         val committedWord = if (shouldAutocorrect) correction!! else typed
+        // Each letter of `typed` was already committed live to the field as
+        // the user typed it (see the per-letter "else" branch above, which
+        // uses ic.commitText, not composing text) — so the plain-typed word
+        // is already sitting on screen, styled with cachedFancyTextStyle.
+        // Re-committing the full word here like SPACE for Sinhala does would
+        // insert a second copy right next to the first, since there's no
+        // composing span for it to replace. Only touch the field at all when
+        // autocorrect actually changes the word: delete exactly what's
+        // already on screen first, then commit the correction in its place.
+        // Must delete by the STYLED text's length, not typed.length — several
+        // fancy styles (bold, italic, script, double-struck, monospace...)
+        // map each plain letter to an astral-plane code point, which is 2
+        // UTF-16 chars, so the on-screen text can be longer than the raw
+        // typed word.
+        if (shouldAutocorrect) {
+            val originalStyled = com.spmods.sinkey.keyboard.FancyTextMapper.apply(typed, cachedFancyTextStyle)
+            ic.deleteSurroundingText(originalStyled.length, 0)
+        }
         val styled = com.spmods.sinkey.keyboard.FancyTextMapper.apply(committedWord, cachedFancyTextStyle)
-        ic.commitText(styled, 1)
+        if (shouldAutocorrect) {
+            ic.commitText(styled, 1)
+        }
         ic.commitText(" ", 1)
 
         if (shouldAutocorrect) {
