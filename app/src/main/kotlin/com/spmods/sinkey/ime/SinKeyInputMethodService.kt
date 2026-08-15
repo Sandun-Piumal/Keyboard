@@ -1093,6 +1093,33 @@ class SinKeyInputMethodService : InputMethodService() {
         expectedCursorPosition = extracted?.let { it.startOffset + it.selectionEnd } ?: expectedCursorPosition
     }
 
+    /**
+     * Consumes resumedWordBeforeCursor (see its own doc comment) right
+     * before a keystroke is about to continue typing/deleting into a
+     * resumed word: deletes the on-screen original so the caller's own
+     * composing/commit call replaces it instead of duplicating it beside it.
+     *
+     * Verifies the text immediately before the cursor actually still equals
+     * resumedWordBeforeCursor before deleting anything. onUpdateSelection's
+     * own external-move detection can occasionally misfire on OUR OWN edits
+     * (a known platform timing race — see its doc comment on the
+     * StackOverflowError this already once caused), which would otherwise
+     * re-trigger reseedSuggestionsForWordAtCursor mid-type and leave
+     * resumedWordBeforeCursor set for a word the user is still actively,
+     * correctly typing — blindly trusting it here would then delete text
+     * that was never stale in the first place, mid-keystroke. Checking
+     * against the real field contents makes this a no-op whenever that
+     * race happens, instead of eating live text.
+     */
+    private fun consumeResumedWordIfStillPresent(ic: android.view.inputmethod.InputConnection) {
+        val resumed = resumedWordBeforeCursor ?: return
+        resumedWordBeforeCursor = null
+        val before = ic.getTextBeforeCursor(resumed.length, 0)?.toString()
+        if (before == resumed) {
+            ic.deleteSurroundingText(resumed.length, 0)
+        }
+    }
+
     override fun onFinishInputView(finishingInput: Boolean) {
         super.onFinishInputView(finishingInput)
         android.util.Log.d("SinKeyDebug", "onFinishInputView called, finishingInput=$finishingInput")
@@ -1167,8 +1194,7 @@ class SinKeyInputMethodService : InputMethodService() {
                     // plain text with no composing span — delete it first so
                     // the composing text set below replaces it instead of
                     // duplicating it.
-                    resumedWordBeforeCursor?.let { ic.deleteSurroundingText(it.length, 0) }
-                    resumedWordBeforeCursor = null
+                    consumeResumedWordIfStillPresent(ic)
                     wordBuffer.deleteCharAt(wordBuffer.length - 1)
                     if (wordBuffer.isEmpty()) {
                         ic.setComposingText("", 1)
@@ -1342,8 +1368,7 @@ class SinKeyInputMethodService : InputMethodService() {
                     // original on-screen copy before appending — otherwise the
                     // upcoming setComposingTextStyled below would insert a
                     // second copy beside the first instead of replacing it.
-                    resumedWordBeforeCursor?.let { ic.deleteSurroundingText(it.length, 0) }
-                    resumedWordBeforeCursor = null
+                    consumeResumedWordIfStillPresent(ic)
                     wordBuffer.append(typed)
                     setComposingTextStyled(ic, renderStyledBuffer())
                     updateSuggestions()
@@ -1358,8 +1383,7 @@ class SinKeyInputMethodService : InputMethodService() {
                     // text (not composing), so it must be deleted before the
                     // live per-letter commitText below, or this would insert
                     // a second copy beside the original.
-                    resumedWordBeforeCursor?.let { ic.deleteSurroundingText(it.length, 0) }
-                    resumedWordBeforeCursor = null
+                    consumeResumedWordIfStillPresent(ic)
                     englishBuffer.append(typed)
                     val styled = com.spmods.sinkey.keyboard.FancyTextMapper.apply(typed, cachedFancyTextStyle)
                     ic.commitText(styled, 1)
@@ -1503,9 +1527,9 @@ class SinKeyInputMethodService : InputMethodService() {
         // text; delete exactly it before committing finalWord, or this
         // would insert a second copy right beside the first instead of
         // replacing it. Ordinary fresh-typed words never set this, so this
-        // is a no-op for the normal case.
-        resumedWordBeforeCursor?.let { ic?.deleteSurroundingText(it.length, 0) }
-        resumedWordBeforeCursor = null
+        // is a no-op for the normal case. Verifies the text is still really
+        // there first — see consumeResumedWordIfStillPresent's doc comment.
+        if (ic != null) consumeResumedWordIfStillPresent(ic) else resumedWordBeforeCursor = null
         ic?.commitText(finalWord, 1)
         wordBuffer.clear()
         clearSuggestions()
