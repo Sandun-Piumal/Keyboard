@@ -413,7 +413,7 @@ private fun stepToBottomPadding(step: Float): Dp = when (Math.round(step)) {
 // Replaces the previous ad-hoc boolean flags (showSymbols, showEmojiPicker)
 // which had no memory of which board opened them, so back always went to MAIN.
 // Must be internal (not private) so SinKeyInputMethodService can reference it.
-enum class Board { MAIN, SYMBOLS, NUMPAD, EMOJI, CLIPBOARD, FONT, STICKER, STICKER_CREATE, STICKER_EDIT }
+enum class Board { MAIN, SYMBOLS, NUMPAD, EMOJI, CLIPBOARD, FONT, STICKER, STICKER_CREATE, STICKER_EDIT, TRANSLATE }
 
 /** Result of Board.STICKER_EDIT's async preview-image decode — see that branch in KeyboardView's content `when`. */
 private sealed class StickerEditDecodeResult {
@@ -487,7 +487,21 @@ internal fun KeyboardView(
     pendingStickerImagePath: String? = null,
     // Called when the user taps "Add to stickers" on Board.STICKER_EDIT,
     // wired to SinKeyInputMethodService.saveEditedImageSticker.
-    onSaveImageSticker: (ImageStickerDraft) -> Unit = {}
+    onSaveImageSticker: (ImageStickerDraft) -> Unit = {},
+    // Board.TRANSLATE: fired on every debounced translation result (and
+    // with "" when the source text is cleared or the board is left) so the
+    // service can push the live-translated text into the real
+    // InputConnection as composing text — see TranslateView's doc comment
+    // for why the translation itself has to live in this Composable rather
+    // than the service (it owns the local, non-InputConnection draft
+    // buffer the user types into) while committing to the real field still
+    // has to happen in the service (only it holds the InputConnection).
+    onTranslatedTextChanged: (String) -> Unit = {},
+    // Board.TRANSLATE's Done button — finalizes whatever's currently
+    // composing (from the most recent onTranslatedTextChanged) as real
+    // committed text, instead of leaving it as an editable composing span
+    // forever. See SinKeyInputMethodService.onTranslationCommitted.
+    onTranslationCommitted: () -> Unit = {}
 ) {
     // Read ahead of `colors` below (moved up from where these used to live,
     // further down this function) because keyboardColors() now needs the
@@ -673,7 +687,7 @@ internal fun KeyboardView(
             // except for the Emoji board — which moves its own category
             // tabs to the very top instead, in place of this toolbar) ──────
             if (currentBoard != Board.EMOJI && currentBoard != Board.CLIPBOARD && currentBoard != Board.FONT &&
-                currentBoard != Board.STICKER && currentBoard != Board.STICKER_CREATE) {
+                currentBoard != Board.STICKER && currentBoard != Board.STICKER_CREATE && currentBoard != Board.TRANSLATE) {
                 AppsMicBar(
                     colors = colors,
                     isDark = isDark,
@@ -685,6 +699,7 @@ internal fun KeyboardView(
                     onClipboardOpen = { pushBoard(Board.CLIPBOARD) },
                     onFontOpen = { pushBoard(Board.FONT) },
                     onStickerOpen = { pushBoard(Board.STICKER) },
+                    onTranslateOpen = { pushBoard(Board.TRANSLATE) },
                     selectedFontStyle = FancyTextStyle.fromKey(selectedFontKey)
                 )
             }
@@ -697,7 +712,7 @@ internal fun KeyboardView(
             // shifts or resizes) — the recent-emoji strip itself is not
             // shown at all while the banner is up.
             if (!isPhoneInput && currentBoard != Board.EMOJI && currentBoard != Board.CLIPBOARD && currentBoard != Board.FONT &&
-                currentBoard != Board.STICKER && currentBoard != Board.STICKER_CREATE) {
+                currentBoard != Board.STICKER && currentBoard != Board.STICKER_CREATE && currentBoard != Board.TRANSLATE) {
                 if (showUpdateBanner) {
                     UpdateBanner(
                         colors = colors,
@@ -804,6 +819,15 @@ internal fun KeyboardView(
                         coroutineScope.launch { stickerRepository.createFromText(text, textColor) }
                         popBoard()
                     },
+                    onBack = { popBoard() }
+                )
+                currentBoard == Board.TRANSLATE -> TranslateView(
+                    colors = colors, keyHeight = keyHeight,
+                    bottomPadding = bottomPadding,
+                    targetContentHeight = measuredMainContentHeight + 48.dp +
+                        (if (!isPhoneInput && (showUpdateBanner || recentEmojis.isNotEmpty())) 44.dp else 0.dp),
+                    onTranslatedTextChanged = onTranslatedTextChanged,
+                    onTranslationCommitted = onTranslationCommitted,
                     onBack = { popBoard() }
                 )
                 currentBoard == Board.STICKER_EDIT -> {
@@ -1647,6 +1671,7 @@ private fun AppsMicBar(
     onClipboardOpen: () -> Unit,
     onFontOpen: () -> Unit,
     onStickerOpen: () -> Unit,
+    onTranslateOpen: () -> Unit,
     selectedFontStyle: FancyTextStyle = FancyTextStyle.NONE
 ) {
     // The undo chip must be able to show the strip even when there are no
@@ -1808,6 +1833,7 @@ private fun AppsMicBar(
                                     "TOOL_CLIPBOARD" -> onClipboardOpen()
                                     "TOOL_FONT" -> onFontOpen()
                                     "TOOL_STICKER" -> onStickerOpen()
+                                    "TOOL_TRANSLATE" -> onTranslateOpen()
                                     else -> onKey(action)
                                 }
                             },
