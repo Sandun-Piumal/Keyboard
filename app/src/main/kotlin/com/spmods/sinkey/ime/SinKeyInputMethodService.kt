@@ -268,6 +268,16 @@ class SinKeyInputMethodService : InputMethodService() {
     // InputConnection ordering.
     private var pendingSelfEdits = 0
 
+    // See onTranslatedTextChanged — tracks whether normal-typing state
+    // (wordBuffer/englishBuffer/etc.) has already been flushed for the
+    // current translate-board session, so that flush only runs once per
+    // session (on the first non-empty translation) rather than on every
+    // keystroke inside TranslateView. Reset to false whenever the
+    // translate composing text is cleared (source text emptied, or the
+    // board is left), so the next time translation starts again it's
+    // treated as a fresh session.
+    private var translateSessionCleanedUp = false
+
     override fun onEvaluateFullscreenMode(): Boolean = false
 
     // REQUIRED companion to the MATCH_PARENT window-height experiment
@@ -770,6 +780,8 @@ class SinKeyInputMethodService : InputMethodService() {
                         onStickerSend = { filePath, mimeType -> onStickerSelected(filePath, mimeType) },
                         onPickStickerImage = { pickImageForSticker() },
                         pendingStickerImagePath = pendingStickerImagePath.value,
+                        onTranslatedTextChanged = ::onTranslatedTextChanged,
+                        onTranslationCommitted = ::onTranslationCommitted,
                         onSaveImageSticker = { draft ->
                             saveEditedImageSticker(
                                 imageScale = draft.imageScale,
@@ -1321,8 +1333,10 @@ class SinKeyInputMethodService : InputMethodService() {
             }
             "SYMBOLS_SHIFT", "EMOJI", "NUMPAD" -> { /* handled in KeyboardView */ }
             "TOOL_MIC" -> { sendDefaultEditorAction(true) }
-            "TOOL_APPS", "TOOL_STICKER", "TOOL_FONT",
-            "TOOL_TRANSLATE", "TOOL_SETTINGS" -> {
+            // TOOL_STICKER, TOOL_FONT, and TOOL_TRANSLATE never reach here —
+            // AppsMicBar intercepts them directly (onStickerOpen/onFontOpen/
+            // onTranslateOpen) before calling onKey, same as TOOL_CLIPBOARD.
+            "TOOL_APPS", "TOOL_SETTINGS" -> {
                 android.util.Log.d("SinKey", "Tool action: $key (not yet implemented)")
             }
             "SWITCH_KEYBOARD" -> {
@@ -1533,6 +1547,75 @@ class SinKeyInputMethodService : InputMethodService() {
             )
             ic.setComposingText(spanned, 1)
         }
+    }
+
+    /**
+     * Wired to TranslateView.onTranslatedTextChanged (Board.TRANSLATE — see
+     * that Composable's doc comment for the split of responsibility: it
+     * owns the local typing buffer + debounced translate calls, this
+     * function owns actually writing the result into the real target app's
+     * field, since only the service holds the InputConnection).
+     *
+     * Called on every debounced translation result while the translate
+     * board is open, and once more with "" when the source text is
+     * cleared or the board is left (TranslateView's Back handler). Always
+     * sets the *whole* translated string as one composing span — replacing
+     * whatever was composing before — rather than trying to diff/append
+     * against the previous value, since a translation of a longer sentence
+     * commonly changes earlier words too (unlike normal per-letter typing),
+     * so there's no meaningful "just append the new part" case here.
+     *
+     * Uses setComposingTextStyled so Sinhala output gets the same green
+     * underline as normal Sinhala typing, keeping the live-preview-in-app
+     * behaviour visually consistent with the rest of the keyboard.
+     */
+    private fun onTranslatedTextChanged(translated: String) {
+        val ic = currentInputConnection ?: return
+        if (translated.isEmpty()) {
+            ic.setComposingText("", 1)
+            ic.finishComposingText()
+            translateSessionCleanedUp = false
+        } else {
+            // First real content since the translate board opened (or since
+            // it was last cleared) — flush any leftover normal-typing
+            // composing state first, same reasoning as e.g. LANG_TOGGLE's
+            // commitPendingWord() call: without this, a word left
+            // mid-composition from before TOOL_TRANSLATE was tapped would
+            // collide with the composing span TranslateView is about to
+            // start writing into. commitPendingWord() is already a no-op
+            // when wordBuffer is empty, so this is safe to gate on a simple
+            // one-shot flag rather than re-running it on every keystroke.
+            if (!translateSessionCleanedUp) {
+                commitPendingWord()
+                englishBuffer.clear()
+                resumedWordBeforeCursor = null
+                clearSuggestions()
+                translateSessionCleanedUp = true
+            }
+            setComposingTextStyled(ic, translated)
+        }
+        // See syncExpectedCursorPosition's doc comment — every edit path
+        // that touches the InputConnection must call this, or the next
+        // onUpdateSelection() for this self-caused move gets wrongly
+        // classified as an external cursor jump and the composing text
+        // just set here would be immediately finished/cleared again.
+        syncExpectedCursorPosition(ic)
+    }
+
+    /**
+     * Wired to TranslateView's Done button (via KeyboardView's
+     * onTranslationCommitted). onTranslatedTextChanged above only ever
+     * calls setComposingText — that leaves the text as a live, still-
+     * editable composing span (visibly underlined) rather than plain
+     * committed text, same distinction as everywhere else in this file
+     * (see e.g. commitPendingWord). Finishing composing here is what
+     * actually "locks in" the translation, matching what tapping a normal
+     * suggestion chip does.
+     */
+    private fun onTranslationCommitted() {
+        val ic = currentInputConnection ?: return
+        ic.finishComposingText()
+        syncExpectedCursorPosition(ic)
     }
 
     /**
