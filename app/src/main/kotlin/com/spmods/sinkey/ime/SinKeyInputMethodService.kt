@@ -1,6 +1,7 @@
 package com.spmods.sinkey.ime
 
 import android.inputmethodservice.InputMethodService
+import android.inputmethodservice.InputMethodService.Insets
 import android.media.AudioManager
 import android.os.VibrationEffect
 import android.os.Vibrator
@@ -8,6 +9,11 @@ import android.view.View
 import android.view.ViewGroup
 import android.view.inputmethod.EditorInfo
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -224,6 +230,42 @@ class SinKeyInputMethodService : InputMethodService() {
     private var expectedCursorPosition = -1
 
     override fun onEvaluateFullscreenMode(): Boolean = false
+
+    // REQUIRED companion to the MATCH_PARENT window-height experiment
+    // above (see the comment on composeView.layoutParams in
+    // onCreateInputView). A MATCH_PARENT-height IME window covers the
+    // WHOLE screen from Android's perspective, not just the visible
+    // keyboard strip at the bottom — without telling Android which part
+    // of that window is actually "the keyboard", the host app (WhatsApp)
+    // would stop receiving touches on its own content above the keyboard,
+    // because our now-full-screen window would intercept them first. This
+    // did not need to exist before because a WRAP_CONTENT-height window
+    // was automatically only as tall as its content, so Android already
+    // knew its bounds equalled the visible keyboard. onComputeInsets is
+    // the API InputMethodService expects apps to use for exactly this:
+    // it reports where the actual usable/touchable IME content starts,
+    // measured from the top of our window.
+    override fun onComputeInsets(outInsets: Insets) {
+        super.onComputeInsets(outInsets)
+        val windowHeight = window?.window?.decorView?.height ?: 0
+        // contentTopInsets / visibleTopInsets are both measured as an
+        // absolute Y coordinate within our window, not a height — so we
+        // need "window height minus the keyboard's own measured height",
+        // not the keyboard's height by itself. If the compose content
+        // hasn't been measured yet (e.g. very first frame, or hidden via
+        // hostWindowFocused), fall back to reporting the full window as
+        // content, matching the platform default so nothing regresses
+        // before our first layout pass / while content is intentionally
+        // blank.
+        val keyboardTop = if (keyboardContentHeightPx > 0) {
+            (windowHeight - keyboardContentHeightPx).coerceAtLeast(0)
+        } else {
+            0
+        }
+        outInsets.contentTopInsets = keyboardTop
+        outInsets.visibleTopInsets = keyboardTop
+        outInsets.touchableInsets = Insets.TOUCHABLE_INSETS_CONTENT
+    }
 
     override fun onCreate() {
         super.onCreate()
@@ -554,6 +596,17 @@ class SinKeyInputMethodService : InputMethodService() {
     // Activity transition.
     private var hostWindowFocused = mutableStateOf(true)
 
+    // Tracks the actual visible keyboard content's measured height in
+    // pixels — NOT the same as imeComposeView's own height, which is now
+    // MATCH_PARENT (full window height) as part of the FlorisBoard-style
+    // window-sizing fix. onComputeInsets needs the real content height to
+    // correctly report where the keyboard starts, so touches above it
+    // reach the host app instead of being swallowed by our now-full-size
+    // window. Updated via Modifier.onGloballyPositioned on the bottom-
+    // aligned content Box in onCreateInputView below.
+    @Volatile
+    private var keyboardContentHeightPx = 0
+
     override fun onCreateInputView(): View? {
         android.util.Log.d("SinKeyDebug", "onCreateInputView called, imeComposeView is null? ${imeComposeView == null}")
         if (imeComposeView != null) {
@@ -644,6 +697,15 @@ class SinKeyInputMethodService : InputMethodService() {
                     // frame budget as any other keyboard show) that it
                     // reads as an ordinary keyboard show, not a flicker.
                     if (focused) {
+                    Box(
+                        modifier = Modifier.fillMaxSize(),
+                        contentAlignment = Alignment.BottomCenter
+                    ) {
+                    Box(
+                        modifier = Modifier.onGloballyPositioned { coords ->
+                            keyboardContentHeightPx = coords.size.height
+                        }
+                    ) {
                     KeyboardView(
                         currentLanguage = currentLanguage.value,
                         keyboardHeight = keyboardHeight,
@@ -692,6 +754,8 @@ class SinKeyInputMethodService : InputMethodService() {
                         }
                     )
                     }
+                    }
+                    }
                   }
                 }
         }
@@ -718,9 +782,29 @@ class SinKeyInputMethodService : InputMethodService() {
             }
         }
 
+        // EXPERIMENT (WhatsApp double-keyboard bug): switched from
+        // WRAP_CONTENT height to MATCH_PARENT, matching FlorisBoard's
+        // ImeRootView exactly (see ime/window/ImeRootView.kt in
+        // FlorisBoard's source — LayoutParams(MATCH_PARENT, MATCH_PARENT)).
+        // The user confirmed FlorisBoard does not reproduce this bug on
+        // the same device performing the same WhatsApp header-tap/back
+        // reproduction steps that reliably reproduce it here, and multiple
+        // rounds of logcat-verified fixes targeting attach/detach and
+        // render-visibility logic did not resolve it — narrowing the
+        // remaining plausible cause to this one specific, deep
+        // architectural difference: a window that Android auto-resizes
+        // to wrap its content (this app, previously) is fundamentally a
+        // different kind of window than one with fixed MATCH_PARENT
+        // bounds that never resizes (FlorisBoard) from Android's
+        // window-manager/compositor perspective, and WhatsApp's own
+        // screen-transition screenshot machinery may treat/composite
+        // those two cases differently. The keyboard's visual position and
+        // size are unchanged for the user — KeyboardView is now wrapped
+        // in a full-bounds Box that bottom-aligns it (see below) — only
+        // the *window's own* layout params changed.
         composeView.layoutParams = android.view.ViewGroup.LayoutParams(
             android.view.ViewGroup.LayoutParams.MATCH_PARENT,
-            android.view.ViewGroup.LayoutParams.WRAP_CONTENT
+            android.view.ViewGroup.LayoutParams.MATCH_PARENT
         )
         val content = window?.window?.findViewById<ViewGroup>(android.R.id.content)
         android.util.Log.d("SinKeyDebug", "onCreateInputView: content childCount BEFORE addView = ${content?.childCount}")
