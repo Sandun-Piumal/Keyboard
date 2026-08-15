@@ -1161,6 +1161,14 @@ class SinKeyInputMethodService : InputMethodService() {
                     // suggested for the just-deleted selection still showing.
                     updateSuggestions()
                 } else if (wordBuffer.isNotEmpty()) {
+                    // Same resumed-word handling as the per-letter typing
+                    // branches: if this word came from reseedSuggestionsForWordAtCursor
+                    // rather than being typed fresh, it's still on screen as
+                    // plain text with no composing span — delete it first so
+                    // the composing text set below replaces it instead of
+                    // duplicating it.
+                    resumedWordBeforeCursor?.let { ic.deleteSurroundingText(it.length, 0) }
+                    resumedWordBeforeCursor = null
                     wordBuffer.deleteCharAt(wordBuffer.length - 1)
                     if (wordBuffer.isEmpty()) {
                         ic.setComposingText("", 1)
@@ -1178,6 +1186,7 @@ class SinKeyInputMethodService : InputMethodService() {
                     updateSuggestions()
                 } else {
                     if (englishBuffer.isNotEmpty()) englishBuffer.deleteCharAt(englishBuffer.length - 1)
+                    if (englishBuffer.isEmpty()) resumedWordBeforeCursor = null
                     val beforeCursor = ic.getTextBeforeCursor(4, 0)
                     if (!beforeCursor.isNullOrEmpty()) {
                         val lastCodePoint = Character.codePointBefore(beforeCursor, beforeCursor.length)
@@ -1324,6 +1333,17 @@ class SinKeyInputMethodService : InputMethodService() {
                     val allowShiftHere = shiftState.value != ShiftState.OFF &&
                         (wasExplicitShift || !isCaseSensitiveSinhalaLetter(key))
                     val typed = if (allowShiftHere) key.uppercase() else key.lowercase()
+                    // If wordBuffer's current contents came from resuming an
+                    // existing on-screen word (reseedSuggestionsForWordAtCursor —
+                    // cursor tapped back into it) rather than being typed fresh
+                    // this session, that word is still sitting in the field as
+                    // plain text with no composing span backing it. Now that
+                    // the user is actually continuing to type it, delete that
+                    // original on-screen copy before appending — otherwise the
+                    // upcoming setComposingTextStyled below would insert a
+                    // second copy beside the first instead of replacing it.
+                    resumedWordBeforeCursor?.let { ic.deleteSurroundingText(it.length, 0) }
+                    resumedWordBeforeCursor = null
                     wordBuffer.append(typed)
                     setComposingTextStyled(ic, renderStyledBuffer())
                     updateSuggestions()
@@ -1332,6 +1352,14 @@ class SinKeyInputMethodService : InputMethodService() {
                 } else {
                     // Apply shift to English letter
                     val typed = if (shiftState.value != ShiftState.OFF) key.uppercase() else key.lowercase()
+                    // Same resumed-word handling as the Sinhala branch above —
+                    // see that comment. English's on-screen original was set
+                    // by reseedSuggestionsForWordAtCursor as plain committed
+                    // text (not composing), so it must be deleted before the
+                    // live per-letter commitText below, or this would insert
+                    // a second copy beside the original.
+                    resumedWordBeforeCursor?.let { ic.deleteSurroundingText(it.length, 0) }
+                    resumedWordBeforeCursor = null
                     englishBuffer.append(typed)
                     val styled = com.spmods.sinkey.keyboard.FancyTextMapper.apply(typed, cachedFancyTextStyle)
                     ic.commitText(styled, 1)
@@ -1492,83 +1520,31 @@ class SinKeyInputMethodService : InputMethodService() {
     }
 
     /**
-     * Pure-English SPACE handling: commits englishBuffer's word, silently
-     * autocorrecting it first if the platform spell checker's own most
-     * recent verdict for this exact word says it looks like a typo and
-     * offers a replacement (see SpellCheckVerdict/lastSpellCheckVerdict).
-     * Deliberately conservative — this only acts on the spell checker's own
-     * RESULT_ATTR_LOOKS_LIKE_TYPO flag rather than any heuristic of ours, so
-     * it never "corrects" a word the platform itself considers valid (e.g.
-     * names, slang, or words already in the user's personal dictionary,
-     * which is merged into what the spell checker session sees).
+     * Pure-English SPACE handling: the word was already committed to the
+     * field live, letter by letter, as the user typed it (see the per-letter
+     * "else" branch in handleKey, which uses ic.commitText, not composing
+     * text) — so by the time SPACE is pressed, exactly what the user typed
+     * is already on screen. SPACE therefore only ever commits the space
+     * itself; it never silently rewrites what's already there.
      *
-     * When it does correct, sets autocorrectUndo so KeyboardView can offer
-     * a one-tap revert (see undoAutocorrect()) — this is the ONLY place
-     * autocorrectUndo is set; every other edit path clears it (see
-     * clearAutocorrectUndoIfAny()) so the chip can never linger past the
-     * one correction it describes.
+     * Autocorrect is intentionally NOT applied here. A spell-checker
+     * correction, if one exists for this word, only ever reaches the user
+     * via the suggestion strip (see updateSuggestions/handleSuggestion) —
+     * committed only if they actually tap it. This keeps typing predictable:
+     * what you type is what stays, unless you deliberately pick a
+     * suggestion.
      */
     private fun maybeAutocorrectAndCommitSpace(ic: android.view.inputmethod.InputConnection) {
         val typed = englishBuffer.toString()
-        if (typed.isBlank()) {
-            ic.commitText(" ", 1)
-            return
-        }
-
-        val verdict = lastSpellCheckVerdict
-        val correction = verdict?.topCorrection
-        val shouldAutocorrect = verdict != null &&
-            verdict.typedWord == typed &&
-            verdict.looksLikeTypo &&
-            correction != null &&
-            !correction.equals(typed, ignoreCase = true)
-
-        val committedWord = if (shouldAutocorrect) correction!! else typed
-        // Each letter of `typed` was already committed live to the field as
-        // the user typed it (see the per-letter "else" branch above, which
-        // uses ic.commitText, not composing text) — so the plain-typed word
-        // is already sitting on screen, styled with cachedFancyTextStyle.
-        // Re-committing the full word here like SPACE for Sinhala does would
-        // insert a second copy right next to the first, since there's no
-        // composing span for it to replace. Only touch the field at all when
-        // autocorrect actually changes the word: delete exactly what's
-        // already on screen first, then commit the correction in its place.
-        //
-        // If this word was instead resumed from an existing on-screen word
-        // (cursor tapped back into it — see reseedSuggestionsForWordAtCursor),
-        // resumedWordBeforeCursor holds the ACTUAL on-screen text for it,
-        // which is what must be deleted — not a re-derivation through
-        // FancyTextMapper, since the original text on screen may not have
-        // been produced by the currently-cached style at all.
-        val onScreenOriginal = resumedWordBeforeCursor
-            ?: com.spmods.sinkey.keyboard.FancyTextMapper.apply(typed, cachedFancyTextStyle)
-        // Must delete by the on-screen text's real length, not typed.length —
-        // several fancy styles (bold, italic, script, double-struck,
-        // monospace...) map each plain letter to an astral-plane code point,
-        // which is 2 UTF-16 chars, so the on-screen text can be longer than
-        // the raw typed word.
-        if (shouldAutocorrect) {
-            ic.deleteSurroundingText(onScreenOriginal.length, 0)
-        }
+        // Whatever word is here — freshly typed or resumed from an existing
+        // on-screen word via reseedSuggestionsForWordAtCursor — is already
+        // exactly what's on screen. Nothing left to delete or re-commit;
+        // resumedWordBeforeCursor just needs clearing so it can't linger
+        // into a later, unrelated commit.
         resumedWordBeforeCursor = null
-        val styled = com.spmods.sinkey.keyboard.FancyTextMapper.apply(committedWord, cachedFancyTextStyle)
-        if (shouldAutocorrect) {
-            ic.commitText(styled, 1)
-        }
         ic.commitText(" ", 1)
-
-        if (shouldAutocorrect) {
-            autocorrectUndo.value = AutocorrectUndo(
-                originalTyped = typed,
-                correctedWord = styled,
-                hadTrailingSpace = true
-            )
-            // Learn the correction the spell checker made, not the typo —
-            // reinforcing a typo the user didn't actually intend defeats
-            // the point of correcting it in the first place.
-            learnWord(correction!!, "en")
-        } else {
-            clearAutocorrectUndoIfAny()
+        clearAutocorrectUndoIfAny()
+        if (typed.isNotBlank()) {
             learnWord(typed, "en")
         }
         englishBuffer.clear()
