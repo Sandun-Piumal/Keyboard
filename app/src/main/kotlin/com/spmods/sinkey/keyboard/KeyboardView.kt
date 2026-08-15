@@ -2027,9 +2027,7 @@ private fun keyNumberFontSize(keyHeight: Dp): androidx.compose.ui.unit.TextUnit 
 /**
  * Animates a quick "bump" scale for key-press feedback: snaps down fast on press,
  * springs back up with a slight overshoot on release.
- */
-@Composable
-/**
+ *
  * The key's press-down scale bump. Matches FlorisBoard's actual feel for
  * fast typing: FlorisBoard's own key rendering (ime/text/keyboard/
  * TextKeyboardLayout.kt) doesn't animate the pressed state at all — it's
@@ -3030,7 +3028,7 @@ private fun SymbolsKeyboardView(
             ) {
                 row1.forEach { ch ->
                     LetterKey(label = ch, weight = 1f, keyHeight = keyHeight,
-                        colors = colors, keyShape = keyShape) { onKey(ch) }
+                        colors = colors, keyShape = keyShape, onTap = { onKey(ch) })
                 }
             }
 
@@ -3041,7 +3039,7 @@ private fun SymbolsKeyboardView(
             ) {
                 row2.forEach { ch ->
                     LetterKey(label = ch, weight = 1f, keyHeight = keyHeight,
-                        colors = colors, keyShape = keyShape) { onKey(ch) }
+                        colors = colors, keyShape = keyShape, onTap = { onKey(ch) })
                 }
             }
 
@@ -3068,7 +3066,7 @@ private fun SymbolsKeyboardView(
                 }
                 row3.forEach { ch ->
                     LetterKey(label = ch, weight = 1f, keyHeight = keyHeight,
-                        colors = colors, keyShape = keyShape) { onKey(ch) }
+                        colors = colors, keyShape = keyShape, onTap = { onKey(ch) })
                 }
                 BackspaceKey(weight = 1.4f, keyHeight = keyHeight,
                     colors = colors, keyShape = keyShape) { onKey("BACKSPACE") }
