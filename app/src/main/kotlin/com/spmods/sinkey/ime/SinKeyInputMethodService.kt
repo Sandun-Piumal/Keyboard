@@ -241,6 +241,33 @@ class SinKeyInputMethodService : InputMethodService() {
     // an external cursor jump.
     private var expectedCursorPosition = -1
 
+    // BUG FIX (type-then-instantly-erase): syncExpectedCursorPosition() used
+    // to read the cursor back via ic.getExtractedText() *synchronously*,
+    // right after sending setComposingText()/commitText(). But many editors
+    // (WebViews, some messaging apps, some custom EditTexts) don't apply a
+    // composing edit and report it back through getExtractedText()
+    // synchronously — the real update arrives later, asynchronously, as its
+    // own onUpdateSelection() callback. That race meant
+    // getExtractedText() sometimes still reflected the *pre-edit* cursor
+    // position at the moment we read it, so expectedCursorPosition got set
+    // to a stale value. When the real onUpdateSelection() for our own edit
+    // then arrived with the correct (different) newSelEnd, it no longer
+    // matched expectedCursorPosition, so the edit was misclassified as an
+    // "external" cursor jump — and the composing text we'd just set was
+    // immediately finished/cleared. Net effect: a letter appears for an
+    // instant and then vanishes.
+    //
+    // Fix: instead of trying to predict/read back the resulting position
+    // ourselves, just count how many onUpdateSelection() calls we're
+    // expecting as a direct result of edits we made. Every call to
+    // syncExpectedCursorPosition() increments this; every onUpdateSelection()
+    // callback consumes one (if any are pending) before deciding whether a
+    // move looks external. This is race-proof because it doesn't depend on
+    // reading the cursor position back at all — only on our own edit having
+    // been sent before the resulting callback fires, which is guaranteed by
+    // InputConnection ordering.
+    private var pendingSelfEdits = 0
+
     override fun onEvaluateFullscreenMode(): Boolean = false
 
     // REQUIRED companion to the MATCH_PARENT window-height experiment
@@ -894,6 +921,10 @@ class SinKeyInputMethodService : InputMethodService() {
         // this field will just record the real position instead of treating
         // it as a jump (see onUpdateSelection).
         expectedCursorPosition = -1
+        // Any edits made in the previous field are irrelevant now — don't
+        // let stale pending-edit counts suppress external-move detection
+        // (or worse, get consumed by) callbacks belonging to the new field.
+        pendingSelfEdits = 0
         // Moving to a different field (or restarting the same one) means the
         // text before the cursor may no longer be what we last committed —
         // don't carry stale next-word context across the switch.
@@ -946,6 +977,17 @@ class SinKeyInputMethodService : InputMethodService() {
         candidatesEnd: Int
     ) {
         super.onUpdateSelection(oldSelStart, oldSelEnd, newSelStart, newSelEnd, candidatesStart, candidatesEnd)
+
+        // If we have edits in flight, this callback is (at least most
+        // likely) the async echo of one of them, not a real external jump —
+        // consume it and skip the external-move handling below. See the
+        // pendingSelfEdits doc comment for why this replaced comparing
+        // newSelEnd against a synchronously-read expectedCursorPosition.
+        if (pendingSelfEdits > 0) {
+            pendingSelfEdits--
+            expectedCursorPosition = newSelEnd
+            return
+        }
 
         val isExternalMove = expectedCursorPosition != -1 && newSelEnd != expectedCursorPosition
         // Recorded before finishComposingText() runs below — see the
@@ -1084,13 +1126,17 @@ class SinKeyInputMethodService : InputMethodService() {
      * predicting it would be fragile and easy to get subtly wrong).
      */
     private fun syncExpectedCursorPosition(ic: android.view.inputmethod.InputConnection) {
-        // ExtractedText reports the real absolute cursor position after our
-        // edit — more reliable than computing it from the key/text we just
-        // sent, since composing spans, multi-codepoint deletes, and styled
-        // text all shift the cursor by an amount that doesn't simply match
-        // the raw text length.
-        val extracted = ic.getExtractedText(android.view.inputmethod.ExtractedTextRequest(), 0)
-        expectedCursorPosition = extracted?.let { it.startOffset + it.selectionEnd } ?: expectedCursorPosition
+        // Don't try to read the resulting cursor position back synchronously
+        // (via getExtractedText()) — on many editors the composing/commit
+        // edit we just sent hasn't actually been applied and reflected back
+        // yet when this runs, so that read can return a stale (pre-edit)
+        // position. Comparing a later, correct onUpdateSelection() callback
+        // against that stale value was misclassifying our own edits as
+        // external cursor jumps and erasing what was just typed — see the
+        // pendingSelfEdits doc comment above its declaration. Instead, just
+        // mark that we're expecting one more self-caused onUpdateSelection()
+        // callback; that callback itself is what records the real position.
+        pendingSelfEdits++
     }
 
     /**
