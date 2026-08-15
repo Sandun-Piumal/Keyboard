@@ -532,10 +532,12 @@ class SinKeyInputMethodService : InputMethodService() {
     private var imeComposeView: ImeComposeView? = null
 
     override fun onCreateInputView(): View? {
+        android.util.Log.d("SinKeyDebug", "onCreateInputView called, imeComposeView is null? ${imeComposeView == null}")
         if (imeComposeView != null) {
             // Already added directly to the window's content in a
             // previous call — nothing to do. Returning null again keeps
             // the framework's default input-view placement disabled.
+            android.util.Log.d("SinKeyDebug", "onCreateInputView: returning early, already have a composeView")
             return null
         }
 
@@ -670,7 +672,9 @@ class SinKeyInputMethodService : InputMethodService() {
             android.view.ViewGroup.LayoutParams.WRAP_CONTENT
         )
         val content = window?.window?.findViewById<ViewGroup>(android.R.id.content)
+        android.util.Log.d("SinKeyDebug", "onCreateInputView: content childCount BEFORE addView = ${content?.childCount}")
         content?.addView(composeView)
+        android.util.Log.d("SinKeyDebug", "onCreateInputView: content childCount AFTER addView = ${content?.childCount}")
 
         imeComposeView = composeView
         // null disables the framework's own input-view placement — see
@@ -686,6 +690,7 @@ class SinKeyInputMethodService : InputMethodService() {
 
     override fun onWindowShown() {
         super.onWindowShown()
+        android.util.Log.d("SinKeyDebug", "onWindowShown called, lifecycle state before = ${lifecycleOwner.lifecycle.currentState}, content childCount = ${window?.window?.findViewById<ViewGroup>(android.R.id.content)?.childCount}")
         // Unconditional, matching FlorisBoard's LifecycleInputMethodService
         // exactly. Earlier versions of this method tried to guard against
         // "redundant" resumes with decorView-tag checks and manual stale-
@@ -709,6 +714,7 @@ class SinKeyInputMethodService : InputMethodService() {
 
     override fun onWindowHidden() {
         super.onWindowHidden()
+        android.util.Log.d("SinKeyDebug", "onWindowHidden called, lifecycle state before = ${lifecycleOwner.lifecycle.currentState}")
         // Unconditional, matching FlorisBoard exactly — see onWindowShown
         // for why the earlier "only pause if resumed" guard is no longer
         // needed (and never was the actual fix for the duplicate-keyboard
@@ -718,6 +724,7 @@ class SinKeyInputMethodService : InputMethodService() {
 
     override fun onStartInputView(info: EditorInfo?, restarting: Boolean) {
         super.onStartInputView(info, restarting)
+        android.util.Log.d("SinKeyDebug", "onStartInputView called, restarting=$restarting, packageName=${info?.packageName}")
         // lifecycle ON_RESUME is driven by onWindowShown()
 
         // Bug O4 Fix: Cancel any active composing span on the previous
@@ -921,6 +928,7 @@ class SinKeyInputMethodService : InputMethodService() {
 
     override fun onFinishInputView(finishingInput: Boolean) {
         super.onFinishInputView(finishingInput)
+        android.util.Log.d("SinKeyDebug", "onFinishInputView called, finishingInput=$finishingInput")
         // lifecycle ON_PAUSE is driven by onWindowHidden()
         commitPendingWord()
     }
