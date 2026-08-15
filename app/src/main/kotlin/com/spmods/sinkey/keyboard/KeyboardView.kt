@@ -2012,7 +2012,8 @@ private fun NumberedKeyRow(
                 keyHeight = keyHeight, colors = colors, keyShape = keyShape,
                 onPositioned = onKeyPositioned?.let { cb -> { coords: androidx.compose.ui.layout.LayoutCoordinates -> cb(k.lowercase().firstOrNull() ?: ' ', coords) } },
                 onTap = { onKey(display) },
-                onLongPress = { onKey(num) }
+                onLongPress = { onKey(num) },
+                onAlternateSelected = { alt -> onKey(alt) }
             )
         }
     }
@@ -2307,19 +2308,57 @@ private fun PopupCell(
     }
 }
 
-@OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun RowScope.NumberedLetterKey(
     label: String, number: String, weight: Float,
     keyHeight: Dp, colors: KeyboardColors, keyShape: RoundedCornerShape,
     onPositioned: ((androidx.compose.ui.layout.LayoutCoordinates) -> Unit)? = null,
-    onTap: () -> Unit, onLongPress: () -> Unit
+    onTap: () -> Unit, onLongPress: () -> Unit,
+    // Called instead of onLongPress when the user drags to one of the
+    // popup alternates and releases over it — same contract as LetterKey's
+    // own onAlternateSelected. Row 0 (q w e r t y u i o p) sits above the
+    // number layer, so a key here that HAS accent alternates (e, u, i, o)
+    // shows the popup on long-press exactly like row 1/2 letters do;
+    // long-pressing a key with no alternates still falls back to typing
+    // its number, unchanged from before this parameter existed.
+    onAlternateSelected: ((String) -> Unit)? = null
 ) {
     var pressed by remember { mutableStateOf(false) }
     var pressTick by remember { mutableStateOf(0) } // see LetterKey for why the preview triggers off this, not `pressed`
     val bumpScale = rememberKeyBumpScale(pressed)
     val bumpOffsetY = rememberKeyBumpOffsetY(pressed)
     val popScale = keyPopScaleMultiplier(pressed, colors.keyEffect)
+
+    // Long-press popup (accented alternates) — identical setup to
+    // LetterKey's own (see LongPressPopupData.kt / LetterKey's doc
+    // comments for the full explanation); duplicated here rather than
+    // sharing a helper because RowScope.LetterKey and RowScope.
+    // NumberedLetterKey differ in what they render around the popup
+    // (the small number hint in the corner) and in what a plain
+    // long-press-with-no-alternates falls back to (retype base char vs
+    // type the row's number).
+    val alternates = remember(label) {
+        longPressPopupAlternates[label.lowercase().firstOrNull() ?: ' ']
+            ?.let { alts -> if (label.firstOrNull()?.isUpperCase() == true) alts.map { it.uppercase() } else alts }
+            ?: emptyList()
+    }
+    var popupVisible by remember { mutableStateOf(false) }
+    var selectedAltIndex by remember { mutableStateOf(0) }
+    var keyWidthPx by remember { mutableStateOf(0) }
+    val row0count = remember(alternates) {
+        val n = alternates.size
+        when {
+            n <= 5 -> n
+            n % 2 == 1 -> (n + 1) / 2
+            else -> n / 2
+        }
+    }
+    val row1count = alternates.size - row0count
+    val density = LocalDensity.current
+    val cellStridePx = with(density) { (keyHeight.value * 0.85f).dp.toPx() }
+    val cellHeightPx = cellStridePx
+    val popupYOffsetPx = with(density) { (keyHeight.value * 0.15f).dp.toPx() }
+
     Box(
         modifier = Modifier
             .height(keyHeight).weight(weight)
@@ -2330,14 +2369,76 @@ private fun RowScope.NumberedLetterKey(
             .keyEffectDecoration(colors, keyShape)
             .keyRippleEffect(colors, pressed)
             .let { m -> if (onPositioned != null) m.onGloballyPositioned(onPositioned) else m }
-            .combinedClickable(onClick = { onTap() }, onLongClick = { onLongPress() })
-            .pointerInput(Unit) {
+            .onSizeChanged { keyWidthPx = it.width }
+            .pointerInput(alternates) {
                 awaitEachGesture {
-                    awaitFirstDown(requireUnconsumed = false)
+                    val down = awaitFirstDown(requireUnconsumed = false)
                     pressed = true
                     pressTick++
-                    waitForUpOrCancellation()
-                    pressed = false
+                    popupVisible = false
+                    selectedAltIndex = 0
+
+                    val longPressThresholdMs = android.view.ViewConfiguration.getLongPressTimeout().toLong()
+                    val releasedBeforeLongPress: Boolean? = withTimeoutOrNull(longPressThresholdMs) {
+                        waitForUpOrCancellation() != null
+                    }
+
+                    if (releasedBeforeLongPress != null) {
+                        // Ordinary tap.
+                        pressed = false
+                        if (releasedBeforeLongPress) {
+                            onTap()
+                        }
+                        return@awaitEachGesture
+                    }
+
+                    // Long-press threshold reached while still down.
+                    if (alternates.isNotEmpty()) {
+                        popupVisible = true
+                    } else {
+                        // No alternates for this key — same as before:
+                        // a long-press just types the row's number.
+                        onLongPress()
+                        pressed = false
+                        // Still wait for the actual finger-up so a
+                        // subsequent tap isn't misread as starting mid-gesture.
+                        waitForUpOrCancellation()
+                        return@awaitEachGesture
+                    }
+
+                    while (true) {
+                        val event = awaitPointerEvent()
+                        val change = event.changes.firstOrNull { it.id == down.id } ?: break
+                        if (!change.pressed) {
+                            if (popupVisible && alternates.isNotEmpty()) {
+                                val chosen = alternates.getOrNull(selectedAltIndex)
+                                if (chosen != null && onAlternateSelected != null) {
+                                    onAlternateSelected(chosen)
+                                } else if (chosen != null) {
+                                    onTap()
+                                }
+                            }
+                            pressed = false
+                            popupVisible = false
+                            change.consume()
+                            break
+                        }
+                        if (popupVisible && alternates.isNotEmpty() && keyWidthPx > 0) {
+                            val distAboveKeyTopPx = -change.position.y
+                            val distAbovePopupBottomPx = distAboveKeyTopPx - popupYOffsetPx
+                            val inRow1 = row1count > 0 && distAbovePopupBottomPx > cellHeightPx
+                            val rowAlts = if (inRow1) row1count else row0count
+                            val rowStartIndex = if (inRow1) 0 else row1count
+
+                            val rowWidthPx = cellStridePx * rowAlts
+                            val keyCenterPx = keyWidthPx / 2f
+                            val rowLeftEdgePx = keyCenterPx - rowWidthPx / 2f
+                            val posInRowPx = change.position.x - rowLeftEdgePx
+                            val rawCol = (posInRowPx / cellStridePx).toInt().coerceIn(0, rowAlts - 1)
+                            selectedAltIndex = (rowStartIndex + rawCol).coerceIn(0, alternates.lastIndex)
+                        }
+                        change.consume()
+                    }
                 }
             }
     ) {
@@ -2346,7 +2447,20 @@ private fun RowScope.NumberedLetterKey(
         Text(text = label, fontSize = keyLabelFontSize(keyHeight), color = colors.keyText,
             fontWeight = FontWeight.Normal,
             modifier = Modifier.align(Alignment.Center))
-        if (rememberPreviewVisible(pressTick)) {
+        if (popupVisible && alternates.isNotEmpty()) {
+            val rowCount = if (row1count > 0) 2 else 1
+            val offsetYPx = -(cellHeightPx * rowCount + popupYOffsetPx)
+            Popup(alignment = Alignment.TopCenter,
+                offset = IntOffset(0, offsetYPx.toInt())) {
+                LongPressPopupRow(
+                    alternates = alternates,
+                    keyHeight = keyHeight,
+                    colors = colors,
+                    keyShape = keyShape,
+                    selectedIndex = selectedAltIndex
+                )
+            }
+        } else if (rememberPreviewVisible(pressTick)) {
             Popup(alignment = Alignment.TopCenter,
                 offset = IntOffset(0, -((keyHeight.value * 1.4f).toInt()))) {
                 KeyPreviewPopup(label = label, keyHeight = keyHeight, colors = colors, keyShape = keyShape)
