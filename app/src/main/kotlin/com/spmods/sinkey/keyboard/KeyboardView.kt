@@ -716,9 +716,18 @@ internal fun KeyboardView(
                 AppsMicBar(
                     colors = colors,
                     isDark = isDark,
+                    // BUG FIX: suggestions previously came only from the
+                    // real typing pipeline (wordBuffer etc.), which is
+                    // fully bypassed while translate mode is open (see
+                    // SinKeyInputMethodService's translate-state doc
+                    // comment) — so `suggestions` now also gets populated
+                    // for the translate buffer (via updateTranslateSuggestions)
+                    // while isTranslateMode is true, and this no longer
+                    // needs to force it empty for that case; only the
+                    // pre-existing phone/symbols/numpad cases still do.
                     suggestions = if (isPhoneInput || currentBoard == Board.SYMBOLS || currentBoard == Board.NUMPAD) emptyList() else suggestions,
                     onSuggestionSelected = onSuggestionSelected,
-                    autocorrectUndoWord = if (isPhoneInput || currentBoard == Board.SYMBOLS || currentBoard == Board.NUMPAD) null else autocorrectUndoWord,
+                    autocorrectUndoWord = if (isPhoneInput || currentBoard == Board.SYMBOLS || currentBoard == Board.NUMPAD || isTranslateMode) null else autocorrectUndoWord,
                     onUndoAutocorrect = onUndoAutocorrect,
                     onKey = onKey,
                     onClipboardOpen = { pushBoard(Board.CLIPBOARD) },
@@ -1984,11 +1993,12 @@ private fun AppsMicBar(
     //
     // IMPORTANT: TranslateRow is prepended ABOVE the normal toolbar
     // content below (in a Column), not a replacement for it — the
-    // suggestion strip / tools row must keep working exactly as normal
-    // while translating, since typing during translate mode goes through
-    // the completely ordinary typing pipeline (see SinKeyInputMethodService's
-    // translate-state doc comment) and the user can still want to tap a
-    // Sinhala suggestion chip while the translate row is open above it.
+    // tools row (emoji/clipboard/font/etc. icons) still needs to render
+    // normally while translating. The suggestion strip itself is
+    // suppressed during translate mode (see the isTranslateMode check on
+    // AppsMicBar's suggestions/autocorrectUndoWord params above) since
+    // typing during translate mode no longer goes through the ordinary
+    // typing pipeline that produces those suggestions.
     Column(modifier = Modifier.fillMaxWidth()) {
     if (isTranslateMode) {
         TranslateRow(
