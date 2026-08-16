@@ -151,6 +151,19 @@ class SinKeyInputMethodService : InputMethodService() {
     private var translateSourceText = mutableStateOf("")
     private var translateResultText = mutableStateOf("")
     private var isTranslating = mutableStateOf(false)
+    // BUG FIX: previously a failed translate() call (offline, timeout, 403,
+    // endpoint shape changed) just left translateResultText showing
+    // whatever the last successful translation was — or blank — with no
+    // way for the user to tell "still working" apart from "gave up and
+    // failed", and no way to tell "no internet" apart from "reached
+    // Google but the translation failed" — those need different messages
+    // (one is fixable by the user checking their connection, the other
+    // isn't). Set on a failed reply (to the specific reason), cleared on
+    // the next successful reply or the next attempt starting. KeyboardView
+    // can render this to show the right error state instead of silently
+    // doing nothing.
+    enum class TranslateErrorState { NONE, NO_CONNECTION, SERVICE_ERROR }
+    private var translateErrorState = mutableStateOf(TranslateErrorState.NONE)
     // Bumped on every source-text/language change so a late-arriving
     // translation reply for stale input can recognize itself as stale and
     // discard itself — same staleness-guard idea as mixEnglishRequestId.
@@ -815,6 +828,17 @@ class SinKeyInputMethodService : InputMethodService() {
                         onTranslateSourceTextChanged = ::onTranslateSourceTextChanged,
                         translateResultText = translateResultText.value,
                         isTranslating = isTranslating.value,
+                        // BUG FIX: resolve the enum to actual user-facing
+                        // text here (the IME layer, which owns the state)
+                        // rather than pushing the enum itself into
+                        // KeyboardView.kt — keeps that file's translate
+                        // row free of any dependency on this service's
+                        // internal error-state type, just a plain string.
+                        translateErrorMessage = when (translateErrorState.value) {
+                            TranslateErrorState.NONE -> null
+                            TranslateErrorState.NO_CONNECTION -> "No internet connection"
+                            TranslateErrorState.SERVICE_ERROR -> "Translation failed. Try again."
+                        },
                         onSaveImageSticker = { draft ->
                             saveEditedImageSticker(
                                 imageScale = draft.imageScale,
@@ -988,6 +1012,19 @@ class SinKeyInputMethodService : InputMethodService() {
         if (!restarting) {
             boardStack.value = listOf(Board.MAIN)
             shiftState.value = ShiftState.ONE_SHOT // auto-shift: capitalize first letter of new field
+
+            // BUG FIX: isTranslateMode is hoisted independently of boardStack
+            // (see its doc comment), so it was never reset here — leaving the
+            // translate row open across a real field/app switch, still
+            // anchored (translateAnchorText) to text in the field the user
+            // just left. Typing in the new field then got diffed against
+            // that stale anchor and could be silently rewritten. Closing it
+            // here mirrors the boardStack reset above: a genuine field
+            // switch should end translate mode the same way it ends any
+            // other tool/board.
+            if (isTranslateMode.value) {
+                closeTranslateMode()
+            }
         }
     }
 
@@ -1651,6 +1688,7 @@ class SinKeyInputMethodService : InputMethodService() {
         translateSourceText.value = ""
         translateResultText.value = ""
         isTranslating.value = false
+        translateErrorState.value = TranslateErrorState.NONE
         isTranslateMode.value = true
         android.util.Log.d("SinKeyTranslate", "openTranslateMode: anchor='${translateAnchorText}' ic=${ic != null}")
     }
@@ -1672,6 +1710,7 @@ class SinKeyInputMethodService : InputMethodService() {
         translateSourceText.value = ""
         translateResultText.value = ""
         isTranslating.value = false
+        translateErrorState.value = TranslateErrorState.NONE
     }
 
     private fun swapTranslateLanguages() {
@@ -1689,6 +1728,7 @@ class SinKeyInputMethodService : InputMethodService() {
         translateAnchorText = ic?.getTextBeforeCursor(500, 0)?.toString() ?: ""
         translateSourceText.value = ""
         translateResultText.value = ""
+        translateErrorState.value = TranslateErrorState.NONE
     }
 
     /**
@@ -1719,17 +1759,22 @@ class SinKeyInputMethodService : InputMethodService() {
         if (newSourceText.isBlank()) {
             translateResultText.value = ""
             isTranslating.value = false
+            translateErrorState.value = TranslateErrorState.NONE
             return
         }
 
         isTranslating.value = true
+        // BUG FIX: don't leave a stale error indicator showing while a new
+        // attempt is in flight — each new keystroke gets a clean slate to
+        // succeed or fail on its own.
+        translateErrorState.value = TranslateErrorState.NONE
         translateJob = serviceScope.launch {
             kotlinx.coroutines.delay(350)
             android.util.Log.d("SinKeyTranslate", "calling TranslateService.translate('$newSourceText', ${translateSourceLang.value}, ${translateTargetLang.value})")
             val result = com.spmods.sinkey.data.TranslateService.translate(
                 newSourceText, translateSourceLang.value, translateTargetLang.value
             )
-            android.util.Log.d("SinKeyTranslate", "TranslateService result: '$result' (requestId=$requestId current=$translateRequestId)")
+            android.util.Log.d("SinKeyTranslate", "TranslateService result: $result (requestId=$requestId current=$translateRequestId)")
             // Stale-reply guard, same idea as mixEnglishRequestId — if the
             // user kept typing (or swapped languages, or closed the row)
             // while this request was in flight, requestId no longer
@@ -1737,9 +1782,31 @@ class SinKeyInputMethodService : InputMethodService() {
             // overwriting newer state or editing a field that's moved on.
             if (requestId != translateRequestId) return@launch
             isTranslating.value = false
-            if (result != null) {
-                translateResultText.value = result
-                applyTranslationToField(newSourceText, result)
+            // BUG FIX: previously any non-success collapsed into a single
+            // silent no-op (or later, a single generic error flag) with no
+            // way to tell "no internet connection" apart from "reached
+            // Google but the translation itself failed" — the user asked
+            // for these to be two distinct messages, since only one of
+            // them is something checking their connection would fix.
+            when (result) {
+                is com.spmods.sinkey.data.TranslateService.TranslateResult.Success -> {
+                    translateResultText.value = result.text
+                    translateErrorState.value = TranslateErrorState.NONE
+                    applyTranslationToField(newSourceText, result.text)
+                }
+                is com.spmods.sinkey.data.TranslateService.TranslateResult.NoConnection -> {
+                    translateErrorState.value = TranslateErrorState.NO_CONNECTION
+                }
+                is com.spmods.sinkey.data.TranslateService.TranslateResult.ServiceError -> {
+                    translateErrorState.value = TranslateErrorState.SERVICE_ERROR
+                }
+                null -> {
+                    // Blank input reached this far (shouldn't normally
+                    // happen given the isBlank() check above, but the
+                    // service also treats blank as "nothing to do" —
+                    // not an error, so no error state either).
+                    translateErrorState.value = TranslateErrorState.NONE
+                }
             }
         }
     }
