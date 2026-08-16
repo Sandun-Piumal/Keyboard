@@ -371,13 +371,13 @@ fun HomeScreen() {
                         }
                     }
 
-                    // white "සිංහල" bubble — sits to the left of the
-                    // keyboard, its bottom-right corner overlapping the
-                    // keyboard's top-left corner (matches reference)
+                    // white "සිංහල" bubble — position calculated from exact
+                    // pixel measurements of the reference image (bubble sits
+                    // overlapping the keyboard's top-left corner)
                     Column(
                         modifier = Modifier
                             .align(Alignment.TopStart)
-                            .offset(x = (-18).dp, y = (-4).dp)
+                            .offset(x = 31.dp, y = 31.dp)
                     ) {
                         Box(
                             modifier = Modifier
@@ -405,13 +405,15 @@ fun HomeScreen() {
                         )
                     }
 
-                    // pink "A" bubble — sits to the right of the keyboard,
-                    // its bottom-left corner overlapping the keyboard's
-                    // top-right corner (matches reference)
+                    // pink "A" bubble — position calculated from exact
+                    // pixel measurements of the reference image (bubble sits
+                    // overlapping the keyboard's top-right corner). Anchored
+                    // TopStart (not TopEnd) so the offset is measured from
+                    // its own top-left corner, independent of bubble width.
                     Column(
                         modifier = Modifier
-                            .align(Alignment.TopEnd)
-                            .offset(x = 8.dp, y = (-4).dp)
+                            .align(Alignment.TopStart)
+                            .offset(x = 108.dp, y = 36.dp)
                     ) {
                         Box(
                             modifier = Modifier
