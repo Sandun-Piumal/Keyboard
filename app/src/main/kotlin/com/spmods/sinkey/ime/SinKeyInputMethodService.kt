@@ -1773,9 +1773,6 @@ class SinKeyInputMethodService : InputMethodService() {
         syncExpectedCursorPosition(ic)
     }
 
-
-    }
-
     /**
      * FIX #10: Removed the `key.length > 8` guard that rejected ZWJ emoji
      * sequences (family emojis, skin-tone variants, flags) which are often
