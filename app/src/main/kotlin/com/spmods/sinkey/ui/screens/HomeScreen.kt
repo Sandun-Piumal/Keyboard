@@ -15,12 +15,14 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -197,16 +199,16 @@ fun HomeScreen() {
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
+                    .height(340.dp)
                     .background(heroGradient)
             ) {
-                // Keyboard illustration + speech bubbles — floated to the
-                // right side of the card, vertically centered, matching
-                // the reference artwork where text sits to the left and
-                // the illustration sits beside it (not stacked below).
+                // Keyboard illustration + speech bubbles — pinned to the
+                // bottom-right of the card with a fixed offset, so it
+                // never drifts as card width changes on different screens.
                 Box(
                     modifier = Modifier
-                        .align(Alignment.CenterEnd)
-                        .padding(end = 8.dp, top = 8.dp)
+                        .align(Alignment.BottomEnd)
+                        .padding(end = 14.dp, bottom = 26.dp)
                         .width(170.dp)
                         .height(130.dp)
                 ) {
@@ -335,11 +337,15 @@ fun HomeScreen() {
                     )
                 }
 
-                // Text stack + CTA button — constrained to roughly the
-                // left 60% so it doesn't run under the illustration.
+                // Text stack + CTA button — fixed max width (not a
+                // fraction of card width) so it never runs under the
+                // illustration on wider screens. Column fills the full
+                // card height so the weighted spacer below can push the
+                // button to the bottom, matching the reference layout.
                 Column(
                     modifier = Modifier
-                        .fillMaxWidth(0.62f)
+                        .fillMaxHeight()
+                        .widthIn(max = 210.dp)
                         .padding(20.dp)
                 ) {
                     Text(
@@ -391,7 +397,7 @@ fun HomeScreen() {
                         color = BodyGrey
                     )
 
-                    Spacer(Modifier.height(120.dp))
+                    Spacer(Modifier.weight(1f))
 
                     Row(
                         modifier = Modifier
