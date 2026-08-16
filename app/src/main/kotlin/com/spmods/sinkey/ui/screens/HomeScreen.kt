@@ -15,14 +15,12 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -199,19 +197,81 @@ fun HomeScreen() {
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(340.dp)
                     .background(heroGradient)
             ) {
-                // Keyboard illustration + speech bubbles — pinned to the
-                // bottom-right of the card with a fixed offset, so it
-                // never drifts as card width changes on different screens.
-                Box(
+                // Single content column: text block, then the illustration
+                // sits inline right below the subtitle (not absolutely
+                // positioned), then the CTA button. Height is driven by
+                // content, so no empty gaps and no fixed magic numbers.
+                Column(
                     modifier = Modifier
-                        .align(Alignment.BottomEnd)
-                        .padding(end = 14.dp, bottom = 26.dp)
-                        .width(170.dp)
-                        .height(130.dp)
+                        .fillMaxWidth()
+                        .padding(20.dp)
                 ) {
+                    Text(
+                        "WELCOME",
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Bold,
+                        letterSpacing = 1.sp,
+                        color = IndigoDeep
+                    )
+                    Spacer(Modifier.height(8.dp))
+                    Text(
+                        "Type your world",
+                        fontSize = 22.sp,
+                        fontWeight = FontWeight.ExtraBold,
+                        color = Color(0xFF1E1B33)
+                    )
+                    Row {
+                        Text(
+                            "in ",
+                            fontSize = 22.sp,
+                            fontWeight = FontWeight.ExtraBold,
+                            color = Color(0xFF1E1B33)
+                        )
+                        Text(
+                            "Sinhala",
+                            fontSize = 22.sp,
+                            fontWeight = FontWeight.ExtraBold,
+                            color = IndigoDeep
+                        )
+                    }
+                    Row {
+                        Text(
+                            "or ",
+                            fontSize = 22.sp,
+                            fontWeight = FontWeight.ExtraBold,
+                            color = Color(0xFF1E1B33)
+                        )
+                        Text(
+                            "English",
+                            fontSize = 22.sp,
+                            fontWeight = FontWeight.ExtraBold,
+                            color = PinkAccent
+                        )
+                    }
+                    Spacer(Modifier.height(8.dp))
+                    Text(
+                        "Switch anytime. Type naturally.",
+                        fontSize = 13.sp,
+                        color = BodyGrey
+                    )
+
+                    Spacer(Modifier.height(16.dp))
+
+                    // Illustration row — right-aligned, sits directly
+                    // below the subtitle as part of natural content flow.
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(150.dp)
+                    ) {
+                    Box(
+                        modifier = Modifier
+                            .align(Alignment.CenterEnd)
+                            .width(170.dp)
+                            .height(130.dp)
+                    ) {
                     // sparkles above the keyboard
                     Text(
                         "✦",
@@ -335,69 +395,10 @@ fun HomeScreen() {
                             .clip(CircleShape)
                             .background(Color(0xFFC6B3F5))
                     )
-                }
-
-                // Text stack + CTA button — fixed max width (not a
-                // fraction of card width) so it never runs under the
-                // illustration on wider screens. Column fills the full
-                // card height so the weighted spacer below can push the
-                // button to the bottom, matching the reference layout.
-                Column(
-                    modifier = Modifier
-                        .fillMaxHeight()
-                        .widthIn(max = 210.dp)
-                        .padding(20.dp)
-                ) {
-                    Text(
-                        "WELCOME",
-                        fontSize = 11.sp,
-                        fontWeight = FontWeight.Bold,
-                        letterSpacing = 1.sp,
-                        color = IndigoDeep
-                    )
-                    Spacer(Modifier.height(8.dp))
-                    Text(
-                        "Type your world",
-                        fontSize = 22.sp,
-                        fontWeight = FontWeight.ExtraBold,
-                        color = Color(0xFF1E1B33)
-                    )
-                    Row {
-                        Text(
-                            "in ",
-                            fontSize = 22.sp,
-                            fontWeight = FontWeight.ExtraBold,
-                            color = Color(0xFF1E1B33)
-                        )
-                        Text(
-                            "Sinhala",
-                            fontSize = 22.sp,
-                            fontWeight = FontWeight.ExtraBold,
-                            color = IndigoDeep
-                        )
                     }
-                    Row {
-                        Text(
-                            "or ",
-                            fontSize = 22.sp,
-                            fontWeight = FontWeight.ExtraBold,
-                            color = Color(0xFF1E1B33)
-                        )
-                        Text(
-                            "English",
-                            fontSize = 22.sp,
-                            fontWeight = FontWeight.ExtraBold,
-                            color = PinkAccent
-                        )
                     }
-                    Spacer(Modifier.height(8.dp))
-                    Text(
-                        "Switch anytime. Type naturally.",
-                        fontSize = 13.sp,
-                        color = BodyGrey
-                    )
 
-                    Spacer(Modifier.weight(1f))
+                    Spacer(Modifier.height(16.dp))
 
                     Row(
                         modifier = Modifier
