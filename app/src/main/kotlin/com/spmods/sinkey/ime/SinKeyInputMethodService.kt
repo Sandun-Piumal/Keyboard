@@ -122,33 +122,45 @@ class SinKeyInputMethodService : InputMethodService() {
     private var pendingStickerImagePath = mutableStateOf<String?>(null)
 
     // ── Translate row state (TOOL_TRANSLATE) ──────────────────────────
-    // ── Translate row state (TOOL_TRANSLATE) ──────────────────────────
     // Hoisted at service level for the same reason as boardStack above —
     // must survive hide/show while the row is open.
     //
-    // DESIGN: keys typed while the row is open are NOT intercepted — they
-    // go through the exact same pipeline as normal typing (see handleKey),
-    // so Sinhala transliteration, autocorrect, suggestions etc. all keep
-    // working exactly as if the translate row weren't open, and the
-    // user's own words are what actually appear in the real target field
-    // as they type. The translate row's job is purely to *watch* what
-    // ends up in the field since it was opened, translate that, and show
-    // the translated result in the row above — a live preview strip, not
-    // a separate typing surface. This matters because the alternative
-    // (giving the row its own local text buffer, intercepting keys before
-    // they reach handleKey) would require reimplementing Sinhala
-    // transliteration/autocorrect from scratch for that buffer, since the
-    // real engine (wordBuffer + SinhalaTransliterator, see updateSuggestions)
-    // is tightly coupled to writing directly into the real InputConnection.
+    // DESIGN (rewritten): the translate box is now its own real, editable
+    // text buffer with its own cursor position — translateBoxText /
+    // translateBoxCursor below — completely separate from the real target
+    // app's InputConnection. Typing while the row is open is intercepted
+    // by onTranslateKey (see KeyboardView's isTranslateMode branch, which
+    // routes MainKeyboardKeys' onKey there instead of the normal handleKey)
+    // and inserted/deleted at translateBoxCursor, with Sinhala/mix
+    // phonetic transliteration applied word-by-word via
+    // FreeTextSinhalaTransliterator — the same rules the main engine uses
+    // per keystroke, just applied to a free-standing buffer instead of the
+    // InputConnection.
+    //
+    // This replaces the previous "watch the real field" design, which
+    // wrote translated output directly into the target app's field as the
+    // user typed the source. That meant (a) there was no way to place the
+    // cursor mid-source-text and edit it — tapping inside the preview did
+    // nothing, since it wasn't a real editable field — and (b) the
+    // target field's own text kept getting silently deleted/replaced,
+    // which is surprising for something that's supposed to be a
+    // translation tool rather than a live auto-rewrite of what's already
+    // been sent to the field. Now: the box is the only thing being edited
+    // while translating, the real field is untouched until the user
+    // explicitly inserts a translation (insertTranslationAtCursor), and
+    // the target field's own typing/cursor state is completely undisturbed
+    // for as long as translate mode stays open.
     private var isTranslateMode = mutableStateOf(false)
     private var translateSourceLang = mutableStateOf("en")
     private var translateTargetLang = mutableStateOf("si")
-    // Snapshot of getTextBeforeCursor() at the moment translate mode was
-    // opened — the anchor point. What's currently "the translate source
-    // text" is whatever the field contains from this offset to the cursor
-    // now, read fresh on every keystroke via refreshTranslateSourceFromField().
-    private var translateAnchorText = ""
-    private var translateSourceText = mutableStateOf("")
+    // The translate box's own text and cursor (0..text.length), analogous
+    // to Compose's TextFieldValue but kept here (service level) so it
+    // survives keyboard hide/show like boardStack does. Never written to
+    // the real InputConnection directly — only translateResultText (the
+    // already-translated output) is ever inserted into the real field, and
+    // only when the user asks for that (see insertTranslationAtCursor).
+    private var translateBoxText = mutableStateOf("")
+    private var translateBoxCursor = mutableStateOf(0)
     private var translateResultText = mutableStateOf("")
     private var isTranslating = mutableStateOf(false)
     // BUG FIX: previously a failed translate() call (offline, timeout, 403,
@@ -824,9 +836,12 @@ class SinKeyInputMethodService : InputMethodService() {
                         translateSourceLang = translateSourceLang.value,
                         translateTargetLang = translateTargetLang.value,
                         onTranslateLanguagesSwapped = ::swapTranslateLanguages,
-                        translateSourceText = translateSourceText.value,
-                        onTranslateSourceTextChanged = ::onTranslateSourceTextChanged,
+                        translateBoxDisplayText = translateBoxDisplayText(),
+                        translateBoxCursor = translateBoxCursor.value.coerceIn(0, translateBoxText.value.length),
+                        onTranslateBoxKey = ::onTranslateBoxKey,
+                        onTranslateBoxCursorMoved = { newPos -> translateBoxCursor.value = newPos.coerceIn(0, translateBoxText.value.length) },
                         translateResultText = translateResultText.value,
+                        onInsertTranslation = ::insertTranslationAtCursor,
                         isTranslating = isTranslating.value,
                         // BUG FIX: resolve the enum to actual user-facing
                         // text here (the IME layer, which owns the state)
@@ -1015,13 +1030,11 @@ class SinKeyInputMethodService : InputMethodService() {
 
             // BUG FIX: isTranslateMode is hoisted independently of boardStack
             // (see its doc comment), so it was never reset here — leaving the
-            // translate row open across a real field/app switch, still
-            // anchored (translateAnchorText) to text in the field the user
-            // just left. Typing in the new field then got diffed against
-            // that stale anchor and could be silently rewritten. Closing it
-            // here mirrors the boardStack reset above: a genuine field
-            // switch should end translate mode the same way it ends any
-            // other tool/board.
+            // translate row open (and its draft box) across a real field/app
+            // switch. Closing it here mirrors the boardStack reset above: a
+            // genuine field switch should end translate mode the same way it
+            // ends any other tool/board, rather than leaving a stale draft
+            // sitting around pointed at a field that's no longer focused.
             if (isTranslateMode.value) {
                 closeTranslateMode()
             }
@@ -1531,55 +1544,6 @@ class SinKeyInputMethodService : InputMethodService() {
         // call wrongly look like an external cursor jump and clear
         // in-progress composing state that's actually still valid.
         syncExpectedCursorPosition(ic)
-
-        // Translate row active (TOOL_TRANSLATE) — the key above (whatever
-        // it was) has already gone through the completely normal typing
-        // pipeline, including full Sinhala transliteration/autocorrect, and
-        // is now really sitting in the target app's field. Re-read what's
-        // there since the row opened and (debounced) translate it. See
-        // the translate-state block's doc comment for why this "watch the
-        // real field" design was chosen over giving the row its own typing
-        // buffer.
-        if (isTranslateMode.value) {
-            refreshTranslateSourceFromField(ic)
-        }
-    }
-
-    /**
-     * Re-reads the text between [translateAnchorText]'s anchor point and
-     * the current cursor, and if it changed, kicks off a debounced
-     * translation of it. Called after every key while the translate row is
-     * open (see the end of handleKey). Uses getTextBeforeCursor with a
-     * generous length cap and works out the "new since anchor" portion by
-     * length difference from the anchor snapshot — simpler and more
-     * robust than trying to special-case every key (BACKSPACE, SPACE,
-     * autocorrect swaps, suggestion taps, etc.) individually, since all of
-     * them already converge on "the field's text changed" by the time this
-     * runs.
-     */
-    private fun refreshTranslateSourceFromField(ic: android.view.inputmethod.InputConnection) {
-        val maxLen = translateAnchorText.length + 500
-        val currentBeforeCursor = ic.getTextBeforeCursor(maxLen, 0)?.toString() ?: ""
-        val newSource = if (currentBeforeCursor.length >= translateAnchorText.length &&
-            currentBeforeCursor.startsWith(translateAnchorText)) {
-            // Normal case: user has only added to/edited after the anchor
-            // point, so the anchor prefix is still intact — take everything
-            // typed after it.
-            currentBeforeCursor.substring(translateAnchorText.length)
-        } else {
-            // The user backspaced past the anchor point (deleted into text
-            // that existed before translate mode opened) or the anchor
-            // text itself changed underneath us (e.g. autocorrect rewrote
-            // an earlier word). Re-anchor to "now" rather than showing a
-            // garbled diff — matches the same fallback-to-safe-state
-            // philosophy as onUpdateSelection's external-move handling.
-            translateAnchorText = currentBeforeCursor
-            ""
-        }
-        if (newSource != translateSourceText.value) {
-            android.util.Log.d("SinKeyTranslate", "refresh: anchor='${translateAnchorText}' newSource='${newSource}'")
-            onTranslateSourceTextChanged(newSource)
-        }
     }
 
     /** Auto-shift: if the text before cursor ends with ". ", "! ", "? " or is empty → ONE_SHOT */
@@ -1672,42 +1636,39 @@ class SinKeyInputMethodService : InputMethodService() {
      * TOOL_TRANSLATE — opens the translate row (AppsMicBar's isTranslateMode
      * branch). Flushes any in-progress normal typing first, the same as
      * other tools that interrupt typing (e.g. LANG_TOGGLE), so a partially
-     * composed word doesn't end up straddling the anchor point below.
-     * Anchors translateAnchorText to the field's current text-before-cursor
-     * — everything typed after this point, until Close, is "the source
-     * text" (see refreshTranslateSourceFromField).
+     * composed word left in the main engine's own buffers doesn't leak into
+     * the translate box or vice versa — the two are now completely
+     * independent buffers. The real field itself is not touched at all
+     * (no anchor snapshot needed anymore — see the state block's doc
+     * comment above for why).
      */
     private fun openTranslateMode() {
         commitPendingWord()
         englishBuffer.clear()
         resumedWordBeforeCursor = null
         clearSuggestions()
-        val ic = currentInputConnection
-        ic?.finishComposingText()
-        translateAnchorText = ic?.getTextBeforeCursor(500, 0)?.toString() ?: ""
-        translateSourceText.value = ""
+        currentInputConnection?.finishComposingText()
+        translateBoxText.value = ""
+        translateBoxCursor.value = 0
         translateResultText.value = ""
         isTranslating.value = false
         translateErrorState.value = TranslateErrorState.NONE
         isTranslateMode.value = true
-        android.util.Log.d("SinKeyTranslate", "openTranslateMode: anchor='${translateAnchorText}' ic=${ic != null}")
     }
 
     /**
-     * Close (X) on the translate row. Leaves whatever's currently in the
-     * field exactly as it is — by the time Close is tapped the live
-     * translation has already been written into the real field in place of
-     * the typed source (see onTranslateSourceTextChanged), so there's
-     * nothing left to commit or discard; Close just stops watching the
-     * field and returns the toolbar to its normal tools-row/suggestion-
-     * strip behaviour.
+     * Close (X) on the translate row. The real field was never touched
+     * while translating (see the state block's doc comment), so there's
+     * nothing to commit or discard here — Close just discards the box's
+     * own draft and returns the toolbar to its normal tools-row/
+     * suggestion-strip behaviour.
      */
     private fun closeTranslateMode() {
         translateJob?.cancel()
         translateRequestId++
         isTranslateMode.value = false
-        translateAnchorText = ""
-        translateSourceText.value = ""
+        translateBoxText.value = ""
+        translateBoxCursor.value = 0
         translateResultText.value = ""
         isTranslating.value = false
         translateErrorState.value = TranslateErrorState.NONE
@@ -1718,40 +1679,128 @@ class SinKeyInputMethodService : InputMethodService() {
         val newTarget = translateSourceLang.value
         translateSourceLang.value = newSource
         translateTargetLang.value = newTarget
-        // Re-anchor to "now" and clear the preview — the text already
-        // sitting in the field from before the swap was translated in the
-        // old direction; trying to carry it over as new source text in the
-        // swapped direction would immediately re-translate it back toward
-        // where it started. Simplest correct behaviour: swap starts a
-        // fresh source from this point, same as opening translate mode.
-        val ic = currentInputConnection
-        translateAnchorText = ic?.getTextBeforeCursor(500, 0)?.toString() ?: ""
-        translateSourceText.value = ""
+        // The box's draft was written (and, if translated, previewed) in
+        // the old direction; carrying it over untranslated as the new
+        // source would immediately re-translate it back toward where it
+        // started. Simplest correct behaviour: swap starts a fresh draft,
+        // same as opening translate mode.
+        translateBoxText.value = ""
+        translateBoxCursor.value = 0
         translateResultText.value = ""
         translateErrorState.value = TranslateErrorState.NONE
     }
 
     /**
-     * Called from refreshTranslateSourceFromField (itself called after
-     * every key while the translate row is open — see the end of
-     * handleKey) whenever the text typed since the anchor point changed.
-     * Debounces a call to TranslateService.translate, and once it replies,
-     * replaces the anchor-to-cursor range in the REAL field with the
-     * translated text — live, continuously, as the user keeps typing —
-     * which is what makes the translation actually "apply" at the exact
-     * spot being typed into (WhatsApp, Notepad, wherever) rather than only
-     * showing in a separate preview area.
+     * Routes a single key from the translate box's own on-screen keyboard
+     * (see KeyboardView's isTranslateMode branch, which sends MainKeyboardKeys'
+     * onKey here instead of handleKey while the row is open) into
+     * [translateBoxText]/[translateBoxCursor] — insert/delete at the
+     * cursor, exactly like a real text field, completely independent of
+     * the real InputConnection. Sinhala/mix phonetic transliteration is
+     * applied word-by-word via FreeTextSinhalaTransliterator as each
+     * character lands, so the box shows live Sinhala script the same way
+     * the main keyboard does, just without needing wordBuffer/
+     * InputConnection composing spans for it.
      *
-     * After replacing, translateAnchorText is left unchanged and
-     * translateSourceText continues tracking new keystrokes typed after
-     * the translated text, so the user can keep typing more source text
-     * and have it keep translating — but note the field itself now
-     * contains the *translated* text where the source used to be, so this
-     * function's own field-replacement counts as a self-edit for cursor
-     * tracking (syncExpectedCursorPosition), same as any other edit path.
+     * currentLanguage (the same service-level mode LANG_TOGGLE flips) is
+     * reused here so the translate box always types in whatever
+     * mode(English/Sinhala/mix) the rest of the keyboard is currently in —
+     * TOOL_TRANSLATE doesn't have its own separate language-mode toggle.
      */
-    private fun onTranslateSourceTextChanged(newSourceText: String) {
-        translateSourceText.value = newSourceText
+    private fun onTranslateBoxKey(key: String) {
+        val text = translateBoxText.value
+        val cursor = translateBoxCursor.value.coerceIn(0, text.length)
+        when (key) {
+            "BACKSPACE" -> {
+                if (cursor > 0) {
+                    val deleteFrom = Character.offsetByCodePoints(text, cursor, -1)
+                    translateBoxText.value = text.removeRange(deleteFrom, cursor)
+                    translateBoxCursor.value = deleteFrom
+                }
+            }
+            "SPACE" -> {
+                translateBoxText.value = text.substring(0, cursor) + " " + text.substring(cursor)
+                translateBoxCursor.value = cursor + 1
+            }
+            "ENTER" -> {
+                // No multi-line source text in the translate box — Enter
+                // has nothing sane to do here (there's no target field
+                // being submitted to, unlike normal typing's ENTER), so
+                // it's a no-op rather than inserting a newline into what's
+                // meant to be a single translated phrase.
+            }
+            "SHIFT", "SHIFT_LOCK", "SYMBOLS_SHIFT", "EMOJI", "NUMPAD",
+            "TOOL_MIC", "TOOL_STICKER", "TOOL_FONT", "TOOL_TRANSLATE",
+            "TOOL_APPS", "TOOL_SETTINGS", "SWITCH_KEYBOARD", "LANG_TOGGLE" -> {
+                // Not meaningful inside the translate box's own draft —
+                // language mode is controlled by the main keyboard's own
+                // LANG_TOGGLE (read via currentLanguage below), not a
+                // separate toggle here.
+            }
+            "," , "." , "!" , "?" -> {
+                translateBoxText.value = text.substring(0, cursor) + key + text.substring(cursor)
+                translateBoxCursor.value = cursor + 1
+            }
+            else -> {
+                if (key.startsWith("PASTE_TEXT:")) {
+                    val pasted = key.removePrefix("PASTE_TEXT:")
+                    if (pasted.isNotEmpty()) {
+                        translateBoxText.value = text.substring(0, cursor) + pasted + text.substring(cursor)
+                        translateBoxCursor.value = cursor + pasted.length
+                    }
+                    return
+                }
+                // Single printable character (letter, digit, symbol, or
+                // emoji) — insert at cursor. Case is applied by the shift
+                // state the same way the main engine's English branch does
+                // (see handleKey's else branch); Sinhala's case-sensitive
+                // letter handling (n/N, l/L, t/T, d/D, sh/Sh, th/TH) is
+                // preserved too since transliterateForDisplay below
+                // re-transliterates the RAW typed characters, not a
+                // pre-cased version.
+                if (key.isNotEmpty()) {
+                    val typed = if (shiftState.value != ShiftState.OFF && key.length == 1 && key[0].isLetter())
+                        key.uppercase() else key
+                    translateBoxText.value = text.substring(0, cursor) + typed + text.substring(cursor)
+                    translateBoxCursor.value = cursor + typed.length
+                    if (shiftState.value == ShiftState.ONE_SHOT) shiftState.value = ShiftState.OFF
+                }
+            }
+        }
+        // Whatever's now in the box (raw, un-transliterated) is what gets
+        // (debounced) translated — see onTranslateBoxTextChanged. The
+        // preview shown to the user is the transliterated version (mix/
+        // Sinhala mode); TranslateService itself still translates the raw
+        // typed text's *meaning*, which works the same whether the source
+        // language is genuinely English or Sinhala typed phonetically,
+        // since Google's endpoint only cares about the sl= language code,
+        // not the keyboard's own display rendering.
+        onTranslateBoxTextChanged(translateBoxText.value)
+    }
+
+    /**
+     * The transliterated (display) form of the current translate-box draft
+     * — what KeyboardView actually renders in the box. Pure Sinhala/mix
+     * mode shows live phonetic Sinhala script via
+     * FreeTextSinhalaTransliterator; plain English mode shows the raw text
+     * as-is, matching the main engine's own renderBuffer()/renderStyledBuffer()
+     * split for the same three modes.
+     */
+    private fun translateBoxDisplayText(): String {
+        val raw = translateBoxText.value
+        return if (isSinhalaTyping()) com.spmods.sinkey.keyboard.FreeTextSinhalaTransliterator.transliterate(raw) else raw
+    }
+
+    /**
+     * Called after every edit to the translate box (see onTranslateBoxKey).
+     * Debounces a call to TranslateService.translate on the box's raw
+     * typed text and stores the reply in translateResultText purely as a
+     * PREVIEW — this never touches the real InputConnection. Only
+     * insertTranslationAtCursor (wired to the row's insert button) writes
+     * anything into the real target field, and only when the user asks
+     * for that.
+     */
+    private fun onTranslateBoxTextChanged(newSourceText: String) {
         translateJob?.cancel()
         translateRequestId++
         val requestId = translateRequestId
@@ -1764,62 +1813,18 @@ class SinKeyInputMethodService : InputMethodService() {
         }
 
         isTranslating.value = true
-        // BUG FIX: don't leave a stale error indicator showing while a new
-        // attempt is in flight — each new keystroke gets a clean slate to
-        // succeed or fail on its own.
         translateErrorState.value = TranslateErrorState.NONE
         translateJob = serviceScope.launch {
-            // BUG FIX: was 350ms — combined with the applyTranslationToField
-            // stale-check above (now removed), a debounce this long made a
-            // dropped/never-applied translation far more likely on normal
-            // typing speed. 150ms is enough to avoid firing a network
-            // request on every single keystroke while still feeling live.
             kotlinx.coroutines.delay(150)
-            android.util.Log.d("SinKeyTranslate", "calling TranslateService.translate('$newSourceText', ${translateSourceLang.value}, ${translateTargetLang.value})")
             val result = com.spmods.sinkey.data.TranslateService.translate(
                 newSourceText, translateSourceLang.value, translateTargetLang.value
             )
-            android.util.Log.d("SinKeyTranslate", "TranslateService result: $result (requestId=$requestId current=$translateRequestId)")
-            // Stale-reply guard, same idea as mixEnglishRequestId — if the
-            // user kept typing (or swapped languages, or closed the row)
-            // while this request was in flight, requestId no longer
-            // matches and the reply must be discarded rather than
-            // overwriting newer state or editing a field that's moved on.
             if (requestId != translateRequestId) return@launch
             isTranslating.value = false
-            // BUG FIX: previously any non-success collapsed into a single
-            // silent no-op (or later, a single generic error flag) with no
-            // way to tell "no internet connection" apart from "reached
-            // Google but the translation itself failed" — the user asked
-            // for these to be two distinct messages, since only one of
-            // them is something checking their connection would fix.
             when (result) {
                 is com.spmods.sinkey.data.TranslateService.TranslateResult.Success -> {
                     translateResultText.value = result.text
                     translateErrorState.value = TranslateErrorState.NONE
-                    // BUG FIX (flicker / translation silently undone /
-                    // needing Enter to trigger): the first attempt at this
-                    // fix waited for wordBuffer/englishBuffer to become
-                    // empty before writing — but those only clear on an
-                    // explicit SPACE, ENTER, or punctuation key (see
-                    // commitPendingWord's callers), never just from a
-                    // typing pause. So the very last word typed before the
-                    // debounce fired never got translated until the user
-                    // pressed Enter to force a commit.
-                    //
-                    // The debounce delay itself (350ms of no new keys) IS
-                    // the pause signal — there's no need to wait for a
-                    // separate boundary key. So: if a word is still being
-                    // composed when the translation comes back, finish it
-                    // the same way SPACE does (commitPendingWord — which
-                    // properly transliterates, commits as real text, and
-                    // clears wordBuffer/englishBuffer so the engine's own
-                    // state stays consistent) before writing the
-                    // translation in its place. This avoids the original
-                    // flicker bug (translation racing wordBuffer's own
-                    // composing-span rewrite) without ever leaving the
-                    // last word stuck waiting for Enter.
-                    applyTranslationToField(newSourceText, result.text)
                 }
                 is com.spmods.sinkey.data.TranslateService.TranslateResult.NoConnection -> {
                     translateErrorState.value = TranslateErrorState.NO_CONNECTION
@@ -1828,10 +1833,6 @@ class SinKeyInputMethodService : InputMethodService() {
                     translateErrorState.value = TranslateErrorState.SERVICE_ERROR
                 }
                 null -> {
-                    // Blank input reached this far (shouldn't normally
-                    // happen given the isBlank() check above, but the
-                    // service also treats blank as "nothing to do" —
-                    // not an error, so no error state either).
                     translateErrorState.value = TranslateErrorState.NONE
                 }
             }
@@ -1839,73 +1840,31 @@ class SinKeyInputMethodService : InputMethodService() {
     }
 
     /**
-     * Replaces the just-typed source text (translateAnchorText..cursor)
-     * with [result] in the real field, then updates translateAnchorText so
-     * the replacement itself isn't mistaken for new source text on the
-     * next keystroke.
-     *
-     * The staleness race (user typed more after this translation was
-     * requested but before it came back) is guarded upstream in
-     * [onTranslateSourceTextChanged] via translateRequestId — if newer
-     * typing happened, this function is never even called with the old
-     * result, so there's no need to re-check that here. [sourceTextForLog]
-     * is kept only for the debug log line below.
+     * Inserts the current translation preview into the REAL field at the
+     * real cursor, as ordinary committed text (no composing span — the
+     * translation is finished output, not something still being edited).
+     * Wired to the translate row's insert/checkmark button. Does nothing
+     * if there's no result to insert yet (still translating, or the last
+     * attempt failed) — errorMessage/isTranslating in KeyboardView already
+     * disable the button in that case, this is just the safety check on
+     * the service side too.
      */
-    private fun applyTranslationToField(sourceTextForLog: String, result: String) {
+    private fun insertTranslationAtCursor() {
+        val result = translateResultText.value
+        if (result.isBlank()) return
         val ic = currentInputConnection ?: return
-        // Finish any word still being composed the same way SPACE does,
-        // before touching the field below. Two problems otherwise:
-        // (1) wordBuffer stays non-empty, so the very next keystroke's
-        //     setComposingTextStyled(renderStyledBuffer()) call re-renders
-        //     the whole buffered word from scratch on top of whatever this
-        //     function just wrote — the delete/retype flicker.
-        // (2) commitPendingWord() itself changes the field's on-screen text
-        //     (replaces the raw composing preview with the final
-        //     transliterated/autocorrected word), so it must run BEFORE the
-        //     currentBeforeCursor read just below — reading first and
-        //     committing after would compare against text that's about to
-        //     change underneath it.
-        commitPendingWord()
-        val currentBeforeCursor = ic.getTextBeforeCursor(translateAnchorText.length + 500, 0)?.toString() ?: ""
-        // BUG FIX (translation silently not applying / feels broken):
-        // this used to also compare currentSource against expectedSourceText
-        // and bail out on ANY mismatch — but commitPendingWord() right above
-        // can itself tweak the just-finished word (autocorrect), which made
-        // currentSource differ by even one character on totally ordinary
-        // typing, with nothing actually stale. That silently threw away a
-        // valid, just-arrived translation almost every time, which is what
-        // made auto-apply feel unreliable and made it seem like there was
-        // no way to correct anything — a good translation kept vanishing
-        // instead of landing.
-        //
-        // The requestId check back in onTranslateSourceTextChanged is
-        // already the real staleness guard (if the user kept typing, that
-        // job was cancelled and this function is never called with an old
-        // result) so this second check was redundant on top of being too
-        // strict. All that's still needed here is the anchor check: if the
-        // field no longer starts with translateAnchorText at all (user
-        // backspaced past it, or switched fields/apps), there's nothing
-        // sane left to replace.
-        if (!currentBeforeCursor.startsWith(translateAnchorText)) {
-            android.util.Log.d("SinKeyTranslate", "applyTranslationToField ABORT: anchor mismatch. anchor='${translateAnchorText}' currentBeforeCursor='${currentBeforeCursor}'")
-            return
-        }
-        val currentSource = currentBeforeCursor.substring(translateAnchorText.length)
-
-        android.util.Log.d("SinKeyTranslate", "applyTranslationToField APPLYING (requested for '$sourceTextForLog'): '${currentSource}' -> '${result}'")
         ic.beginBatchEdit()
         ic.finishComposingText()
-        ic.deleteSurroundingText(currentSource.length, 0)
-        setComposingTextStyled(ic, result)
+        ic.commitText(result, 1)
         ic.endBatchEdit()
-        // The field now reads translateAnchorText + result (as composing
-        // text). Re-anchor past it so this replacement itself isn't picked
-        // up as "new source text" the next time refreshTranslateSourceFromField
-        // runs — the next keystroke should start a fresh source segment
-        // after the translated text, not re-translate the translation.
-        translateAnchorText += result
-        translateSourceText.value = ""
         syncExpectedCursorPosition(ic)
+        // Clear the draft for the next phrase — mirrors closing/reopening
+        // translate mode, but keeps the row open so the user can keep
+        // translating more without an extra tap.
+        translateBoxText.value = ""
+        translateBoxCursor.value = 0
+        translateResultText.value = ""
+        translateErrorState.value = TranslateErrorState.NONE
     }
 
     /**
