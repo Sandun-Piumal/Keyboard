@@ -298,7 +298,7 @@ fun HomeScreen() {
                     Box(
                         modifier = Modifier
                             .padding(top = 30.dp)
-                            .width(120.dp)
+                            .width(150.dp)
                             .height(96.dp)
                     ) {
                     // sparkles above the keyboard
@@ -323,15 +323,15 @@ fun HomeScreen() {
                     Column(
                         modifier = Modifier
                             .align(Alignment.BottomCenter)
-                            .width(118.dp)
+                            .width(100.dp)
                             .clip(RoundedCornerShape(11.dp))
                             .background(
                                 Brush.linearGradient(
                                     listOf(Color(0xFFB08CF0), Color(0xFF7C4FE0))
                                 )
                             )
-                            .padding(8.dp),
-                        verticalArrangement = Arrangement.spacedBy(4.dp)
+                            .padding(7.dp),
+                        verticalArrangement = Arrangement.spacedBy(3.dp)
                     ) {
                         repeat(2) {
                             Row(horizontalArrangement = Arrangement.spacedBy(3.dp)) {
@@ -339,7 +339,7 @@ fun HomeScreen() {
                                     Box(
                                         modifier = Modifier
                                             .weight(1f)
-                                            .height(12.dp)
+                                            .height(10.dp)
                                             .clip(RoundedCornerShape(3.dp))
                                             .background(Color(0xFFC6B3F5).copy(alpha = 0.85f))
                                     )
@@ -350,34 +350,34 @@ fun HomeScreen() {
                             Box(
                                 modifier = Modifier
                                     .weight(1.4f)
-                                    .height(12.dp)
+                                    .height(10.dp)
                                     .clip(RoundedCornerShape(3.dp))
                                     .background(Color(0xFFC6B3F5).copy(alpha = 0.85f))
                             )
                             Box(
                                 modifier = Modifier
                                     .weight(3f)
-                                    .height(12.dp)
+                                    .height(10.dp)
                                     .clip(RoundedCornerShape(3.dp))
                                     .background(Color(0xFFC6B3F5).copy(alpha = 0.85f))
                             )
                             Box(
                                 modifier = Modifier
                                     .weight(1.4f)
-                                    .height(12.dp)
+                                    .height(10.dp)
                                     .clip(RoundedCornerShape(3.dp))
                                     .background(Color(0xFFC6B3F5).copy(alpha = 0.85f))
                             )
                         }
                     }
 
-                    // white "සිංහල" bubble — overlaps the keyboard's top-left corner,
-                    // spilling out past the illustration box to the left (as in
-                    // the reference, where it sits beside the headline text)
+                    // white "සිංහල" bubble — sits to the left of the
+                    // keyboard, its bottom-right corner overlapping the
+                    // keyboard's top-left corner (matches reference)
                     Column(
                         modifier = Modifier
                             .align(Alignment.TopStart)
-                            .offset(x = (-38).dp, y = 14.dp)
+                            .offset(x = (-18).dp, y = (-4).dp)
                     ) {
                         Box(
                             modifier = Modifier
@@ -392,25 +392,26 @@ fun HomeScreen() {
                                 color = Color(0xFF241C3D)
                             )
                         }
-                        // speech-bubble tail — sits left-of-center under
-                        // the bubble, pointing down at the keyboard
-                        // (matches the reference exactly)
+                        // speech-bubble tail — small nub, left-of-center,
+                        // tucked close against the bubble (as in reference)
                         Box(
                             modifier = Modifier
-                                .padding(start = 16.dp)
-                                .size(9.dp)
-                                .offset(y = (-4).dp)
+                                .padding(start = 14.dp)
+                                .size(7.dp)
+                                .offset(y = (-6).dp)
                                 .rotate(45f)
-                                .clip(RoundedCornerShape(bottomStart = 3.dp))
+                                .clip(RoundedCornerShape(bottomStart = 2.dp))
                                 .background(Color.White)
                         )
                     }
 
-                    // pink "A" bubble — overlaps the keyboard's top-right corner
+                    // pink "A" bubble — sits to the right of the keyboard,
+                    // its bottom-left corner overlapping the keyboard's
+                    // top-right corner (matches reference)
                     Column(
                         modifier = Modifier
                             .align(Alignment.TopEnd)
-                            .offset(x = 4.dp, y = 26.dp)
+                            .offset(x = 8.dp, y = (-4).dp)
                     ) {
                         Box(
                             modifier = Modifier
@@ -425,15 +426,15 @@ fun HomeScreen() {
                                 color = Color(0xFF241C3D)
                             )
                         }
-                        // speech-bubble tail — bottom-left corner,
-                        // pointing down toward the keyboard
+                        // speech-bubble tail — small nub tucked against
+                        // the bottom-left corner, matching the reference
                         Box(
                             modifier = Modifier
-                                .padding(start = 8.dp)
-                                .size(8.dp)
-                                .offset(y = (-4).dp)
+                                .padding(start = 10.dp)
+                                .size(7.dp)
+                                .offset(y = (-6).dp)
                                 .rotate(45f)
-                                .clip(RoundedCornerShape(bottomStart = 3.dp))
+                                .clip(RoundedCornerShape(bottomStart = 2.dp))
                                 .background(Color(0xFFF6B8D6))
                         )
                     }
