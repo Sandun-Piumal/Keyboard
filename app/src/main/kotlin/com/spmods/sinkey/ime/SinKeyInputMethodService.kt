@@ -1792,29 +1792,29 @@ class SinKeyInputMethodService : InputMethodService() {
                 is com.spmods.sinkey.data.TranslateService.TranslateResult.Success -> {
                     translateResultText.value = result.text
                     translateErrorState.value = TranslateErrorState.NONE
-                    // BUG FIX (flicker / translation silently undone):
-                    // previously this wrote into the field unconditionally,
-                    // even while the user was still mid-word — wordBuffer
-                    // (the Sinhala transliteration engine's own live
-                    // composing-span owner) doesn't know this write
-                    // happened, so the very next keystroke's
-                    // setComposingTextStyled(renderStyledBuffer()) call
-                    // re-renders the whole buffered word from scratch on
-                    // top of it. That looked like "delete and retype" and
-                    // also meant the translation of a half-finished word
-                    // got overwritten a moment later by the rest of that
-                    // same word being typed — so it looked like translate
-                    // "didn't happen" even though it briefly had, for a
-                    // fragment nobody meant to translate yet.
-                    // Fix: only actually write into the field once there's
-                    // no word still being composed (wordBuffer/englishBuffer
-                    // both empty — i.e. the user just finished a word/typed
-                    // a space/punctuation, or is between words). If a word
-                    // is still in progress, wait and re-check shortly
-                    // rather than racing it — the moment the word ends
-                    // (SPACE, punctuation, or the row simply stops
-                    // receiving new keys) this fires and catches up.
-                    applyTranslationOnceWordBoundary(newSourceText, result.text, requestId)
+                    // BUG FIX (flicker / translation silently undone /
+                    // needing Enter to trigger): the first attempt at this
+                    // fix waited for wordBuffer/englishBuffer to become
+                    // empty before writing — but those only clear on an
+                    // explicit SPACE, ENTER, or punctuation key (see
+                    // commitPendingWord's callers), never just from a
+                    // typing pause. So the very last word typed before the
+                    // debounce fired never got translated until the user
+                    // pressed Enter to force a commit.
+                    //
+                    // The debounce delay itself (350ms of no new keys) IS
+                    // the pause signal — there's no need to wait for a
+                    // separate boundary key. So: if a word is still being
+                    // composed when the translation comes back, finish it
+                    // the same way SPACE does (commitPendingWord — which
+                    // properly transliterates, commits as real text, and
+                    // clears wordBuffer/englishBuffer so the engine's own
+                    // state stays consistent) before writing the
+                    // translation in its place. This avoids the original
+                    // flicker bug (translation racing wordBuffer's own
+                    // composing-span rewrite) without ever leaving the
+                    // last word stuck waiting for Enter.
+                    applyTranslationToField(newSourceText, result.text)
                 }
                 is com.spmods.sinkey.data.TranslateService.TranslateResult.NoConnection -> {
                     translateErrorState.value = TranslateErrorState.NO_CONNECTION
@@ -1834,41 +1834,6 @@ class SinKeyInputMethodService : InputMethodService() {
     }
 
     /**
-     * Waits until the user isn't mid-word (wordBuffer/englishBuffer both
-     * empty) before calling [applyTranslationToField], re-checking briefly
-     * rather than writing immediately — see the BUG FIX comment at the call
-     * site in [onTranslateSourceTextChanged] for why writing mid-word was
-     * unsafe. Bails out (without writing) if [requestId] goes stale in the
-     * meantime, same staleness contract as the caller.
-     */
-    private fun applyTranslationOnceWordBoundary(expectedSourceText: String, result: String, requestId: Long) {
-        if (wordBuffer.isNotEmpty() || englishBuffer.isNotEmpty()) {
-            translateJob = serviceScope.launch {
-                // Short poll rather than a single long wait — a typing
-                // pause is usually brief, and this keeps the eventual
-                // write close to when the word boundary actually happens
-                // instead of over- or under-shooting a fixed delay.
-                var attempts = 0
-                while ((wordBuffer.isNotEmpty() || englishBuffer.isNotEmpty()) && attempts < 20) {
-                    kotlinx.coroutines.delay(100)
-                    attempts++
-                    if (requestId != translateRequestId) return@launch
-                }
-                if (requestId != translateRequestId) return@launch
-                if (wordBuffer.isEmpty() && englishBuffer.isEmpty()) {
-                    applyTranslationToField(expectedSourceText, result)
-                }
-                // If still mid-word after ~2s, give up silently — the
-                // follow-up request for whatever the user has since typed
-                // (already in flight via the normal debounce path) will
-                // supersede this one anyway.
-            }
-            return
-        }
-        applyTranslationToField(expectedSourceText, result)
-    }
-
-    /**
      * Replaces the just-typed source text (translateAnchorText..cursor)
      * with [result] in the real field, then updates translateAnchorText so
      * the replacement itself isn't mistaken for new source text on the
@@ -1881,6 +1846,23 @@ class SinKeyInputMethodService : InputMethodService() {
      */
     private fun applyTranslationToField(expectedSourceText: String, result: String) {
         val ic = currentInputConnection ?: return
+        // BUG FIX: finish any word still being composed the same way SPACE
+        // does, before touching the field below. Two problems otherwise:
+        // (1) wordBuffer stays non-empty, so the very next keystroke's
+        //     setComposingTextStyled(renderStyledBuffer()) call re-renders
+        //     the whole buffered word from scratch on top of whatever this
+        //     function just wrote — the delete/retype flicker.
+        // (2) commitPendingWord() itself changes the field's on-screen text
+        //     (replaces the raw composing preview with the final
+        //     transliterated/autocorrected word), so it must run BEFORE the
+        //     currentBeforeCursor read just below — reading first and
+        //     committing after would compare against text that's about to
+        //     change underneath it.
+        // This mirrors exactly what SPACE/ENTER do (see commitPendingWord's
+        // other callers) — translate mode reaching a debounce pause is
+        // being treated as its own kind of word-boundary trigger, not a
+        // special case.
+        commitPendingWord()
         val currentBeforeCursor = ic.getTextBeforeCursor(translateAnchorText.length + 500, 0)?.toString() ?: ""
         if (!currentBeforeCursor.startsWith(translateAnchorText)) {
             android.util.Log.d("SinKeyTranslate", "applyTranslationToField ABORT: anchor mismatch. anchor='${translateAnchorText}' currentBeforeCursor='${currentBeforeCursor}'")
@@ -1888,6 +1870,16 @@ class SinKeyInputMethodService : InputMethodService() {
         }
         val currentSource = currentBeforeCursor.substring(translateAnchorText.length)
         if (currentSource != expectedSourceText) {
+            // BUG FIX NOTE: commitPendingWord() above can itself change
+            // currentSource's tail (e.g. autocorrect silently swapping the
+            // just-finished word) even when nothing new was typed since the
+            // translation was requested. That's still a legitimate
+            // "field changed since this translation was requested" case —
+            // correctly bailing out here and letting the natural follow-up
+            // translate request (triggered by refreshTranslateSourceFromField
+            // picking up that same change) catch up is the right behaviour,
+            // not a bug: it avoids writing a translation of text that no
+            // longer matches what's on screen.
             android.util.Log.d("SinKeyTranslate", "applyTranslationToField ABORT: stale. currentSource='${currentSource}' expected='${expectedSourceText}'")
             return // stale reply — see doc comment
         }
