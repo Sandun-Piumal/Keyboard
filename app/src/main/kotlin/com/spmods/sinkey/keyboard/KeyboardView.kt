@@ -729,7 +729,7 @@ internal fun KeyboardView(
             // (same slot, same 44dp height, so nothing else on the board
             // shifts or resizes) — the recent-emoji strip itself is not
             // shown at all while the banner is up.
-            if (!isPhoneInput && !isTranslateMode && currentBoard != Board.EMOJI && currentBoard != Board.CLIPBOARD && currentBoard != Board.FONT &&
+            if (!isPhoneInput && currentBoard != Board.EMOJI && currentBoard != Board.CLIPBOARD && currentBoard != Board.FONT &&
                 currentBoard != Board.STICKER && currentBoard != Board.STICKER_CREATE) {
                 if (showUpdateBanner) {
                     UpdateBanner(
