@@ -165,6 +165,13 @@ class SinKeyInputMethodService : InputMethodService() {
     private data class LastFieldSync(val translatedText: String)
     private var lastFieldSync: LastFieldSync? = null
     private var translateSourceText = mutableStateOf("")
+    // BUG FIX: cursor offset into translateSourceText's coordinate space
+    // (as opposed to translateCursorPos, which is in translateBuffer's raw-
+    // keystroke coordinate space) — see transliterateTranslateBufferWithCursor's
+    // doc comment for why these two spaces can disagree and need a separate
+    // tracked value. Recomputed every time translateSourceText is, in
+    // requestTranslateBufferSync.
+    private var translateSourceCursorDisplay = mutableStateOf(0)
     private var translateResultText = mutableStateOf("")
     private var isTranslating = mutableStateOf(false)
     // BUG FIX: previously a failed translate() call (offline, timeout, 403,
@@ -862,6 +869,17 @@ class SinKeyInputMethodService : InputMethodService() {
                         // types, matching what normal typing looks like
                         // outside translate mode.
                         translateSourceText = translateSourceText.value,
+                        // BUG FIX: previously the cursor position was never
+                        // passed down into KeyboardView at all, so the row
+                        // had no way to render it anywhere but the end of
+                        // the text. Pass translateSourceCursorDisplay (the
+                        // cursor position already converted into
+                        // translateSourceText's coordinate space — see
+                        // transliterateTranslateBufferWithCursor) rather
+                        // than the raw translateCursorPos, since the two
+                        // coordinate spaces disagree whenever Sinhala
+                        // transliteration changes the text length.
+                        translateSourceCursor = translateSourceCursorDisplay.value,
                         onTranslateSourceTextTapped = ::moveTranslateCursorTo,
                         translateResultText = translateResultText.value,
                         isTranslating = isTranslating.value,
@@ -1589,28 +1607,29 @@ class SinKeyInputMethodService : InputMethodService() {
      *
      * [offsetInDisplayedText] is an offset into what's actually shown in
      * the row — translateSourceText (transliterated Sinhala, when that
-     * mode is active), NOT translateBuffer (raw Latin keystrokes) — see
-     * the doc comment on where translateSourceText is passed into
-     * KeyboardView. Those two strings can have different lengths (Sinhala
-     * transliteration isn't 1:1 with the Latin keys that produced it: e.g.
-     * "th" → "ත", two keystrokes become one glyph), so a raw index into
-     * one doesn't reliably locate the same content in the other.
+     * mode is active), NOT translateBuffer (raw Latin keystrokes).
      *
-     * When they ARE the same length (pure English, or mix mode with
-     * auto-Sinhala off — see transliterateTranslateBuffer), the offset is
-     * used directly since there's no ambiguity. When they differ, tapping
-     * anywhere still moves the cursor to the end of the buffer rather than
-     * guessing a possibly-wrong position — imprecise, but always safe
-     * (never corrupts/misplaces text), until a proper glyph-to-keystroke
-     * mapping is worth building.
+     * BUG FIX: this used to only honor the tap when
+     * translateSourceText.value.length == translateBuffer's raw length,
+     * and silently moved the cursor to the end of the buffer for every tap
+     * otherwise — which was effectively always, since Sinhala
+     * transliteration almost never preserves length 1:1 ("th" → "ත", two
+     * keystrokes collapse into one glyph). That made tap-to-position
+     * cursor placement not work at all while typing Sinhala, the main use
+     * case for this row. Now uses displayOffsetToRawOffset to properly
+     * translate the tapped display-space offset into the correct
+     * raw-buffer offset regardless of transliteration ratio.
      */
     private fun moveTranslateCursorTo(offsetInDisplayedText: Int) {
         val buf = translateBuffer.value
-        translateCursorPos.value = if (translateSourceText.value.length == buf.length) {
-            offsetInDisplayedText.coerceIn(0, buf.length)
-        } else {
-            buf.length
-        }
+        translateCursorPos.value = displayOffsetToRawOffset(buf, offsetInDisplayedText).coerceIn(0, buf.length)
+        // BUG FIX: translateSourceCursorDisplay (what the UI actually
+        // renders against) is only ever recomputed inside
+        // requestTranslateBufferSync — without this call here, moving
+        // translateCursorPos above would silently have zero visible
+        // effect, since the row reads translateSourceCursorDisplay, not
+        // translateCursorPos directly.
+        translateSourceCursorDisplay.value = transliterateTranslateBufferWithCursor(buf, translateCursorPos.value).second
     }
 
     /** Auto-shift: if the text before cursor ends with ". ", "! ", "? " or is empty → ONE_SHOT */
@@ -1719,6 +1738,7 @@ class SinKeyInputMethodService : InputMethodService() {
         translateCursorPos.value = 0
         lastFieldSync = null
         translateSourceText.value = ""
+        translateSourceCursorDisplay.value = 0
         translateResultText.value = ""
         isTranslating.value = false
         translateErrorState.value = TranslateErrorState.NONE
@@ -1744,6 +1764,7 @@ class SinKeyInputMethodService : InputMethodService() {
         translateCursorPos.value = 0
         lastFieldSync = null
         translateSourceText.value = ""
+        translateSourceCursorDisplay.value = 0
         translateResultText.value = ""
         isTranslating.value = false
         translateErrorState.value = TranslateErrorState.NONE
@@ -1768,6 +1789,7 @@ class SinKeyInputMethodService : InputMethodService() {
         translateCursorPos.value = 0
         lastFieldSync = null
         translateSourceText.value = ""
+        translateSourceCursorDisplay.value = 0
         translateResultText.value = ""
         translateErrorState.value = TranslateErrorState.NONE
         clearSuggestions()
@@ -1849,17 +1871,43 @@ class SinKeyInputMethodService : InputMethodService() {
                 englishBuffer.clear()
             }
             key == "ENTER" -> {
-                // Sends a real Enter to the target field/app (message send,
-                // new line, form submit) AND inserts one into the row's own
-                // buffer, matching how Backspace/Space above now behave —
-                // instant on the real field, no debounce wait.
-                translateBuffer.value = buf.substring(0, pos) + "\n" + buf.substring(pos)
-                translateCursorPos.value = pos + 1
-                currentInputConnection?.sendKeyEvent(android.view.KeyEvent(android.view.KeyEvent.ACTION_DOWN, android.view.KeyEvent.KEYCODE_ENTER))
-                currentInputConnection?.sendKeyEvent(android.view.KeyEvent(android.view.KeyEvent.ACTION_UP, android.view.KeyEvent.KEYCODE_ENTER))
-                lastFieldSync = null // see BACKSPACE's comment above
-                wordBuffer.clear()
-                englishBuffer.clear()
+                // BUG FIX: this used to unconditionally send a raw
+                // KEYCODE_ENTER to the real field — but many single-line
+                // fields (search bars, this translate box included, most
+                // login/URL fields) don't insert a newline on a raw Enter
+                // keycode at all; they expect the field's own IME action
+                // (Send/Search/Done/Go/...) to be invoked instead, exactly
+                // like the normal (non-translate-mode) typing pipeline's
+                // own ENTER branch already does above. Previously that
+                // meant Enter frequently did nothing visible in translate
+                // mode. Mirror that same imeOptions-driven behavior here:
+                // try the field's real action first, and only fall back to
+                // inserting a literal newline when there's no such action
+                // (or the field is explicitly multiline).
+                val editorInfo = currentInputEditorInfo
+                val action = editorInfo?.imeOptions?.and(EditorInfo.IME_MASK_ACTION) ?: EditorInfo.IME_ACTION_NONE
+                val forceMultiline = editorInfo?.inputType
+                    ?.and(android.text.InputType.TYPE_TEXT_FLAG_MULTI_LINE) != 0
+                val ic = currentInputConnection
+                val handledAsAction = action != EditorInfo.IME_ACTION_NONE &&
+                    action != EditorInfo.IME_ACTION_UNSPECIFIED &&
+                    !forceMultiline &&
+                    ic?.performEditorAction(action) == true
+
+                if (!handledAsAction) {
+                    translateBuffer.value = buf.substring(0, pos) + "\n" + buf.substring(pos)
+                    translateCursorPos.value = pos + 1
+                    ic?.sendKeyEvent(android.view.KeyEvent(android.view.KeyEvent.ACTION_DOWN, android.view.KeyEvent.KEYCODE_ENTER))
+                    ic?.sendKeyEvent(android.view.KeyEvent(android.view.KeyEvent.ACTION_UP, android.view.KeyEvent.KEYCODE_ENTER))
+                    lastFieldSync = null // see BACKSPACE's comment above
+                    wordBuffer.clear()
+                    englishBuffer.clear()
+                }
+                // When handled as an action (Send/Search/Done/...), the
+                // field's contents are the app's concern now, not ours —
+                // leaving translateBuffer/translateCursorPos untouched
+                // matches how a real Enter-as-submit never edits the text
+                // that was just submitted.
             }
             key == "SHIFT" || key == "SHIFT_LOCK" -> {
                 shiftState.value = when (shiftState.value) {
@@ -1952,27 +2000,129 @@ class SinKeyInputMethodService : InputMethodService() {
      * InputConnection coupling — rather than duplicating its logic.
      */
     private fun transliterateTranslateBuffer(raw: String): String {
-        if (raw.isEmpty()) return raw
+        return transliterateTranslateBufferWithCursor(raw, 0).first
+    }
+
+    /**
+     * Same transliteration as transliterateTranslateBuffer, but additionally
+     * maps [rawCursor] (an offset into [raw], i.e. translateBuffer/
+     * translateCursorPos's coordinate space) into the equivalent offset in
+     * the transliterated output (translateSourceText's coordinate space).
+     *
+     * BUG FIX: translateCursorPos is always measured against the RAW
+     * buffer, but the row displays translateSourceText — the transliterated
+     * text, which is NOT 1:1 with the raw keystrokes that produced it (e.g.
+     * "th" → "ත", two keystrokes collapse into one glyph). Previously the
+     * raw offset was used directly as if the two were the same length,
+     * which only happened to be correct in pure English mode; in Sinhala/
+     * mix mode the cursor would render at the wrong spot after almost every
+     * keystroke. This transliterates word by word (same splitting as
+     * before) and, for whichever word rawCursor falls inside, transliterates
+     * just the portion up to rawCursor to find out how many output
+     * characters that portion produced — that count, plus the already-
+     * finalized output before that word, is the correct display-space
+     * offset.
+     */
+    private fun transliterateTranslateBufferWithCursor(raw: String, rawCursor: Int): Pair<String, Int> {
+        if (raw.isEmpty()) return "" to 0
+        val clampedCursor = rawCursor.coerceIn(0, raw.length)
         val convertToSinhala = currentLanguage.value != "mix" || cachedMixAutoSinhala
         if (currentLanguage.value == "en" || !convertToSinhala) {
-            return com.spmods.sinkey.keyboard.FancyTextMapper.apply(raw, cachedFancyTextStyle)
+            // FancyTextMapper maps character-for-character (no glyph
+            // collapsing), so the raw offset is already correct here.
+            val mapped = com.spmods.sinkey.keyboard.FancyTextMapper.apply(raw, cachedFancyTextStyle)
+            return mapped to clampedCursor.coerceIn(0, mapped.length)
         }
-        // Transliterate word by word (splitting on whitespace, keeping the
-        // separators) rather than the whole buffer as one call — matches
-        // how SinhalaTransliterator is used elsewhere (per-word, via
-        // wordBuffer) and avoids it trying to treat an embedded space as
-        // part of a single phonetic token.
         val result = StringBuilder()
+        var displayCursor = -1
         var wordStart = 0
+        fun appendWord(start: Int, end: Int) {
+            // end is exclusive; a word here never contains whitespace.
+            if (displayCursor == -1 && clampedCursor in start..end) {
+                // The cursor falls inside (or right at the edge of) this
+                // word — transliterate just the prefix up to the cursor to
+                // find out how many output characters it produced so far.
+                val prefixOut = if (clampedCursor > start) SinhalaTransliterator.transliterate(raw.substring(start, clampedCursor)) else ""
+                displayCursor = result.length + prefixOut.length
+            }
+            if (end > start) result.append(SinhalaTransliterator.transliterate(raw.substring(start, end)))
+        }
         for (i in raw.indices) {
             if (raw[i].isWhitespace()) {
-                if (i > wordStart) result.append(SinhalaTransliterator.transliterate(raw.substring(wordStart, i)))
+                appendWord(wordStart, i)
+                if (displayCursor == -1 && clampedCursor == i) displayCursor = result.length
                 result.append(raw[i])
+                if (displayCursor == -1 && clampedCursor == i + 1) displayCursor = result.length
                 wordStart = i + 1
             }
         }
-        if (wordStart < raw.length) result.append(SinhalaTransliterator.transliterate(raw.substring(wordStart)))
-        return result.toString()
+        if (wordStart < raw.length) appendWord(wordStart, raw.length)
+        if (displayCursor == -1) displayCursor = result.length
+        return result.toString() to displayCursor.coerceIn(0, result.length)
+    }
+
+    /**
+     * Reverse of transliterateTranslateBufferWithCursor's cursor mapping —
+     * given [displayOffset], an offset into the transliterated
+     * translateSourceText that the user tapped, finds the corresponding
+     * offset in the RAW translateBuffer (translateCursorPos's coordinate
+     * space).
+     *
+     * BUG FIX: moveTranslateCursorTo previously only used the tapped offset
+     * directly when translateSourceText.value.length == translateBuffer's
+     * raw length, and fell back to "end of buffer" for every tap otherwise
+     * — which in practice meant almost every tap while typing Sinhala (the
+     * whole point of this keyboard) just moved the cursor to the end
+     * regardless of where the user actually tapped, since transliteration
+     * almost never preserves length exactly. This walks the same word-by-
+     * word transliteration as the forward direction and, for whichever
+     * word displayOffset falls inside, transliterates growing prefixes of
+     * that word's raw text until the output length reaches displayOffset —
+     * the raw prefix length at that point is the correct raw-buffer
+     * offset. This is safe against multi-keystroke-to-one-glyph
+     * transliteration since it works from the raw side outward rather than
+     * assuming a fixed ratio.
+     */
+    private fun displayOffsetToRawOffset(raw: String, displayOffset: Int): Int {
+        if (raw.isEmpty()) return 0
+        val convertToSinhala = currentLanguage.value != "mix" || cachedMixAutoSinhala
+        if (currentLanguage.value == "en" || !convertToSinhala) {
+            // FancyTextMapper is character-for-character — offsets already agree.
+            return displayOffset.coerceIn(0, raw.length)
+        }
+        var displayPos = 0
+        var wordStart = 0
+        fun rawOffsetWithinWord(start: Int, end: Int, targetDisplayLen: Int): Int {
+            // Try successively longer raw prefixes of this word until the
+            // transliterated output is at least targetDisplayLen long —
+            // returns the shortest raw prefix length whose output reaches
+            // that length (i.e. the tap landed within/at the glyph that
+            // prefix produced).
+            for (rawLen in 0..(end - start)) {
+                val out = SinhalaTransliterator.transliterate(raw.substring(start, start + rawLen))
+                if (out.length >= targetDisplayLen) return rawLen
+            }
+            return end - start
+        }
+        for (i in raw.indices) {
+            if (raw[i].isWhitespace()) {
+                val wordOut = if (i > wordStart) SinhalaTransliterator.transliterate(raw.substring(wordStart, i)) else ""
+                if (displayOffset <= displayPos + wordOut.length) {
+                    return wordStart + rawOffsetWithinWord(wordStart, i, displayOffset - displayPos)
+                }
+                displayPos += wordOut.length
+                if (displayOffset == displayPos + 1) return i + 1 // tap landed on the space itself
+                displayPos += 1 // the whitespace character itself
+                wordStart = i + 1
+            }
+        }
+        if (wordStart < raw.length) {
+            val wordOut = SinhalaTransliterator.transliterate(raw.substring(wordStart))
+            if (displayOffset <= displayPos + wordOut.length) {
+                return wordStart + rawOffsetWithinWord(wordStart, raw.length, displayOffset - displayPos)
+            }
+        }
+        return raw.length
     }
 
     /**
@@ -1982,8 +2132,9 @@ class SinKeyInputMethodService : InputMethodService() {
      * above. Called after every buffer-changing key in handleTranslateKey.
      */
     private fun requestTranslateBufferSync() {
-        val sourceText = transliterateTranslateBuffer(translateBuffer.value)
+        val (sourceText, displayCursor) = transliterateTranslateBufferWithCursor(translateBuffer.value, translateCursorPos.value)
         translateSourceText.value = sourceText
+        translateSourceCursorDisplay.value = displayCursor
         translateJob?.cancel()
         translateRequestId++
         val requestId = translateRequestId
