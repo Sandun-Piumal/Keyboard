@@ -1769,7 +1769,12 @@ class SinKeyInputMethodService : InputMethodService() {
         // succeed or fail on its own.
         translateErrorState.value = TranslateErrorState.NONE
         translateJob = serviceScope.launch {
-            kotlinx.coroutines.delay(350)
+            // BUG FIX: was 350ms — combined with the applyTranslationToField
+            // stale-check above (now removed), a debounce this long made a
+            // dropped/never-applied translation far more likely on normal
+            // typing speed. 150ms is enough to avoid firing a network
+            // request on every single keystroke while still feeling live.
+            kotlinx.coroutines.delay(150)
             android.util.Log.d("SinKeyTranslate", "calling TranslateService.translate('$newSourceText', ${translateSourceLang.value}, ${translateTargetLang.value})")
             val result = com.spmods.sinkey.data.TranslateService.translate(
                 newSourceText, translateSourceLang.value, translateTargetLang.value
@@ -1837,17 +1842,19 @@ class SinKeyInputMethodService : InputMethodService() {
      * Replaces the just-typed source text (translateAnchorText..cursor)
      * with [result] in the real field, then updates translateAnchorText so
      * the replacement itself isn't mistaken for new source text on the
-     * next keystroke. [expectedSourceText] guards against a race where the
-     * user typed more after this translation was requested but before it
-     * came back — if the field's current source no longer matches what was
-     * actually translated, skip the replacement rather than clobbering
-     * newer typing with a stale result (the debounced follow-up request
-     * for the newer text will correct it shortly after).
+     * next keystroke.
+     *
+     * The staleness race (user typed more after this translation was
+     * requested but before it came back) is guarded upstream in
+     * [onTranslateSourceTextChanged] via translateRequestId — if newer
+     * typing happened, this function is never even called with the old
+     * result, so there's no need to re-check that here. [sourceTextForLog]
+     * is kept only for the debug log line below.
      */
-    private fun applyTranslationToField(expectedSourceText: String, result: String) {
+    private fun applyTranslationToField(sourceTextForLog: String, result: String) {
         val ic = currentInputConnection ?: return
-        // BUG FIX: finish any word still being composed the same way SPACE
-        // does, before touching the field below. Two problems otherwise:
+        // Finish any word still being composed the same way SPACE does,
+        // before touching the field below. Two problems otherwise:
         // (1) wordBuffer stays non-empty, so the very next keystroke's
         //     setComposingTextStyled(renderStyledBuffer()) call re-renders
         //     the whole buffered word from scratch on top of whatever this
@@ -1858,33 +1865,34 @@ class SinKeyInputMethodService : InputMethodService() {
         //     currentBeforeCursor read just below — reading first and
         //     committing after would compare against text that's about to
         //     change underneath it.
-        // This mirrors exactly what SPACE/ENTER do (see commitPendingWord's
-        // other callers) — translate mode reaching a debounce pause is
-        // being treated as its own kind of word-boundary trigger, not a
-        // special case.
         commitPendingWord()
         val currentBeforeCursor = ic.getTextBeforeCursor(translateAnchorText.length + 500, 0)?.toString() ?: ""
+        // BUG FIX (translation silently not applying / feels broken):
+        // this used to also compare currentSource against expectedSourceText
+        // and bail out on ANY mismatch — but commitPendingWord() right above
+        // can itself tweak the just-finished word (autocorrect), which made
+        // currentSource differ by even one character on totally ordinary
+        // typing, with nothing actually stale. That silently threw away a
+        // valid, just-arrived translation almost every time, which is what
+        // made auto-apply feel unreliable and made it seem like there was
+        // no way to correct anything — a good translation kept vanishing
+        // instead of landing.
+        //
+        // The requestId check back in onTranslateSourceTextChanged is
+        // already the real staleness guard (if the user kept typing, that
+        // job was cancelled and this function is never called with an old
+        // result) so this second check was redundant on top of being too
+        // strict. All that's still needed here is the anchor check: if the
+        // field no longer starts with translateAnchorText at all (user
+        // backspaced past it, or switched fields/apps), there's nothing
+        // sane left to replace.
         if (!currentBeforeCursor.startsWith(translateAnchorText)) {
             android.util.Log.d("SinKeyTranslate", "applyTranslationToField ABORT: anchor mismatch. anchor='${translateAnchorText}' currentBeforeCursor='${currentBeforeCursor}'")
             return
         }
         val currentSource = currentBeforeCursor.substring(translateAnchorText.length)
-        if (currentSource != expectedSourceText) {
-            // BUG FIX NOTE: commitPendingWord() above can itself change
-            // currentSource's tail (e.g. autocorrect silently swapping the
-            // just-finished word) even when nothing new was typed since the
-            // translation was requested. That's still a legitimate
-            // "field changed since this translation was requested" case —
-            // correctly bailing out here and letting the natural follow-up
-            // translate request (triggered by refreshTranslateSourceFromField
-            // picking up that same change) catch up is the right behaviour,
-            // not a bug: it avoids writing a translation of text that no
-            // longer matches what's on screen.
-            android.util.Log.d("SinKeyTranslate", "applyTranslationToField ABORT: stale. currentSource='${currentSource}' expected='${expectedSourceText}'")
-            return // stale reply — see doc comment
-        }
 
-        android.util.Log.d("SinKeyTranslate", "applyTranslationToField APPLYING: '${currentSource}' -> '${result}'")
+        android.util.Log.d("SinKeyTranslate", "applyTranslationToField APPLYING (requested for '$sourceTextForLog'): '${currentSource}' -> '${result}'")
         ic.beginBatchEdit()
         ic.finishComposingText()
         ic.deleteSurroundingText(currentSource.length, 0)
