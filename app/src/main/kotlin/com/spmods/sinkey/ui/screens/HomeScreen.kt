@@ -199,15 +199,19 @@ fun HomeScreen() {
                     .fillMaxWidth()
                     .background(heroGradient)
             ) {
-                // Single content column: text block, then the illustration
-                // sits inline right below the subtitle (not absolutely
-                // positioned), then the CTA button. Height is driven by
-                // content, so no empty gaps and no fixed magic numbers.
-                Column(
+                // Two-column layout: text + CTA on the left, illustration
+                // on the right — matches the original wide, short hero
+                // card. Row height is driven by content (max of the two
+                // columns), so the card stays compact.
+                Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(20.dp)
+                        .padding(20.dp),
+                    verticalAlignment = Alignment.CenterVertically
                 ) {
+                    Column(
+                        modifier = Modifier.weight(1f)
+                    ) {
                     Text(
                         "WELCOME",
                         fontSize = 11.sp,
@@ -257,20 +261,44 @@ fun HomeScreen() {
                         color = BodyGrey
                     )
 
-                    Spacer(Modifier.height(4.dp))
+                    Spacer(Modifier.height(18.dp))
 
-                    // Illustration row — right-aligned, sits directly
-                    // below the subtitle as part of natural content flow.
-                    Box(
+                    Row(
                         modifier = Modifier
-                            .fillMaxWidth()
-                            .height(110.dp)
+                            .clip(RoundedCornerShape(50))
+                            .background(
+                                Brush.horizontalGradient(
+                                    listOf(IndigoDeep, IndigoMid)
+                                )
+                            )
+                            .clickable {
+                                context.startActivity(Intent(Settings.ACTION_INPUT_METHOD_SETTINGS))
+                            }
+                            .padding(horizontal = 22.dp, vertical = 13.dp),
+                        verticalAlignment = Alignment.CenterVertically
                     ) {
+                        Text(
+                            "Start Typing",
+                            color = Color.White,
+                            fontSize = 14.sp,
+                            fontWeight = FontWeight.Bold
+                        )
+                        Spacer(Modifier.width(6.dp))
+                        Icon(
+                            Icons.Filled.ChevronRight,
+                            contentDescription = null,
+                            tint = Color.White,
+                            modifier = Modifier.size(16.dp)
+                        )
+                    }
+                    }
+
+                    // Illustration — right column, vertically centered
+                    // against the text column via the Row's alignment.
                     Box(
                         modifier = Modifier
-                            .align(Alignment.CenterEnd)
                             .width(150.dp)
-                            .height(100.dp)
+                            .height(120.dp)
                     ) {
                     // sparkles above the keyboard
                     Text(
@@ -395,38 +423,6 @@ fun HomeScreen() {
                             .clip(CircleShape)
                             .background(Color(0xFFC6B3F5))
                     )
-                    }
-                    }
-
-                    Spacer(Modifier.height(4.dp))
-
-                    Row(
-                        modifier = Modifier
-                            .clip(RoundedCornerShape(50))
-                            .background(
-                                Brush.horizontalGradient(
-                                    listOf(IndigoDeep, IndigoMid)
-                                )
-                            )
-                            .clickable {
-                                context.startActivity(Intent(Settings.ACTION_INPUT_METHOD_SETTINGS))
-                            }
-                            .padding(horizontal = 22.dp, vertical = 13.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Text(
-                            "Start Typing",
-                            color = Color.White,
-                            fontSize = 14.sp,
-                            fontWeight = FontWeight.Bold
-                        )
-                        Spacer(Modifier.width(6.dp))
-                        Icon(
-                            Icons.Filled.ChevronRight,
-                            contentDescription = null,
-                            tint = Color.White,
-                            modifier = Modifier.size(16.dp)
-                        )
                     }
                 }
             }
