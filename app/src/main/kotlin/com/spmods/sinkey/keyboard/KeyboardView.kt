@@ -510,7 +510,15 @@ internal fun KeyboardView(
     translateSourceText: String = "",
     onTranslateSourceTextChanged: (String) -> Unit = {},
     translateResultText: String = "",
-    isTranslating: Boolean = false
+    isTranslating: Boolean = false,
+    // BUG FIX: previously a failed translation (offline vs. reached the
+    // server but failed) was invisible in the UI — translateResultText
+    // just stayed blank/stale with no explanation. Null means no error;
+    // non-null is the exact user-facing message to show (already resolved
+    // to text by the caller — see SinKeyInputMethodService.TranslateErrorState
+    // — so this file doesn't need to know about that enum, just render
+    // whatever string it's given).
+    translateErrorMessage: String? = null
 ) {
     // Read ahead of `colors` below (moved up from where these used to live,
     // further down this function) because keyboardColors() now needs the
@@ -718,6 +726,7 @@ internal fun KeyboardView(
                     onTranslateSourceTextChanged = onTranslateSourceTextChanged,
                     translateResultText = translateResultText,
                     isTranslating = isTranslating,
+                    translateErrorMessage = translateErrorMessage,
                     selectedFontStyle = FancyTextStyle.fromKey(selectedFontKey)
                 )
             }
@@ -1677,6 +1686,12 @@ private fun TranslateRow(
     onSourceTextChanged: (String) -> Unit,
     resultText: String,
     isTranslating: Boolean,
+    // BUG FIX: non-null when the last translate attempt failed — shown in
+    // place of resultText (mutually exclusive: a failed attempt has no
+    // result to show) so the user can tell "no internet" apart from
+    // "reached Google but it failed" instead of the row just staying
+    // blank/stale with no explanation.
+    errorMessage: String? = null,
     onClose: () -> Unit
 ) {
     val headerHeight = 40.dp
@@ -1820,8 +1835,21 @@ private fun TranslateRow(
             }
         }
 
-        // ── Live translated result ─────────────────────────────────────
-        if (resultText.isNotEmpty()) {
+        // ── Live translated result, or error if the last attempt failed ──
+        // BUG FIX: errorMessage and resultText are mutually exclusive (a
+        // failed attempt has no result), so this replaces rather than
+        // supplements the old "just show resultText" block — previously a
+        // failure left this whole area blank with no explanation at all.
+        if (errorMessage != null) {
+            Text(
+                text = errorMessage,
+                fontSize = 14.sp,
+                fontWeight = FontWeight.Medium,
+                color = Color(0xFFE05252),
+                maxLines = 1,
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 2.dp)
+            )
+        } else if (resultText.isNotEmpty()) {
             Text(
                 text = resultText,
                 fontSize = 14.sp,
@@ -1872,6 +1900,7 @@ private fun AppsMicBar(
     onTranslateSourceTextChanged: (String) -> Unit = {},
     translateResultText: String = "",
     isTranslating: Boolean = false,
+    translateErrorMessage: String? = null,
     selectedFontStyle: FancyTextStyle = FancyTextStyle.NONE
 ) {
     // The undo chip must be able to show the strip even when there are no
@@ -1916,6 +1945,7 @@ private fun AppsMicBar(
             onSourceTextChanged = onTranslateSourceTextChanged,
             resultText = translateResultText,
             isTranslating = isTranslating,
+            errorMessage = translateErrorMessage,
             onClose = onTranslateClose
         )
     }
