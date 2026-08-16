@@ -597,6 +597,56 @@ object SinhalaTransliterator {
  *  - Rows whose output was "_" are placeholders meaning "no candidate yet,
  *    keep buffering" — they carry no usable glyph and are omitted here.
  */
+/**
+ * Whole-string, word-by-word Sinhala phonetic transliteration for contexts
+ * that have a plain text buffer with a cursor (e.g. a real Compose text
+ * field) instead of the IME's own per-keystroke wordBuffer/InputConnection
+ * pipeline (see SinKeyInputMethodService.renderBuffer/handleKey). Splits on
+ * whitespace, transliterates each word with the exact same rule (short
+ * prefix → SinhalaCandidateMap's top-ranked candidate, else the
+ * deterministic SinhalaTransliterator) the main engine uses per keystroke,
+ * and rejoins so an editable box gets identical output to typing the same
+ * text into the real field one letter at a time.
+ *
+ * The last "word" (after the final space, or the whole string if there's no
+ * space yet) is treated as still-being-typed and transliterated the same
+ * way as any other word — there is no separate "committed vs in-progress"
+ * distinction here, since a free-standing text field has no per-word commit
+ * step the way the main engine's wordBuffer does.
+ */
+object FreeTextSinhalaTransliterator {
+    /**
+     * Transliterates [raw] word-by-word, preserving the original whitespace
+     * runs between words exactly (so cursor-offset math in the caller stays
+     * simple — this never changes how many "words" there are, only what
+     * each non-space run becomes).
+     */
+    fun transliterate(raw: String): String {
+        if (raw.isEmpty()) return ""
+        val out = StringBuilder(raw.length)
+        var i = 0
+        while (i < raw.length) {
+            if (raw[i].isWhitespace()) {
+                out.append(raw[i])
+                i++
+            } else {
+                val start = i
+                while (i < raw.length && !raw[i].isWhitespace()) i++
+                val word = raw.substring(start, i)
+                out.append(transliterateWord(word))
+            }
+        }
+        return out.toString()
+    }
+
+    private fun transliterateWord(word: String): String {
+        if (word.length <= 2) {
+            SinhalaCandidateMap.topCandidateFor(word)?.let { return it }
+        }
+        return SinhalaTransliterator.transliterate(word)
+    }
+}
+
 object SinhalaCandidateMap {
 
     // Auto-generated from sinhala_key_mapping_full.csv — DO NOT hand-edit ordering;
