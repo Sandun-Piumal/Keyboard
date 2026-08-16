@@ -1768,6 +1768,20 @@ class SinKeyInputMethodService : InputMethodService() {
         translateResultText.value = ""
         isTranslating.value = false
         translateErrorState.value = TranslateErrorState.NONE
+        // BUG FIX: wordBuffer/englishBuffer mirror translateBuffer's
+        // current word while typing inside the row (see handleTranslateKey's
+        // letter branch), so suggestions keep working the same way they do
+        // in normal typing. But they were never cleared here — so after
+        // Close, they'd still hold whatever word was last typed in the
+        // translate row. The very next SPACE/ENTER back in normal typing
+        // mode would then run commitPendingWord()/maybeAutocorrectAndCommitSpace(),
+        // which commit whatever's sitting in these buffers straight into
+        // the real field — silently re-inserting that leftover word a
+        // second time, right after the translation that was already synced
+        // in. Clearing them here is what stops that double-commit.
+        wordBuffer.clear()
+        englishBuffer.clear()
+        resumedWordBeforeCursor = null
         clearSuggestions()
     }
 
@@ -1792,6 +1806,13 @@ class SinKeyInputMethodService : InputMethodService() {
         translateSourceCursorDisplay.value = 0
         translateResultText.value = ""
         translateErrorState.value = TranslateErrorState.NONE
+        // BUG FIX: same reasoning as closeTranslateMode — wordBuffer/
+        // englishBuffer mirror the buffer's current word for suggestions,
+        // and were never cleared here, so a swap mid-word would leave the
+        // old word's letters bleeding into whatever's typed next.
+        wordBuffer.clear()
+        englishBuffer.clear()
+        resumedWordBeforeCursor = null
         clearSuggestions()
     }
 
