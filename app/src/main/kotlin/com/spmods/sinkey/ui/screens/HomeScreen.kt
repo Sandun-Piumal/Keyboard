@@ -7,12 +7,7 @@ import android.os.Handler
 import android.os.Looper
 import android.provider.Settings
 import android.view.inputmethod.InputMethodManager
-import androidx.compose.animation.AnimatedContent
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
-import androidx.compose.animation.slideInVertically
-import androidx.compose.animation.slideOutVertically
-import androidx.compose.animation.togetherWith
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -22,6 +17,8 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -55,15 +52,17 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalLifecycleOwner
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
-import kotlinx.coroutines.delay
+import com.spmods.sinkey.R
 
 // ── Screenshot-matched palette (indigo/purple → pink) ──────────────────────
 private val IndigoDeep = Color(0xFF6C4CE0)
@@ -119,14 +118,6 @@ fun HomeScreen() {
         onDispose {
             context.contentResolver.unregisterContentObserver(contentObserver)
             lifecycleOwner.lifecycle.removeObserver(lifecycleObserver)
-        }
-    }
-
-    var showSinhalaBubble by remember { mutableStateOf(true) }
-    LaunchedEffect(Unit) {
-        while (true) {
-            delay(2800)
-            showSinhalaBubble = !showSinhalaBubble
         }
     }
 
@@ -207,134 +198,129 @@ fun HomeScreen() {
             shape = RoundedCornerShape(24.dp),
             elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
         ) {
-            Box(
+            Column(
                 modifier = Modifier
                     .fillMaxWidth()
                     .background(heroGradient)
                     .padding(20.dp)
             ) {
-                Column {
+                Text(
+                    "WELCOME",
+                    fontSize = 11.sp,
+                    fontWeight = FontWeight.Bold,
+                    letterSpacing = 1.sp,
+                    color = IndigoDeep
+                )
+                Spacer(Modifier.height(8.dp))
+                Text(
+                    "Type your world",
+                    fontSize = 22.sp,
+                    fontWeight = FontWeight.ExtraBold,
+                    color = Color(0xFF1E1B33)
+                )
+                Row {
                     Text(
-                        "WELCOME",
-                        fontSize = 11.sp,
-                        fontWeight = FontWeight.Bold,
-                        letterSpacing = 1.sp,
+                        "in ",
+                        fontSize = 22.sp,
+                        fontWeight = FontWeight.ExtraBold,
+                        color = Color(0xFF1E1B33)
+                    )
+                    Text(
+                        "Sinhala",
+                        fontSize = 22.sp,
+                        fontWeight = FontWeight.ExtraBold,
                         color = IndigoDeep
                     )
-                    Spacer(Modifier.height(8.dp))
-                    Column {
-                        Text(
-                            "Type your world",
-                            fontSize = 22.sp,
-                            fontWeight = FontWeight.ExtraBold,
-                            color = Color(0xFF1E1B33)
-                        )
-                        Row {
-                            Text(
-                                "in ",
-                                fontSize = 22.sp,
-                                fontWeight = FontWeight.ExtraBold,
-                                color = Color(0xFF1E1B33)
-                            )
-                            Text(
-                                "Sinhala",
-                                fontSize = 22.sp,
-                                fontWeight = FontWeight.ExtraBold,
-                                color = IndigoDeep
-                            )
-                            Text(
-                                " or ",
-                                fontSize = 22.sp,
-                                fontWeight = FontWeight.ExtraBold,
-                                color = Color(0xFF1E1B33)
-                            )
-                            Text(
-                                "English",
-                                fontSize = 22.sp,
-                                fontWeight = FontWeight.ExtraBold,
-                                color = PinkAccent
-                            )
-                        }
-                    }
-                    Spacer(Modifier.height(8.dp))
                     Text(
-                        "Switch anytime. Type naturally.",
-                        fontSize = 13.sp,
-                        color = BodyGrey
+                        " or ",
+                        fontSize = 22.sp,
+                        fontWeight = FontWeight.ExtraBold,
+                        color = Color(0xFF1E1B33)
                     )
-                    Spacer(Modifier.height(18.dp))
-
-                    Row(
-                        modifier = Modifier
-                            .clip(RoundedCornerShape(50))
-                            .background(
-                                Brush.horizontalGradient(
-                                    listOf(IndigoDeep, IndigoMid)
-                                )
-                            )
-                            .clickable {
-                                context.startActivity(Intent(Settings.ACTION_INPUT_METHOD_SETTINGS))
-                            }
-                            .padding(horizontal = 22.dp, vertical = 13.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Text(
-                            "Start Typing",
-                            color = Color.White,
-                            fontSize = 14.sp,
-                            fontWeight = FontWeight.Bold
-                        )
-                        Spacer(Modifier.width(6.dp))
-                        Icon(
-                            Icons.Filled.ChevronRight,
-                            contentDescription = null,
-                            tint = Color.White,
-                            modifier = Modifier.size(16.dp)
-                        )
-                    }
+                    Text(
+                        "English",
+                        fontSize = 22.sp,
+                        fontWeight = FontWeight.ExtraBold,
+                        color = PinkAccent
+                    )
                 }
-
-                // Speech bubble + keyboard glyph illustration (top-right corner)
-                Box(
-                    modifier = Modifier
-                        .align(Alignment.TopEnd)
-                        .padding(top = 4.dp)
-                ) {
-                    AnimatedContent(
-                        targetState = showSinhalaBubble,
-                        transitionSpec = {
-                            (fadeIn() + slideInVertically { it / 3 })
-                                .togetherWith(fadeOut() + slideOutVertically { -it / 3 })
-                        },
-                        label = "bubble"
-                    ) { isSinhala ->
-                        Box(
-                            modifier = Modifier
-                                .clip(RoundedCornerShape(14.dp))
-                                .background(Color.White)
-                                .padding(horizontal = 14.dp, vertical = 8.dp)
-                        ) {
-                            Text(
-                                if (isSinhala) "සිංහල" else "A",
-                                fontSize = 15.sp,
-                                fontWeight = FontWeight.Bold,
-                                color = Color(0xFF2A2140)
-                            )
-                        }
-                    }
-                }
-
-                Box(
-                    modifier = Modifier
-                        .align(Alignment.BottomEnd)
-                        .size(90.dp, 60.dp)
-                        .clip(RoundedCornerShape(16.dp))
-                        .background(
-                            Brush.linearGradient(
-                                listOf(IndigoMid, Color(0xFF9B7CF0))
-                            )
-                        )
+                Spacer(Modifier.height(8.dp))
+                Text(
+                    "Switch anytime. Type naturally.",
+                    fontSize = 13.sp,
+                    color = BodyGrey
                 )
+
+                // ── Keyboard illustration with speech bubbles ────────────
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(190.dp)
+                        .padding(top = 10.dp)
+                ) {
+                    Image(
+                        painter = painterResource(R.drawable.ic_hero_keyboard),
+                        contentDescription = null,
+                        contentScale = ContentScale.Fit,
+                        modifier = Modifier
+                            .align(Alignment.Center)
+                            .fillMaxWidth()
+                            .height(190.dp)
+                    )
+
+                    // "සිංහල" label over the white bubble (top-left)
+                    Text(
+                        "සිංහල",
+                        fontSize = 20.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = Color(0xFF241C3D),
+                        modifier = Modifier
+                            .align(Alignment.TopStart)
+                            .offset(x = 10.dp, y = 26.dp)
+                    )
+
+                    // "A" label over the pink bubble (top-right)
+                    Text(
+                        "A",
+                        fontSize = 24.sp,
+                        fontWeight = FontWeight.ExtraBold,
+                        color = Color(0xFF241C3D),
+                        modifier = Modifier
+                            .align(Alignment.TopEnd)
+                            .offset(x = (-36).dp, y = 34.dp)
+                    )
+                }
+
+                Spacer(Modifier.height(4.dp))
+
+                Row(
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(50))
+                        .background(
+                            Brush.horizontalGradient(
+                                listOf(IndigoDeep, IndigoMid)
+                            )
+                        )
+                        .clickable {
+                            context.startActivity(Intent(Settings.ACTION_INPUT_METHOD_SETTINGS))
+                        }
+                        .padding(horizontal = 22.dp, vertical = 13.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        "Start Typing",
+                        color = Color.White,
+                        fontSize = 14.sp,
+                        fontWeight = FontWeight.Bold
+                    )
+                    Spacer(Modifier.width(6.dp))
+                    Icon(
+                        Icons.Filled.ChevronRight,
+                        contentDescription = null,
+                        tint = Color.White,
+                        modifier = Modifier.size(16.dp)
+                    )
+                }
             }
         }
 
