@@ -1897,6 +1897,15 @@ private fun AppsMicBar(
     // never something that happens mid-typing-flow the way the tools-row ↔
     // suggestion-strip swap does, so a resize here doesn't carry the same
     // risk of racing WhatsApp's own panel animation.
+    //
+    // IMPORTANT: TranslateRow is prepended ABOVE the normal toolbar
+    // content below (in a Column), not a replacement for it — the
+    // suggestion strip / tools row must keep working exactly as normal
+    // while translating, since typing during translate mode goes through
+    // the completely ordinary typing pipeline (see SinKeyInputMethodService's
+    // translate-state doc comment) and the user can still want to tap a
+    // Sinhala suggestion chip while the translate row is open above it.
+    Column(modifier = Modifier.fillMaxWidth()) {
     if (isTranslateMode) {
         TranslateRow(
             colors = colors,
@@ -1909,7 +1918,6 @@ private fun AppsMicBar(
             isTranslating = isTranslating,
             onClose = onTranslateClose
         )
-        return
     }
     if (isTyping) {
             // ── Suggestion strip ─────────────────────────────────────────
@@ -2090,6 +2098,7 @@ private fun AppsMicBar(
                 }
             }
         }
+    }
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
