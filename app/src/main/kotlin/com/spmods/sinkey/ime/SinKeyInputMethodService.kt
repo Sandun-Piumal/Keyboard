@@ -818,7 +818,7 @@ class SinKeyInputMethodService : InputMethodService() {
                         showKeyBorders = showKeyBorders,
                         isDark = isDark,
                         suggestions = suggestions.value,
-                        onSuggestionSelected = ::handleSuggestion,
+                        onSuggestionSelected = { word -> if (isTranslateMode.value) handleTranslateSuggestion(word) else handleSuggestion(word) },
                         autocorrectUndoWord = autocorrectUndo.value?.originalTyped,
                         onUndoAutocorrect = ::undoAutocorrect,
                         swipeTypingEnabled = swipeTypingEnabled,
@@ -845,16 +845,23 @@ class SinKeyInputMethodService : InputMethodService() {
                         // the anchor point" — because the row was a
                         // read-only watch on the real field. Now the row
                         // IS the buffer (see the translate-state block's
-                        // doc comment), so it displays translateBuffer
-                        // directly; ordinary keys reach it exactly like
-                        // any other typing, through the same onKey below
-                        // (handleKey routes to handleTranslateKey while
-                        // isTranslateMode is true), so no separate
-                        // text-changed callback is needed here anymore —
-                        // only the tap-to-cursor one below, since that's
-                        // not something onKey's key-string protocol can
-                        // express.
-                        translateSourceText = translateBuffer.value,
+                        // doc comment).
+                        //
+                        // BUG FIX: showing translateBuffer.value directly
+                        // (the RAW keystrokes, e.g. "mama gedara") meant
+                        // Sinhala/mix mode never appeared to transliterate
+                        // in the row at all — it always looked like plain
+                        // English no matter what was typed, since the raw
+                        // buffer never gets converted. translateSourceText
+                        // is the already-transliterated version (computed
+                        // in requestTranslateBufferSync via
+                        // transliterateTranslateBuffer, the same function
+                        // that produces what's actually sent to the
+                        // translate API) — showing that instead means the
+                        // row now displays real Sinhala script as the user
+                        // types, matching what normal typing looks like
+                        // outside translate mode.
+                        translateSourceText = translateSourceText.value,
                         onTranslateSourceTextTapped = ::moveTranslateCursorTo,
                         translateResultText = translateResultText.value,
                         isTranslating = isTranslating.value,
@@ -1580,14 +1587,30 @@ class SinKeyInputMethodService : InputMethodService() {
      * BasicTextField, so it can't move the cursor itself; it just reports
      * where the user tapped and this is what actually acts on it).
      *
-     * Much simpler than the version this replaced: translateBuffer is a
-     * local, in-memory buffer completely independent of the real
-     * InputConnection now (see the translate-state block's doc comment),
-     * so moving its cursor is just updating translateCursorPos — no
-     * InputConnection calls, no batching, no cursor-tracking bookkeeping.
+     * [offsetInDisplayedText] is an offset into what's actually shown in
+     * the row — translateSourceText (transliterated Sinhala, when that
+     * mode is active), NOT translateBuffer (raw Latin keystrokes) — see
+     * the doc comment on where translateSourceText is passed into
+     * KeyboardView. Those two strings can have different lengths (Sinhala
+     * transliteration isn't 1:1 with the Latin keys that produced it: e.g.
+     * "th" → "ත", two keystrokes become one glyph), so a raw index into
+     * one doesn't reliably locate the same content in the other.
+     *
+     * When they ARE the same length (pure English, or mix mode with
+     * auto-Sinhala off — see transliterateTranslateBuffer), the offset is
+     * used directly since there's no ambiguity. When they differ, tapping
+     * anywhere still moves the cursor to the end of the buffer rather than
+     * guessing a possibly-wrong position — imprecise, but always safe
+     * (never corrupts/misplaces text), until a proper glyph-to-keystroke
+     * mapping is worth building.
      */
-    private fun moveTranslateCursorTo(offsetInBuffer: Int) {
-        translateCursorPos.value = offsetInBuffer.coerceIn(0, translateBuffer.value.length)
+    private fun moveTranslateCursorTo(offsetInDisplayedText: Int) {
+        val buf = translateBuffer.value
+        translateCursorPos.value = if (translateSourceText.value.length == buf.length) {
+            offsetInDisplayedText.coerceIn(0, buf.length)
+        } else {
+            buf.length
+        }
     }
 
     /** Auto-shift: if the text before cursor ends with ". ", "! ", "? " or is empty → ONE_SHOT */
@@ -1724,6 +1747,7 @@ class SinKeyInputMethodService : InputMethodService() {
         translateResultText.value = ""
         isTranslating.value = false
         translateErrorState.value = TranslateErrorState.NONE
+        clearSuggestions()
     }
 
     private fun swapTranslateLanguages() {
@@ -1746,6 +1770,7 @@ class SinKeyInputMethodService : InputMethodService() {
         translateSourceText.value = ""
         translateResultText.value = ""
         translateErrorState.value = TranslateErrorState.NONE
+        clearSuggestions()
     }
 
     /**
@@ -1759,10 +1784,11 @@ class SinKeyInputMethodService : InputMethodService() {
      *
      * Deliberately handles only the keys that make sense inside a single-
      * purpose notepad buffer (letters, backspace, space, punctuation,
-     * shift). Keys that only make sense against a real target field/app
-     * (ENTER's editor-action handling, emoji-picker commits, clipboard
-     * paste, stickers, sound/vibrate feedback） intentionally fall through
-     * to a no-op default — TOOL_TRANSLATE's own row already hides the
+     * shift) plus ENTER, which acts on the real target field directly
+     * (see its own branch below) rather than the buffer. Other keys that
+     * only make sense against a real target field/app (emoji-picker
+     * commits, clipboard paste, stickers, sound/vibrate feedback) are
+     * intentionally a no-op — TOOL_TRANSLATE's own row already hides the
      * emoji/sticker/clipboard tools while open (see AppsMicBar), so this
      * is just being defensive about any that reach here anyway.
      */
@@ -1781,18 +1807,59 @@ class SinKeyInputMethodService : InputMethodService() {
                 val deleteFrom = Character.offsetByCodePoints(buf, pos, -1)
                 translateBuffer.value = buf.removeRange(deleteFrom, pos)
                 translateCursorPos.value = deleteFrom
+                // Also apply immediately to the real field — user wants
+                // Backspace/Space/Enter to take effect right away, not
+                // wait for the 350ms translate debounce like letters do
+                // (there's nothing to translate about a delete). Letters
+                // still only reach the real field via the debounced
+                // translation in requestTranslateBufferSync/
+                // syncTranslationToField below.
+                currentInputConnection?.sendKeyEvent(android.view.KeyEvent(android.view.KeyEvent.ACTION_DOWN, android.view.KeyEvent.KEYCODE_DEL))
+                currentInputConnection?.sendKeyEvent(android.view.KeyEvent(android.view.KeyEvent.ACTION_UP, android.view.KeyEvent.KEYCODE_DEL))
+                // The real field just changed independently of
+                // syncTranslationToField's own bookkeeping — lastFieldSync's
+                // remembered length no longer describes what's actually
+                // there, so the next sync must not try to delete based on
+                // it (that would eat the wrong amount of text). Treat this
+                // point as a fresh baseline instead.
+                lastFieldSync = null
+                // wordBuffer/englishBuffer mirror translateBuffer's current
+                // word (see the letter branch below) — pop the last
+                // character from whichever one is active so the
+                // suggestion bar (updateSuggestions, called at the end of
+                // this function) reflects the shortened word instead of
+                // staying one character stale.
+                if (isSinhalaTyping()) {
+                    if (wordBuffer.isNotEmpty()) wordBuffer.deleteCharAt(wordBuffer.length - 1)
+                } else {
+                    if (englishBuffer.isNotEmpty()) englishBuffer.deleteCharAt(englishBuffer.length - 1)
+                }
             }
             key == "SPACE" -> {
                 translateBuffer.value = buf.substring(0, pos) + " " + buf.substring(pos)
                 translateCursorPos.value = pos + 1
+                // Also apply immediately to the real field — see
+                // BACKSPACE's comment above for why this doesn't wait for
+                // the translate debounce.
+                currentInputConnection?.sendKeyEvent(android.view.KeyEvent(android.view.KeyEvent.ACTION_DOWN, android.view.KeyEvent.KEYCODE_SPACE))
+                currentInputConnection?.sendKeyEvent(android.view.KeyEvent(android.view.KeyEvent.ACTION_UP, android.view.KeyEvent.KEYCODE_SPACE))
+                lastFieldSync = null
+                // Word boundary — same reset normal typing does at SPACE.
+                wordBuffer.clear()
+                englishBuffer.clear()
             }
             key == "ENTER" -> {
-                // No multi-line/editor-action concept inside this buffer —
-                // a physical newline is still a reasonable thing to want
-                // inside a longer translated message, so insert one rather
-                // than silently dropping the key.
+                // Sends a real Enter to the target field/app (message send,
+                // new line, form submit) AND inserts one into the row's own
+                // buffer, matching how Backspace/Space above now behave —
+                // instant on the real field, no debounce wait.
                 translateBuffer.value = buf.substring(0, pos) + "\n" + buf.substring(pos)
                 translateCursorPos.value = pos + 1
+                currentInputConnection?.sendKeyEvent(android.view.KeyEvent(android.view.KeyEvent.ACTION_DOWN, android.view.KeyEvent.KEYCODE_ENTER))
+                currentInputConnection?.sendKeyEvent(android.view.KeyEvent(android.view.KeyEvent.ACTION_UP, android.view.KeyEvent.KEYCODE_ENTER))
+                lastFieldSync = null // see BACKSPACE's comment above
+                wordBuffer.clear()
+                englishBuffer.clear()
             }
             key == "SHIFT" || key == "SHIFT_LOCK" -> {
                 shiftState.value = when (shiftState.value) {
@@ -1828,6 +1895,19 @@ class SinKeyInputMethodService : InputMethodService() {
                 }
                 translateBuffer.value = buf.substring(0, pos) + typed + buf.substring(pos)
                 translateCursorPos.value = pos + typed.length
+                // BUG FIX: mirror into wordBuffer/englishBuffer too — the
+                // SAME buffers normal typing uses — instead of a separate
+                // translate-only suggestion function. This is what makes
+                // updateSuggestions() below produce the exact same
+                // suggestion bar (weighted candidates, personal dictionary,
+                // mix-mode English spell-check, everything) the user
+                // already knows from normal typing, with no duplicated
+                // logic to keep in sync with it. Only reasonable because
+                // translateBuffer's "current word" and wordBuffer/
+                // englishBuffer's contents are meant to be the same thing
+                // here — the word currently being typed — just written to
+                // two places at once.
+                if (isSinhalaTyping()) wordBuffer.append(typed) else englishBuffer.append(typed)
                 if (key[0].isLetter() && shiftState.value == ShiftState.ONE_SHOT) {
                     shiftState.value = ShiftState.OFF
                     wasExplicitShift = false
@@ -1835,6 +1915,30 @@ class SinKeyInputMethodService : InputMethodService() {
             }
             else -> return // unhandled key (emoji, paste, tools, etc.) — no-op, see doc comment
         }
+        updateSuggestions()
+        requestTranslateBufferSync()
+    }
+
+    /**
+     * Suggestion-chip tap while the translate row is open — routes to the
+     * row's own buffer instead of the real field (see handleSuggestion for
+     * the normal-typing equivalent this mirrors, and the letter branch of
+     * handleTranslateKey for why wordBuffer/englishBuffer mirror the
+     * translate buffer's current word). Replaces the current word at the
+     * cursor with [word], same "replace the word being typed" behaviour as
+     * normal typing's suggestion bar, and clears wordBuffer/englishBuffer
+     * so the next letter starts a fresh word in both places.
+     */
+    private fun handleTranslateSuggestion(word: String) {
+        val buf = translateBuffer.value
+        val pos = translateCursorPos.value.coerceIn(0, buf.length)
+        var wordStart = pos
+        while (wordStart > 0 && !buf[wordStart - 1].isWhitespace()) wordStart--
+        translateBuffer.value = buf.substring(0, wordStart) + word + " " + buf.substring(pos)
+        translateCursorPos.value = wordStart + word.length + 1
+        wordBuffer.clear()
+        englishBuffer.clear()
+        clearSuggestions()
         requestTranslateBufferSync()
     }
 
