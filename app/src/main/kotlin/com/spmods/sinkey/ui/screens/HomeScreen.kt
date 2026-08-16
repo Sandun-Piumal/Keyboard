@@ -7,7 +7,6 @@ import android.os.Handler
 import android.os.Looper
 import android.provider.Settings
 import android.view.inputmethod.InputMethodManager
-import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -25,6 +24,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.filled.Menu
 import androidx.compose.material.icons.filled.Palette
@@ -40,7 +40,6 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -52,17 +51,14 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
-import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalLifecycleOwner
-import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
-import com.spmods.sinkey.R
 
 // ── Screenshot-matched palette (indigo/purple → pink) ──────────────────────
 private val IndigoDeep = Color(0xFF6C4CE0)
@@ -252,46 +248,132 @@ fun HomeScreen() {
                 )
 
                 // ── Keyboard illustration with speech bubbles ────────────
+                // Built entirely from Compose primitives (no vector asset)
+                // so every bubble/key position is exact and doesn't depend
+                // on a separate drawable's internal coordinate space.
                 Box(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .height(190.dp)
-                        .padding(top = 10.dp)
+                        .height(180.dp)
+                        .padding(top = 14.dp),
+                    contentAlignment = Alignment.BottomCenter
                 ) {
-                    Image(
-                        painter = painterResource(R.drawable.ic_hero_keyboard),
-                        contentDescription = null,
-                        contentScale = ContentScale.Fit,
+                    // sparkles above the keyboard
+                    Text(
+                        "✦",
+                        fontSize = 16.sp,
+                        color = Color.White,
                         modifier = Modifier
-                            .align(Alignment.Center)
-                            .fillMaxWidth()
-                            .height(190.dp)
+                            .align(Alignment.TopCenter)
+                            .offset(x = (-18).dp, y = 4.dp)
+                    )
+                    Text(
+                        "✦",
+                        fontSize = 20.sp,
+                        color = Color.White,
+                        modifier = Modifier
+                            .align(Alignment.TopCenter)
+                            .offset(x = 34.dp, y = (-2).dp)
                     )
 
-                    // "සිංහල" label over the white bubble (top-left)
-                    Text(
-                        "සිංහල",
-                        fontSize = 20.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = Color(0xFF241C3D),
+                    // keyboard body with keys
+                    Column(
+                        modifier = Modifier
+                            .align(Alignment.BottomCenter)
+                            .width(220.dp)
+                            .clip(RoundedCornerShape(18.dp))
+                            .background(
+                                Brush.linearGradient(
+                                    listOf(Color(0xFFB08CF0), Color(0xFF7C4FE0))
+                                )
+                            )
+                            .padding(14.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        repeat(2) {
+                            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                repeat(6) {
+                                    Box(
+                                        modifier = Modifier
+                                            .weight(1f)
+                                            .height(24.dp)
+                                            .clip(RoundedCornerShape(6.dp))
+                                            .background(Color(0xFFC6B3F5).copy(alpha = 0.85f))
+                                    )
+                                }
+                            }
+                        }
+                        Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                            Box(
+                                modifier = Modifier
+                                    .weight(1.4f)
+                                    .height(24.dp)
+                                    .clip(RoundedCornerShape(6.dp))
+                                    .background(Color(0xFFC6B3F5).copy(alpha = 0.85f))
+                            )
+                            Box(
+                                modifier = Modifier
+                                    .weight(3f)
+                                    .height(24.dp)
+                                    .clip(RoundedCornerShape(6.dp))
+                                    .background(Color(0xFFC6B3F5).copy(alpha = 0.85f))
+                            )
+                            Box(
+                                modifier = Modifier
+                                    .weight(1.4f)
+                                    .height(24.dp)
+                                    .clip(RoundedCornerShape(6.dp))
+                                    .background(Color(0xFFC6B3F5).copy(alpha = 0.85f))
+                            )
+                        }
+                    }
+
+                    // white "සිංහල" bubble — sits above the keyboard's top-left
+                    Box(
                         modifier = Modifier
                             .align(Alignment.TopStart)
-                            .offset(x = 10.dp, y = 26.dp)
-                    )
+                            .offset(x = 0.dp, y = 6.dp)
+                            .clip(RoundedCornerShape(topStart = 14.dp, topEnd = 14.dp, bottomEnd = 14.dp, bottomStart = 2.dp))
+                            .background(Color.White)
+                            .padding(horizontal = 14.dp, vertical = 10.dp)
+                    ) {
+                        Text(
+                            "සිංහල",
+                            fontSize = 17.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = Color(0xFF241C3D)
+                        )
+                    }
 
-                    // "A" label over the pink bubble (top-right)
-                    Text(
-                        "A",
-                        fontSize = 24.sp,
-                        fontWeight = FontWeight.ExtraBold,
-                        color = Color(0xFF241C3D),
+                    // pink "A" bubble — sits above the keyboard's top-right
+                    Box(
                         modifier = Modifier
                             .align(Alignment.TopEnd)
-                            .offset(x = (-36).dp, y = 34.dp)
+                            .offset(x = 0.dp, y = 34.dp)
+                            .clip(RoundedCornerShape(topStart = 14.dp, topEnd = 14.dp, bottomEnd = 2.dp, bottomStart = 14.dp))
+                            .background(Color(0xFFF6B8D6))
+                            .padding(horizontal = 16.dp, vertical = 8.dp)
+                    ) {
+                        Text(
+                            "A",
+                            fontSize = 20.sp,
+                            fontWeight = FontWeight.ExtraBold,
+                            color = Color(0xFF241C3D)
+                        )
+                    }
+
+                    // small decorative dots, bottom-left of the keyboard
+                    Box(
+                        modifier = Modifier
+                            .align(Alignment.BottomStart)
+                            .offset(x = (-4).dp, y = (-8).dp)
+                            .size(8.dp)
+                            .clip(CircleShape)
+                            .background(Color(0xFFC6B3F5))
                     )
                 }
 
-                Spacer(Modifier.height(4.dp))
+                Spacer(Modifier.height(14.dp))
 
                 Row(
                     modifier = Modifier
@@ -446,10 +528,14 @@ private fun SetupStepRow(
             modifier = Modifier
                 .size(44.dp)
                 .clip(CircleShape)
-                .background(iconBg),
+                .background(if (done) Color(0xFFE3F5EA) else iconBg),
             contentAlignment = Alignment.Center
         ) {
-            Icon(icon, contentDescription = null, tint = iconTint, modifier = Modifier.size(20.dp))
+            if (done) {
+                Icon(Icons.Filled.Check, contentDescription = null, tint = Color(0xFF1E8A4C), modifier = Modifier.size(20.dp))
+            } else {
+                Icon(icon, contentDescription = null, tint = iconTint, modifier = Modifier.size(20.dp))
+            }
         }
 
         Spacer(Modifier.width(14.dp))
@@ -466,27 +552,54 @@ private fun SetupStepRow(
 
         Spacer(Modifier.width(8.dp))
 
-        Row(
-            modifier = Modifier
-                .clip(RoundedCornerShape(50))
-                .border(1.dp, actionOutline.copy(alpha = 0.5f), RoundedCornerShape(50))
-                .clickable(enabled = !done) { onAction() }
-                .padding(horizontal = 14.dp, vertical = 9.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Text(
-                actionLabel,
-                fontSize = 12.sp,
-                fontWeight = FontWeight.Bold,
-                color = actionOutline
-            )
-            Spacer(Modifier.width(2.dp))
-            Icon(
-                Icons.Filled.ChevronRight,
-                contentDescription = null,
-                tint = actionOutline,
-                modifier = Modifier.size(14.dp)
-            )
+        if (done) {
+            // Completed state: filled green pill with a checkmark, no
+            // longer clickable — visually distinct from the pending
+            // outline-only pill so the user can see the step registered.
+            Row(
+                modifier = Modifier
+                    .clip(RoundedCornerShape(50))
+                    .background(Color(0xFFE3F5EA))
+                    .padding(horizontal = 14.dp, vertical = 9.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Icon(
+                    Icons.Filled.Check,
+                    contentDescription = null,
+                    tint = Color(0xFF1E8A4C),
+                    modifier = Modifier.size(14.dp)
+                )
+                Spacer(Modifier.width(4.dp))
+                Text(
+                    "Done",
+                    fontSize = 12.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = Color(0xFF1E8A4C)
+                )
+            }
+        } else {
+            Row(
+                modifier = Modifier
+                    .clip(RoundedCornerShape(50))
+                    .border(1.dp, actionOutline.copy(alpha = 0.5f), RoundedCornerShape(50))
+                    .clickable { onAction() }
+                    .padding(horizontal = 14.dp, vertical = 9.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    actionLabel,
+                    fontSize = 12.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = actionOutline
+                )
+                Spacer(Modifier.width(2.dp))
+                Icon(
+                    Icons.Filled.ChevronRight,
+                    contentDescription = null,
+                    tint = actionOutline,
+                    modifier = Modifier.size(14.dp)
+                )
+            }
         }
     }
 }
