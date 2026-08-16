@@ -257,20 +257,20 @@ fun HomeScreen() {
                         color = BodyGrey
                     )
 
-                    Spacer(Modifier.height(16.dp))
+                    Spacer(Modifier.height(4.dp))
 
                     // Illustration row — right-aligned, sits directly
                     // below the subtitle as part of natural content flow.
                     Box(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .height(150.dp)
+                            .height(110.dp)
                     ) {
                     Box(
                         modifier = Modifier
                             .align(Alignment.CenterEnd)
-                            .width(170.dp)
-                            .height(130.dp)
+                            .width(150.dp)
+                            .height(100.dp)
                     ) {
                     // sparkles above the keyboard
                     Text(
@@ -398,7 +398,7 @@ fun HomeScreen() {
                     }
                     }
 
-                    Spacer(Modifier.height(16.dp))
+                    Spacer(Modifier.height(4.dp))
 
                     Row(
                         modifier = Modifier
