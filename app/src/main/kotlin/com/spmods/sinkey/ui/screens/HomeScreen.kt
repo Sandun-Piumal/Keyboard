@@ -194,222 +194,233 @@ fun HomeScreen() {
             shape = RoundedCornerShape(24.dp),
             elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
         ) {
-            Column(
+            Box(
                 modifier = Modifier
                     .fillMaxWidth()
                     .background(heroGradient)
-                    .padding(20.dp)
             ) {
-                Text(
-                    "WELCOME",
-                    fontSize = 11.sp,
-                    fontWeight = FontWeight.Bold,
-                    letterSpacing = 1.sp,
-                    color = IndigoDeep
-                )
-                Spacer(Modifier.height(8.dp))
-                Text(
-                    "Type your world",
-                    fontSize = 22.sp,
-                    fontWeight = FontWeight.ExtraBold,
-                    color = Color(0xFF1E1B33)
-                )
-                Row {
-                    Text(
-                        "in ",
-                        fontSize = 22.sp,
-                        fontWeight = FontWeight.ExtraBold,
-                        color = Color(0xFF1E1B33)
-                    )
-                    Text(
-                        "Sinhala",
-                        fontSize = 22.sp,
-                        fontWeight = FontWeight.ExtraBold,
-                        color = IndigoDeep
-                    )
-                    Text(
-                        " or ",
-                        fontSize = 22.sp,
-                        fontWeight = FontWeight.ExtraBold,
-                        color = Color(0xFF1E1B33)
-                    )
-                    Text(
-                        "English",
-                        fontSize = 22.sp,
-                        fontWeight = FontWeight.ExtraBold,
-                        color = PinkAccent
-                    )
-                }
-                Spacer(Modifier.height(8.dp))
-                Text(
-                    "Switch anytime. Type naturally.",
-                    fontSize = 13.sp,
-                    color = BodyGrey
-                )
-
-                // ── Keyboard illustration with speech bubbles ────────────
-                // Built entirely from Compose primitives (no vector asset).
-                // Everything sits inside one fixed-width inner Box so the
-                // bubbles are positioned relative to the keyboard itself
-                // (not the wider card) — matching the reference artwork
-                // where both bubbles overlap the keyboard's top corners.
+                // Keyboard illustration + speech bubbles — floated to the
+                // right side of the card, vertically centered, matching
+                // the reference artwork where text sits to the left and
+                // the illustration sits beside it (not stacked below).
                 Box(
                     modifier = Modifier
-                        .fillMaxWidth()
-                        .height(150.dp)
-                        .padding(top = 10.dp),
-                    contentAlignment = Alignment.Center
+                        .align(Alignment.CenterEnd)
+                        .padding(end = 8.dp, top = 8.dp)
+                        .width(170.dp)
+                        .height(130.dp)
                 ) {
-                    Box(
+                    // sparkles above the keyboard
+                    Text(
+                        "✦",
+                        fontSize = 12.sp,
+                        color = Color.White,
                         modifier = Modifier
-                            .width(210.dp)
-                            .height(150.dp)
-                    ) {
-                        // sparkles above the keyboard
-                        Text(
-                            "✦",
-                            fontSize = 14.sp,
-                            color = Color.White,
-                            modifier = Modifier
-                                .align(Alignment.TopCenter)
-                                .offset(x = (-8).dp, y = 0.dp)
-                        )
-                        Text(
-                            "✦",
-                            fontSize = 18.sp,
-                            color = Color.White,
-                            modifier = Modifier
-                                .align(Alignment.TopCenter)
-                                .offset(x = 26.dp, y = (-4).dp)
-                        )
+                            .align(Alignment.TopCenter)
+                            .offset(x = (-38).dp, y = 2.dp)
+                    )
+                    Text(
+                        "✦",
+                        fontSize = 15.sp,
+                        color = Color.White,
+                        modifier = Modifier
+                            .align(Alignment.TopCenter)
+                            .offset(x = 14.dp, y = (-2).dp)
+                    )
 
-                        // keyboard body with keys
-                        Column(
-                            modifier = Modifier
-                                .align(Alignment.BottomCenter)
-                                .width(180.dp)
-                                .clip(RoundedCornerShape(16.dp))
-                                .background(
-                                    Brush.linearGradient(
-                                        listOf(Color(0xFFB08CF0), Color(0xFF7C4FE0))
-                                    )
+                    // keyboard body with keys
+                    Column(
+                        modifier = Modifier
+                            .align(Alignment.BottomCenter)
+                            .width(150.dp)
+                            .clip(RoundedCornerShape(14.dp))
+                            .background(
+                                Brush.linearGradient(
+                                    listOf(Color(0xFFB08CF0), Color(0xFF7C4FE0))
                                 )
-                                .padding(12.dp),
-                            verticalArrangement = Arrangement.spacedBy(6.dp)
-                        ) {
-                            repeat(2) {
-                                Row(horizontalArrangement = Arrangement.spacedBy(5.dp)) {
-                                    repeat(6) {
-                                        Box(
-                                            modifier = Modifier
-                                                .weight(1f)
-                                                .height(18.dp)
-                                                .clip(RoundedCornerShape(5.dp))
-                                                .background(Color(0xFFC6B3F5).copy(alpha = 0.85f))
-                                        )
-                                    }
+                            )
+                            .padding(10.dp),
+                        verticalArrangement = Arrangement.spacedBy(5.dp)
+                    ) {
+                        repeat(2) {
+                            Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                                repeat(6) {
+                                    Box(
+                                        modifier = Modifier
+                                            .weight(1f)
+                                            .height(15.dp)
+                                            .clip(RoundedCornerShape(4.dp))
+                                            .background(Color(0xFFC6B3F5).copy(alpha = 0.85f))
+                                    )
                                 }
                             }
-                            Row(horizontalArrangement = Arrangement.spacedBy(5.dp)) {
-                                Box(
-                                    modifier = Modifier
-                                        .weight(1.4f)
-                                        .height(18.dp)
-                                        .clip(RoundedCornerShape(5.dp))
-                                        .background(Color(0xFFC6B3F5).copy(alpha = 0.85f))
-                                )
-                                Box(
-                                    modifier = Modifier
-                                        .weight(3f)
-                                        .height(18.dp)
-                                        .clip(RoundedCornerShape(5.dp))
-                                        .background(Color(0xFFC6B3F5).copy(alpha = 0.85f))
-                                )
-                                Box(
-                                    modifier = Modifier
-                                        .weight(1.4f)
-                                        .height(18.dp)
-                                        .clip(RoundedCornerShape(5.dp))
-                                        .background(Color(0xFFC6B3F5).copy(alpha = 0.85f))
-                                )
-                            }
                         }
-
-                        // white "සිංහල" bubble — overlaps the keyboard's top-left corner
-                        Box(
-                            modifier = Modifier
-                                .align(Alignment.TopStart)
-                                .offset(x = (-6).dp, y = 26.dp)
-                                .clip(RoundedCornerShape(topStart = 14.dp, topEnd = 14.dp, bottomEnd = 14.dp, bottomStart = 2.dp))
-                                .background(Color.White)
-                                .padding(horizontal = 12.dp, vertical = 9.dp)
-                        ) {
-                            Text(
-                                "සිංහල",
-                                fontSize = 15.sp,
-                                fontWeight = FontWeight.Bold,
-                                color = Color(0xFF241C3D)
+                        Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                            Box(
+                                modifier = Modifier
+                                    .weight(1.4f)
+                                    .height(15.dp)
+                                    .clip(RoundedCornerShape(4.dp))
+                                    .background(Color(0xFFC6B3F5).copy(alpha = 0.85f))
+                            )
+                            Box(
+                                modifier = Modifier
+                                    .weight(3f)
+                                    .height(15.dp)
+                                    .clip(RoundedCornerShape(4.dp))
+                                    .background(Color(0xFFC6B3F5).copy(alpha = 0.85f))
+                            )
+                            Box(
+                                modifier = Modifier
+                                    .weight(1.4f)
+                                    .height(15.dp)
+                                    .clip(RoundedCornerShape(4.dp))
+                                    .background(Color(0xFFC6B3F5).copy(alpha = 0.85f))
                             )
                         }
+                    }
 
-                        // pink "A" bubble — overlaps the keyboard's top-right corner
-                        Box(
-                            modifier = Modifier
-                                .align(Alignment.TopEnd)
-                                .offset(x = 4.dp, y = 42.dp)
-                                .clip(RoundedCornerShape(topStart = 14.dp, topEnd = 14.dp, bottomEnd = 2.dp, bottomStart = 14.dp))
-                                .background(Color(0xFFF6B8D6))
-                                .padding(horizontal = 14.dp, vertical = 7.dp)
-                        ) {
-                            Text(
-                                "A",
-                                fontSize = 18.sp,
-                                fontWeight = FontWeight.ExtraBold,
-                                color = Color(0xFF241C3D)
-                            )
-                        }
-
-                        // small decorative dot, bottom-left of the keyboard
-                        Box(
-                            modifier = Modifier
-                                .align(Alignment.BottomStart)
-                                .offset(x = (-10).dp, y = (-4).dp)
-                                .size(7.dp)
-                                .clip(CircleShape)
-                                .background(Color(0xFFC6B3F5))
+                    // white "සිංහල" bubble — overlaps the keyboard's top-left corner,
+                    // spilling out past the illustration box to the left (as in
+                    // the reference, where it sits beside the headline text)
+                    Box(
+                        modifier = Modifier
+                            .align(Alignment.TopStart)
+                            .offset(x = (-46).dp, y = 18.dp)
+                            .clip(RoundedCornerShape(topStart = 12.dp, topEnd = 12.dp, bottomEnd = 12.dp, bottomStart = 2.dp))
+                            .background(Color.White)
+                            .padding(horizontal = 10.dp, vertical = 7.dp)
+                    ) {
+                        Text(
+                            "සිංහල",
+                            fontSize = 13.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = Color(0xFF241C3D)
                         )
                     }
+
+                    // pink "A" bubble — overlaps the keyboard's top-right corner
+                    Box(
+                        modifier = Modifier
+                            .align(Alignment.TopEnd)
+                            .offset(x = 6.dp, y = 34.dp)
+                            .clip(RoundedCornerShape(topStart = 12.dp, topEnd = 12.dp, bottomEnd = 2.dp, bottomStart = 12.dp))
+                            .background(Color(0xFFF6B8D6))
+                            .padding(horizontal = 12.dp, vertical = 6.dp)
+                    ) {
+                        Text(
+                            "A",
+                            fontSize = 16.sp,
+                            fontWeight = FontWeight.ExtraBold,
+                            color = Color(0xFF241C3D)
+                        )
+                    }
+
+                    // small decorative dots, bottom-left of the keyboard
+                    Box(
+                        modifier = Modifier
+                            .align(Alignment.BottomStart)
+                            .offset(x = (-14).dp, y = (-2).dp)
+                            .size(6.dp)
+                            .clip(CircleShape)
+                            .background(Color(0xFFC6B3F5))
+                    )
+                    Box(
+                        modifier = Modifier
+                            .align(Alignment.BottomStart)
+                            .offset(x = (-4).dp, y = 6.dp)
+                            .size(4.dp)
+                            .clip(CircleShape)
+                            .background(Color(0xFFC6B3F5))
+                    )
                 }
 
-                Spacer(Modifier.height(10.dp))
-
-                Row(
+                // Text stack + CTA button — constrained to roughly the
+                // left 60% so it doesn't run under the illustration.
+                Column(
                     modifier = Modifier
-                        .clip(RoundedCornerShape(50))
-                        .background(
-                            Brush.horizontalGradient(
-                                listOf(IndigoDeep, IndigoMid)
-                            )
-                        )
-                        .clickable {
-                            context.startActivity(Intent(Settings.ACTION_INPUT_METHOD_SETTINGS))
-                        }
-                        .padding(horizontal = 22.dp, vertical = 13.dp),
-                    verticalAlignment = Alignment.CenterVertically
+                        .fillMaxWidth(0.62f)
+                        .padding(20.dp)
                 ) {
                     Text(
-                        "Start Typing",
-                        color = Color.White,
-                        fontSize = 14.sp,
-                        fontWeight = FontWeight.Bold
+                        "WELCOME",
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Bold,
+                        letterSpacing = 1.sp,
+                        color = IndigoDeep
                     )
-                    Spacer(Modifier.width(6.dp))
-                    Icon(
-                        Icons.Filled.ChevronRight,
-                        contentDescription = null,
-                        tint = Color.White,
-                        modifier = Modifier.size(16.dp)
+                    Spacer(Modifier.height(8.dp))
+                    Text(
+                        "Type your world",
+                        fontSize = 22.sp,
+                        fontWeight = FontWeight.ExtraBold,
+                        color = Color(0xFF1E1B33)
                     )
+                    Row {
+                        Text(
+                            "in ",
+                            fontSize = 22.sp,
+                            fontWeight = FontWeight.ExtraBold,
+                            color = Color(0xFF1E1B33)
+                        )
+                        Text(
+                            "Sinhala",
+                            fontSize = 22.sp,
+                            fontWeight = FontWeight.ExtraBold,
+                            color = IndigoDeep
+                        )
+                    }
+                    Row {
+                        Text(
+                            "or ",
+                            fontSize = 22.sp,
+                            fontWeight = FontWeight.ExtraBold,
+                            color = Color(0xFF1E1B33)
+                        )
+                        Text(
+                            "English",
+                            fontSize = 22.sp,
+                            fontWeight = FontWeight.ExtraBold,
+                            color = PinkAccent
+                        )
+                    }
+                    Spacer(Modifier.height(8.dp))
+                    Text(
+                        "Switch anytime. Type naturally.",
+                        fontSize = 13.sp,
+                        color = BodyGrey
+                    )
+
+                    Spacer(Modifier.height(120.dp))
+
+                    Row(
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(50))
+                            .background(
+                                Brush.horizontalGradient(
+                                    listOf(IndigoDeep, IndigoMid)
+                                )
+                            )
+                            .clickable {
+                                context.startActivity(Intent(Settings.ACTION_INPUT_METHOD_SETTINGS))
+                            }
+                            .padding(horizontal = 22.dp, vertical = 13.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            "Start Typing",
+                            color = Color.White,
+                            fontSize = 14.sp,
+                            fontWeight = FontWeight.Bold
+                        )
+                        Spacer(Modifier.width(6.dp))
+                        Icon(
+                            Icons.Filled.ChevronRight,
+                            contentDescription = null,
+                            tint = Color.White,
+                            modifier = Modifier.size(16.dp)
+                        )
+                    }
                 }
             }
         }
