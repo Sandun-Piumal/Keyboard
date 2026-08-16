@@ -47,6 +47,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
@@ -373,36 +374,67 @@ fun HomeScreen() {
                     // white "සිංහල" bubble — overlaps the keyboard's top-left corner,
                     // spilling out past the illustration box to the left (as in
                     // the reference, where it sits beside the headline text)
-                    Box(
+                    Column(
                         modifier = Modifier
                             .align(Alignment.TopStart)
                             .offset(x = (-38).dp, y = 14.dp)
-                            .clip(RoundedCornerShape(topStart = 10.dp, topEnd = 10.dp, bottomEnd = 10.dp, bottomStart = 2.dp))
-                            .background(Color.White)
-                            .padding(horizontal = 9.dp, vertical = 6.dp)
                     ) {
-                        Text(
-                            "සිංහල",
-                            fontSize = 12.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = Color(0xFF241C3D)
+                        Box(
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(10.dp))
+                                .background(Color.White)
+                                .padding(horizontal = 9.dp, vertical = 6.dp)
+                        ) {
+                            Text(
+                                "සිංහල",
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = Color(0xFF241C3D)
+                            )
+                        }
+                        // speech-bubble tail — sits left-of-center under
+                        // the bubble, pointing down at the keyboard
+                        // (matches the reference exactly)
+                        Box(
+                            modifier = Modifier
+                                .padding(start = 16.dp)
+                                .size(9.dp)
+                                .offset(y = (-4).dp)
+                                .rotate(45f)
+                                .clip(RoundedCornerShape(bottomStart = 3.dp))
+                                .background(Color.White)
                         )
                     }
 
                     // pink "A" bubble — overlaps the keyboard's top-right corner
-                    Box(
+                    Column(
                         modifier = Modifier
                             .align(Alignment.TopEnd)
                             .offset(x = 4.dp, y = 26.dp)
-                            .clip(RoundedCornerShape(topStart = 10.dp, topEnd = 10.dp, bottomEnd = 2.dp, bottomStart = 10.dp))
-                            .background(Color(0xFFF6B8D6))
-                            .padding(horizontal = 10.dp, vertical = 5.dp)
                     ) {
-                        Text(
-                            "A",
-                            fontSize = 14.sp,
-                            fontWeight = FontWeight.ExtraBold,
-                            color = Color(0xFF241C3D)
+                        Box(
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(10.dp))
+                                .background(Color(0xFFF6B8D6))
+                                .padding(horizontal = 10.dp, vertical = 5.dp)
+                        ) {
+                            Text(
+                                "A",
+                                fontSize = 14.sp,
+                                fontWeight = FontWeight.ExtraBold,
+                                color = Color(0xFF241C3D)
+                            )
+                        }
+                        // speech-bubble tail — bottom-left corner,
+                        // pointing down toward the keyboard
+                        Box(
+                            modifier = Modifier
+                                .padding(start = 8.dp)
+                                .size(8.dp)
+                                .offset(y = (-4).dp)
+                                .rotate(45f)
+                                .clip(RoundedCornerShape(bottomStart = 3.dp))
+                                .background(Color(0xFFF6B8D6))
                         )
                     }
 
