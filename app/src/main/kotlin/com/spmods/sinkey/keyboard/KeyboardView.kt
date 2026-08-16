@@ -509,6 +509,13 @@ internal fun KeyboardView(
     onTranslateLanguagesSwapped: () -> Unit = {},
     translateSourceText: String = "",
     onTranslateSourceTextChanged: (String) -> Unit = {},
+    // BUG FIX: the actual cursor offset within translateSourceText, owned
+    // by the service (SinKeyInputMethodService.translateCursorPos) and
+    // updated both by typing and by onTranslateSourceTextTapped below.
+    // Previously this was tracked in the service but never threaded down
+    // to TranslateRow at all, so the row had no way to draw the cursor
+    // anywhere but the end of the text regardless of where it actually was.
+    translateSourceCursor: Int = translateSourceText.length,
     // Tap-to-position-cursor in the translate row's source field — called
     // with the character offset (relative to translateSourceText, i.e. the
     // same coordinate space translateSourceText itself is in) closest to
@@ -740,6 +747,7 @@ internal fun KeyboardView(
                     translateTargetLang = translateTargetLang,
                     onTranslateLanguagesSwapped = onTranslateLanguagesSwapped,
                     translateSourceText = translateSourceText,
+                    translateSourceCursor = translateSourceCursor,
                     onTranslateSourceTextChanged = onTranslateSourceTextChanged,
                     translateResultText = translateResultText,
                     isTranslating = isTranslating,
@@ -1702,6 +1710,14 @@ private fun TranslateRow(
     onLanguagesSwapped: () -> Unit,
     sourceText: String,
     onSourceTextChanged: (String) -> Unit,
+    // BUG FIX: the blinking cursor used to always render after the full
+    // sourceText regardless of where the user last tapped — tap-to-position
+    // (onSourceTextTapped below) updated the real cursor position upstream
+    // in the service, but this row never received or drew from it, so the
+    // cursor visually stayed pinned to the end no matter where you tapped
+    // or typed. sourceCursor is the character offset (same coordinate
+    // space as sourceText) to actually draw the cursor at.
+    sourceCursor: Int = sourceText.length,
     resultText: String,
     isTranslating: Boolean,
     // BUG FIX: non-null when the last translate attempt failed — shown in
@@ -1816,12 +1832,30 @@ private fun TranslateRow(
             label = "translateCursorBlinkAlpha"
         )
 
-        // Tracks the most recent text layout of the sourceText Text below,
-        // so a tap's raw x/y can be converted into a character offset via
+        // Tracks the most recent text layout of the FULL sourceText (laid
+        // out via the invisible measuring Text below), so a tap's raw x/y
+        // can be converted into a character offset via
         // TextLayoutResult.getOffsetForPosition — the standard way to map a
         // tap into an offset for a Text that (unlike BasicTextField) has no
         // built-in tap-to-cursor handling of its own.
+        //
+        // BUG FIX: this used to come from the visible Text that rendered
+        // sourceText — but that Text now only renders the *beforeCursor*
+        // half (see the cursor-splitting block below), so its layout only
+        // covers characters up to the cursor and any tap past the cursor
+        // would incorrectly resolve against a truncated width. A dedicated
+        // zero-size measuring Text keeps a layout of the *entire* string
+        // for hit-testing, independent of how the cursor splits the
+        // visible rendering.
         var sourceTextLayout by remember { mutableStateOf<androidx.compose.ui.text.TextLayoutResult?>(null) }
+        Text(
+            text = sourceText,
+            fontSize = 15.sp,
+            maxLines = 1,
+            softWrap = false,
+            modifier = Modifier.size(0.dp),
+            onTextLayout = { sourceTextLayout = it }
+        )
 
         Row(
             modifier = Modifier
@@ -1870,20 +1904,38 @@ private fun TranslateRow(
                     modifier = Modifier.weight(1f)
                 )
             } else {
+                // BUG FIX: split the text at the real cursor offset instead
+                // of always drawing the whole string followed by a cursor
+                // bar. Splitting into a before/after pair and placing the
+                // bar between them is what makes the cursor actually track
+                // sourceCursor — previously the bar's screen position had
+                // no relationship to sourceCursor at all, it just always
+                // ended up after every character because the full string
+                // was rendered as one Text before it.
+                val clampedCursor = sourceCursor.coerceIn(0, sourceText.length)
+                val beforeCursor = sourceText.substring(0, clampedCursor)
+                val afterCursor = sourceText.substring(clampedCursor)
                 Text(
-                    text = sourceText,
+                    text = beforeCursor,
                     fontSize = 15.sp,
                     color = colors.keyText,
                     maxLines = 1,
-                    modifier = Modifier.weight(1f, fill = false),
-                    onTextLayout = { sourceTextLayout = it }
+                    softWrap = false,
+                    modifier = Modifier
                 )
                 Box(
                     modifier = Modifier
-                        .padding(start = 2.dp)
                         .width(1.5.dp)
                         .height(18.dp)
                         .background(DeshGreen.copy(alpha = cursorAlpha))
+                )
+                Text(
+                    text = afterCursor,
+                    fontSize = 15.sp,
+                    color = colors.keyText,
+                    maxLines = 1,
+                    softWrap = false,
+                    modifier = Modifier.weight(1f, fill = false)
                 )
                 Spacer(modifier = Modifier.weight(1f))
             }
@@ -1958,6 +2010,9 @@ private fun AppsMicBar(
     translateTargetLang: String = "si",
     onTranslateLanguagesSwapped: () -> Unit = {},
     translateSourceText: String = "",
+    // BUG FIX: forwarded through to TranslateRow — see that composable's
+    // doc comment on sourceCursor for why this exists.
+    translateSourceCursor: Int = translateSourceText.length,
     onTranslateSourceTextChanged: (String) -> Unit = {},
     translateResultText: String = "",
     isTranslating: Boolean = false,
@@ -2007,6 +2062,7 @@ private fun AppsMicBar(
             targetLang = translateTargetLang,
             onLanguagesSwapped = onTranslateLanguagesSwapped,
             sourceText = translateSourceText,
+            sourceCursor = translateSourceCursor,
             onSourceTextChanged = onTranslateSourceTextChanged,
             resultText = translateResultText,
             isTranslating = isTranslating,
