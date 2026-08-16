@@ -107,6 +107,7 @@ import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.Canvas
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.text.TextLayoutResult
 import androidx.compose.ui.input.pointer.changedToUpIgnoreConsumed
 import androidx.compose.ui.input.pointer.PointerInputChange
 import androidx.compose.ui.layout.positionInParent
@@ -507,9 +508,26 @@ internal fun KeyboardView(
     translateSourceLang: String = "en",
     translateTargetLang: String = "si",
     onTranslateLanguagesSwapped: () -> Unit = {},
-    translateSourceText: String = "",
-    onTranslateSourceTextChanged: (String) -> Unit = {},
+    // The translate box's own draft text (already transliterated for
+    // display — see SinKeyInputMethodService.translateBoxDisplayText) and
+    // cursor position, plus the key-routing callback that replaces onKey
+    // for the real QWERTY rows below while translate mode is open — see
+    // the MainKeyboardKeys call site further down, which branches on
+    // isTranslateMode to send keys here instead of the normal onKey.
+    // Rewritten to be a real editable buffer (own text + cursor,
+    // completely independent of the real InputConnection) instead of a
+    // read-only mirror of the target app's field — see
+    // SinKeyInputMethodService's translate-state doc comment for why.
+    translateBoxDisplayText: String = "",
+    translateBoxCursor: Int = 0,
+    onTranslateBoxKey: (String) -> Unit = {},
+    onTranslateBoxCursorMoved: (Int) -> Unit = {},
     translateResultText: String = "",
+    // Wired to the row's insert/checkmark button — writes the current
+    // translateResultText into the REAL field at the real cursor. This is
+    // the only path that ever touches the real InputConnection while
+    // translating; typing into the box itself never does.
+    onInsertTranslation: () -> Unit = {},
     isTranslating: Boolean = false,
     // BUG FIX: previously a failed translation (offline vs. reached the
     // server but failed) was invisible in the UI — translateResultText
@@ -722,9 +740,11 @@ internal fun KeyboardView(
                     translateSourceLang = translateSourceLang,
                     translateTargetLang = translateTargetLang,
                     onTranslateLanguagesSwapped = onTranslateLanguagesSwapped,
-                    translateSourceText = translateSourceText,
-                    onTranslateSourceTextChanged = onTranslateSourceTextChanged,
+                    translateBoxDisplayText = translateBoxDisplayText,
+                    translateBoxCursor = translateBoxCursor,
+                    onTranslateBoxCursorMoved = onTranslateBoxCursorMoved,
                     translateResultText = translateResultText,
+                    onInsertTranslation = onInsertTranslation,
                     isTranslating = isTranslating,
                     translateErrorMessage = translateErrorMessage,
                     selectedFontStyle = FancyTextStyle.fromKey(selectedFontKey)
@@ -1230,7 +1250,11 @@ internal fun KeyboardView(
                             keyHeight = keyHeight, keyShape = keyShape,
                             bottomPadding = bottomPadding, colors = colors,
                             showKeyBorders = showKeyBorders,
-                            onKey = onKey,
+                            // While the translate row is open, keys type
+                            // into its own local draft buffer instead of
+                            // the real field — see SinKeyInputMethodService's
+                            // onTranslateBoxKey and this file's TranslateRow.
+                            onKey = if (isTranslateMode) onTranslateBoxKey else onKey,
                             onSymbols = { pushBoard(Board.SYMBOLS) },
                             onEmojiPicker = { pushBoard(Board.EMOJI) },
                             onLangTooltip = { showLangTooltip = true },
@@ -1682,9 +1706,21 @@ private fun TranslateRow(
     sourceLang: String,
     targetLang: String,
     onLanguagesSwapped: () -> Unit,
-    sourceText: String,
-    onSourceTextChanged: (String) -> Unit,
+    // Already-transliterated (display-ready) draft text and its cursor
+    // offset — see SinKeyInputMethodService.translateBoxDisplayText/
+    // translateBoxCursor. This box is a REAL editable buffer now (own
+    // text + cursor, independent of the target app's field), not a
+    // read-only mirror — tapping anywhere in the text below moves the
+    // cursor there via onBoxCursorMoved, same as tapping inside any
+    // normal text field.
+    boxDisplayText: String,
+    boxCursor: Int,
+    onBoxCursorMoved: (Int) -> Unit,
     resultText: String,
+    // Wired to the insert/checkmark button — writes resultText into the
+    // REAL target field. Disabled (no-op, dimmed) whenever there's
+    // nothing translated yet to insert.
+    onInsert: () -> Unit,
     isTranslating: Boolean,
     // BUG FIX: non-null when the last translate attempt failed — shown in
     // place of resultText (mutually exclusive: a failed attempt has no
@@ -1766,20 +1802,19 @@ private fun TranslateRow(
             }
         }
 
-        // ── Input field ─────────────────────────────────────────────────
-        // NOT a real BasicTextField/TextField — this Composable runs inside
-        // the IME's own window (unlike e.g. StickerImageEditorView's field,
-        // which runs in a normal Activity). A real focusable text field
-        // here would try to request its own soft keyboard, since as far as
-        // Android is concerned it's just another editable view needing an
-        // IME — see StickerCreateView's top-level doc comment for the same
-        // reasoning applied to the sticker text composer. Typing instead
-        // happens through the real QWERTY keys already on screen below,
-        // same as StickerTextComposeView's draft buffer; the blinking
-        // cursor here is purely a visual affordance so this doesn't look
-        // like inert/disabled text, not an actual editable field — tapping
-        // it does nothing, exactly like tapping any other non-key part of
-        // the keyboard's own UI.
+        // ── Input box ────────────────────────────────────────────────────
+        // A REAL editable buffer, not a read-only mirror of the target
+        // field: typed keys are routed here (see KeyboardView's
+        // isTranslateMode branch on the MainKeyboardKeys onKey param) into
+        // SinKeyInputMethodService.translateBoxText/translateBoxCursor,
+        // completely independent of the target app's InputConnection.
+        // This still can't be a real Compose BasicTextField (see the
+        // removed comment this replaced — an IME hosting a real focusable
+        // field would try to summon another IME for itself), so cursor
+        // placement is done the same way StickerImageEditorView's own
+        // custom text overlay does it: measure the rendered text and turn
+        // a tap x-offset into a character index via TextLayoutResult,
+        // rather than relying on a real field's built-in touch handling.
         val infinite = rememberInfiniteTransition(label = "translateCursorBlink")
         val cursorAlpha by infinite.animateFloat(
             initialValue = 1f,
@@ -1790,6 +1825,7 @@ private fun TranslateRow(
             ),
             label = "translateCursorBlinkAlpha"
         )
+        var textLayout by remember { mutableStateOf<androidx.compose.ui.text.TextLayoutResult?>(null) }
 
         Row(
             modifier = Modifier
@@ -1798,33 +1834,53 @@ private fun TranslateRow(
                 .padding(horizontal = 12.dp, vertical = 4.dp)
                 .clip(RoundedCornerShape(10.dp))
                 .background(colors.keyBg)
+                // Tapping anywhere in the box moves the cursor to the
+                // nearest character boundary under the tap — this is what
+                // makes mid-text editing possible (backspace/insert at any
+                // point, not just at the end).
+                .pointerInput(boxDisplayText) {
+                    detectTapGestures { offset ->
+                        val layout = textLayout ?: return@detectTapGestures
+                        val charX = (offset.x - 12.dp.toPx()).coerceAtLeast(0f)
+                        val index = layout.getOffsetForPosition(Offset(charX, layout.size.height / 2f))
+                        onBoxCursorMoved(index)
+                    }
+                }
                 .padding(horizontal = 12.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            if (sourceText.isEmpty()) {
-                Text(
-                    text = "Type to translate…",
-                    fontSize = 15.sp,
-                    color = colors.subText,
-                    maxLines = 1,
-                    modifier = Modifier.weight(1f)
-                )
-            } else {
-                Text(
-                    text = sourceText,
-                    fontSize = 15.sp,
-                    color = colors.keyText,
-                    maxLines = 1,
-                    modifier = Modifier.weight(1f, fill = false)
-                )
-                Box(
-                    modifier = Modifier
-                        .padding(start = 2.dp)
-                        .width(1.5.dp)
-                        .height(18.dp)
-                        .background(DeshGreen.copy(alpha = cursorAlpha))
-                )
-                Spacer(modifier = Modifier.weight(1f))
+            Box(modifier = Modifier.weight(1f)) {
+                if (boxDisplayText.isEmpty()) {
+                    Text(
+                        text = "Type to translate…",
+                        fontSize = 15.sp,
+                        color = colors.subText,
+                        maxLines = 1
+                    )
+                } else {
+                    Text(
+                        text = boxDisplayText,
+                        fontSize = 15.sp,
+                        color = colors.keyText,
+                        maxLines = 1,
+                        onTextLayout = { textLayout = it }
+                    )
+                    // Cursor caret drawn at the measured x-offset for
+                    // boxCursor — since this isn't a real text field there's
+                    // no built-in caret, so it's positioned manually from
+                    // the same TextLayoutResult used for tap-to-place above.
+                    textLayout?.let { layout ->
+                        val clampedCursor = boxCursor.coerceIn(0, boxDisplayText.length)
+                        val caretX = layout.getHorizontalPosition(clampedCursor, usePrimaryDirection = true)
+                        Box(
+                            modifier = Modifier
+                                .offset(x = with(LocalDensity.current) { caretX.toDp() })
+                                .width(1.5.dp)
+                                .height(18.dp)
+                                .background(DeshGreen.copy(alpha = cursorAlpha))
+                        )
+                    }
+                }
             }
             if (isTranslating) {
                 androidx.compose.material3.CircularProgressIndicator(
@@ -1835,11 +1891,15 @@ private fun TranslateRow(
             }
         }
 
-        // ── Live translated result, or error if the last attempt failed ──
+        // ── Live translated result + insert button, or error ─────────────
         // BUG FIX: errorMessage and resultText are mutually exclusive (a
         // failed attempt has no result), so this replaces rather than
         // supplements the old "just show resultText" block — previously a
         // failure left this whole area blank with no explanation at all.
+        //
+        // The insert (✓) button is what actually writes resultText into
+        // the real target field — this preview never auto-writes on its
+        // own anymore (see SinKeyInputMethodService.insertTranslationAtCursor).
         if (errorMessage != null) {
             Text(
                 text = errorMessage,
@@ -1850,14 +1910,34 @@ private fun TranslateRow(
                 modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 2.dp)
             )
         } else if (resultText.isNotEmpty()) {
-            Text(
-                text = resultText,
-                fontSize = 14.sp,
-                fontWeight = FontWeight.Medium,
-                color = DeshGreen,
-                maxLines = 1,
-                modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 2.dp)
-            )
+            Row(
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 2.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = resultText,
+                    fontSize = 14.sp,
+                    fontWeight = FontWeight.Medium,
+                    color = DeshGreen,
+                    maxLines = 1,
+                    modifier = Modifier.weight(1f)
+                )
+                Box(
+                    modifier = Modifier
+                        .padding(start = 8.dp)
+                        .clip(RoundedCornerShape(6.dp))
+                        .background(DeshGreen)
+                        .clickable { onInsert() }
+                        .padding(horizontal = 10.dp, vertical = 4.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Filled.Check,
+                        contentDescription = "Insert translation",
+                        modifier = Modifier.size(16.dp),
+                        tint = Color.White
+                    )
+                }
+            }
         }
     }
 }
@@ -1896,9 +1976,11 @@ private fun AppsMicBar(
     translateSourceLang: String = "en",
     translateTargetLang: String = "si",
     onTranslateLanguagesSwapped: () -> Unit = {},
-    translateSourceText: String = "",
-    onTranslateSourceTextChanged: (String) -> Unit = {},
+    translateBoxDisplayText: String = "",
+    translateBoxCursor: Int = 0,
+    onTranslateBoxCursorMoved: (Int) -> Unit = {},
     translateResultText: String = "",
+    onInsertTranslation: () -> Unit = {},
     isTranslating: Boolean = false,
     translateErrorMessage: String? = null,
     selectedFontStyle: FancyTextStyle = FancyTextStyle.NONE
@@ -1941,9 +2023,11 @@ private fun AppsMicBar(
             sourceLang = translateSourceLang,
             targetLang = translateTargetLang,
             onLanguagesSwapped = onTranslateLanguagesSwapped,
-            sourceText = translateSourceText,
-            onSourceTextChanged = onTranslateSourceTextChanged,
+            boxDisplayText = translateBoxDisplayText,
+            boxCursor = translateBoxCursor,
+            onBoxCursorMoved = onTranslateBoxCursorMoved,
             resultText = translateResultText,
+            onInsert = onInsertTranslation,
             isTranslating = isTranslating,
             errorMessage = translateErrorMessage,
             onClose = onTranslateClose
