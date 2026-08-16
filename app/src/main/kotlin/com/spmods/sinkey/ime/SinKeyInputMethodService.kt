@@ -1792,7 +1792,29 @@ class SinKeyInputMethodService : InputMethodService() {
                 is com.spmods.sinkey.data.TranslateService.TranslateResult.Success -> {
                     translateResultText.value = result.text
                     translateErrorState.value = TranslateErrorState.NONE
-                    applyTranslationToField(newSourceText, result.text)
+                    // BUG FIX (flicker / translation silently undone):
+                    // previously this wrote into the field unconditionally,
+                    // even while the user was still mid-word — wordBuffer
+                    // (the Sinhala transliteration engine's own live
+                    // composing-span owner) doesn't know this write
+                    // happened, so the very next keystroke's
+                    // setComposingTextStyled(renderStyledBuffer()) call
+                    // re-renders the whole buffered word from scratch on
+                    // top of it. That looked like "delete and retype" and
+                    // also meant the translation of a half-finished word
+                    // got overwritten a moment later by the rest of that
+                    // same word being typed — so it looked like translate
+                    // "didn't happen" even though it briefly had, for a
+                    // fragment nobody meant to translate yet.
+                    // Fix: only actually write into the field once there's
+                    // no word still being composed (wordBuffer/englishBuffer
+                    // both empty — i.e. the user just finished a word/typed
+                    // a space/punctuation, or is between words). If a word
+                    // is still in progress, wait and re-check shortly
+                    // rather than racing it — the moment the word ends
+                    // (SPACE, punctuation, or the row simply stops
+                    // receiving new keys) this fires and catches up.
+                    applyTranslationOnceWordBoundary(newSourceText, result.text, requestId)
                 }
                 is com.spmods.sinkey.data.TranslateService.TranslateResult.NoConnection -> {
                     translateErrorState.value = TranslateErrorState.NO_CONNECTION
@@ -1809,6 +1831,41 @@ class SinKeyInputMethodService : InputMethodService() {
                 }
             }
         }
+    }
+
+    /**
+     * Waits until the user isn't mid-word (wordBuffer/englishBuffer both
+     * empty) before calling [applyTranslationToField], re-checking briefly
+     * rather than writing immediately — see the BUG FIX comment at the call
+     * site in [onTranslateSourceTextChanged] for why writing mid-word was
+     * unsafe. Bails out (without writing) if [requestId] goes stale in the
+     * meantime, same staleness contract as the caller.
+     */
+    private fun applyTranslationOnceWordBoundary(expectedSourceText: String, result: String, requestId: Long) {
+        if (wordBuffer.isNotEmpty() || englishBuffer.isNotEmpty()) {
+            translateJob = serviceScope.launch {
+                // Short poll rather than a single long wait — a typing
+                // pause is usually brief, and this keeps the eventual
+                // write close to when the word boundary actually happens
+                // instead of over- or under-shooting a fixed delay.
+                var attempts = 0
+                while ((wordBuffer.isNotEmpty() || englishBuffer.isNotEmpty()) && attempts < 20) {
+                    kotlinx.coroutines.delay(100)
+                    attempts++
+                    if (requestId != translateRequestId) return@launch
+                }
+                if (requestId != translateRequestId) return@launch
+                if (wordBuffer.isEmpty() && englishBuffer.isEmpty()) {
+                    applyTranslationToField(expectedSourceText, result)
+                }
+                // If still mid-word after ~2s, give up silently — the
+                // follow-up request for whatever the user has since typed
+                // (already in flight via the normal debounce path) will
+                // supersede this one anyway.
+            }
+            return
+        }
+        applyTranslationToField(expectedSourceText, result)
     }
 
     /**
