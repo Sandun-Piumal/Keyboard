@@ -121,6 +121,27 @@ class SinKeyInputMethodService : InputMethodService() {
     // keyboard's hide/show recomposition cycles while the editor is open.
     private var pendingStickerImagePath = mutableStateOf<String?>(null)
 
+    // ── Translate row state (TOOL_TRANSLATE) ──────────────────────────
+    // Hoisted at service level for the same reason as boardStack above —
+    // must survive hide/show while the row is open — and also because,
+    // unlike a Board, the translate row's typed characters have to be
+    // intercepted by handleKey() itself (see the top of that function)
+    // rather than routed through a separate onKey the way e.g.
+    // StickerCreateView's local draft buffer is; keeping the buffer here
+    // means both handleKey() and the Composable read/write the exact same
+    // source of truth with no extra plumbing.
+    private var isTranslateMode = mutableStateOf(false)
+    private var translateSourceLang = mutableStateOf("en")
+    private var translateTargetLang = mutableStateOf("si")
+    private var translateSourceText = mutableStateOf("")
+    private var translateResultText = mutableStateOf("")
+    private var isTranslating = mutableStateOf(false)
+    // Bumped on every source-text/language change so a late-arriving
+    // translation reply for stale input can recognize itself as stale and
+    // discard itself — same staleness-guard idea as mixEnglishRequestId.
+    private var translateRequestId = 0L
+    private var translateJob: kotlinx.coroutines.Job? = null
+
     // Shift has 3 states: OFF, ONE_SHOT (next letter only), LOCKED (caps lock).
     // Stored at service level so it survives hide/show cycles.
     // AUTO-SHIFT: enabled at sentence start (after . ! ? or at field open).
@@ -267,16 +288,6 @@ class SinKeyInputMethodService : InputMethodService() {
     // been sent before the resulting callback fires, which is guaranteed by
     // InputConnection ordering.
     private var pendingSelfEdits = 0
-
-    // See onTranslatedTextChanged — tracks whether normal-typing state
-    // (wordBuffer/englishBuffer/etc.) has already been flushed for the
-    // current translate-board session, so that flush only runs once per
-    // session (on the first non-empty translation) rather than on every
-    // keystroke inside TranslateView. Reset to false whenever the
-    // translate composing text is cleared (source text emptied, or the
-    // board is left), so the next time translation starts again it's
-    // treated as a fresh session.
-    private var translateSessionCleanedUp = false
 
     override fun onEvaluateFullscreenMode(): Boolean = false
 
@@ -780,8 +791,15 @@ class SinKeyInputMethodService : InputMethodService() {
                         onStickerSend = { filePath, mimeType -> onStickerSelected(filePath, mimeType) },
                         onPickStickerImage = { pickImageForSticker() },
                         pendingStickerImagePath = pendingStickerImagePath.value,
-                        onTranslatedTextChanged = ::onTranslatedTextChanged,
-                        onTranslationCommitted = ::onTranslationCommitted,
+                        isTranslateMode = isTranslateMode.value,
+                        onTranslateModeChange = { open -> if (open) openTranslateMode() else closeTranslateMode() },
+                        translateSourceLang = translateSourceLang.value,
+                        translateTargetLang = translateTargetLang.value,
+                        onTranslateLanguagesSwapped = ::swapTranslateLanguages,
+                        translateSourceText = translateSourceText.value,
+                        onTranslateSourceTextChanged = ::onTranslateSourceTextChanged,
+                        translateResultText = translateResultText.value,
+                        isTranslating = isTranslating.value,
                         onSaveImageSticker = { draft ->
                             saveEditedImageSticker(
                                 imageScale = draft.imageScale,
@@ -1224,6 +1242,44 @@ class SinKeyInputMethodService : InputMethodService() {
 
     private fun handleKey(key: String) {
         maybeFeedback()
+
+        // Translate row active (TOOL_TRANSLATE) — typing/backspace/space
+        // key presses build translateSourceText instead of hitting the
+        // real InputConnection directly (onTranslateSourceTextChanged is
+        // what writes the *translated* result into the real field as
+        // composing text). Everything else (Shift, language switch,
+        // symbols, etc.) still falls through to the normal handling below
+        // exactly as if the translate row weren't open — see
+        // AppsMicBar/KeyboardView's doc comments for why the row is
+        // designed to sit above an otherwise fully-functional keyboard
+        // rather than replacing it.
+        if (isTranslateMode.value) {
+            when (key) {
+                "BACKSPACE" -> {
+                    val current = translateSourceText.value
+                    if (current.isNotEmpty()) onTranslateSourceTextChanged(current.dropLast(1))
+                    return
+                }
+                "SPACE" -> {
+                    onTranslateSourceTextChanged(translateSourceText.value + " ")
+                    return
+                }
+                "ENTER" -> return // no multi-line composing here
+                "SHIFT", "SHIFT_LOCK", "LANG_TOGGLE", "SWITCH_KEYBOARD",
+                "SYMBOLS_SHIFT", "EMOJI", "NUMPAD", "TOOL_MIC", "TOOL_APPS",
+                "TOOL_STICKER", "TOOL_FONT", "TOOL_TRANSLATE", "TOOL_CLIPBOARD",
+                "TOOL_SETTINGS" -> Unit // fall through to normal handling below
+                else -> {
+                    if (key.length == 1 || key.codePointCount(0, key.length) == 1) {
+                        val typed = if (shiftState.value != ShiftState.OFF) key.uppercase() else key.lowercase()
+                        onTranslateSourceTextChanged(translateSourceText.value + typed)
+                        if (shiftState.value == ShiftState.ONE_SHOT) shiftState.value = ShiftState.OFF
+                    }
+                    return
+                }
+            }
+        }
+
         val ic = currentInputConnection ?: return
         // Any key press other than tapping the undo chip itself (which goes
         // through undoAutocorrect(), not this function) means the user has
@@ -1550,72 +1606,118 @@ class SinKeyInputMethodService : InputMethodService() {
     }
 
     /**
-     * Wired to TranslateView.onTranslatedTextChanged (Board.TRANSLATE — see
-     * that Composable's doc comment for the split of responsibility: it
-     * owns the local typing buffer + debounced translate calls, this
-     * function owns actually writing the result into the real target app's
-     * field, since only the service holds the InputConnection).
-     *
-     * Called on every debounced translation result while the translate
-     * board is open, and once more with "" when the source text is
-     * cleared or the board is left (TranslateView's Back handler). Always
-     * sets the *whole* translated string as one composing span — replacing
-     * whatever was composing before — rather than trying to diff/append
-     * against the previous value, since a translation of a longer sentence
-     * commonly changes earlier words too (unlike normal per-letter typing),
-     * so there's no meaningful "just append the new part" case here.
-     *
-     * Uses setComposingTextStyled so Sinhala output gets the same green
-     * underline as normal Sinhala typing, keeping the live-preview-in-app
-     * behaviour visually consistent with the rest of the keyboard.
+     * TOOL_TRANSLATE — opens the translate row (AppsMicBar's isTranslateMode
+     * branch). Flushes any in-progress normal typing first, the same as
+     * other tools that interrupt typing (e.g. LANG_TOGGLE), so a word left
+     * mid-composition doesn't collide with the composing span the
+     * translate row is about to start writing into.
      */
-    private fun onTranslatedTextChanged(translated: String) {
-        val ic = currentInputConnection ?: return
-        if (translated.isEmpty()) {
-            ic.setComposingText("", 1)
-            ic.finishComposingText()
-            translateSessionCleanedUp = false
-        } else {
-            // First real content since the translate board opened (or since
-            // it was last cleared) — flush any leftover normal-typing
-            // composing state first, same reasoning as e.g. LANG_TOGGLE's
-            // commitPendingWord() call: without this, a word left
-            // mid-composition from before TOOL_TRANSLATE was tapped would
-            // collide with the composing span TranslateView is about to
-            // start writing into. commitPendingWord() is already a no-op
-            // when wordBuffer is empty, so this is safe to gate on a simple
-            // one-shot flag rather than re-running it on every keystroke.
-            if (!translateSessionCleanedUp) {
-                commitPendingWord()
-                englishBuffer.clear()
-                resumedWordBeforeCursor = null
-                clearSuggestions()
-                translateSessionCleanedUp = true
-            }
-            setComposingTextStyled(ic, translated)
-        }
-        // See syncExpectedCursorPosition's doc comment — every edit path
-        // that touches the InputConnection must call this, or the next
-        // onUpdateSelection() for this self-caused move gets wrongly
-        // classified as an external cursor jump and the composing text
-        // just set here would be immediately finished/cleared again.
-        syncExpectedCursorPosition(ic)
+    private fun openTranslateMode() {
+        commitPendingWord()
+        englishBuffer.clear()
+        resumedWordBeforeCursor = null
+        clearSuggestions()
+        translateSourceText.value = ""
+        translateResultText.value = ""
+        isTranslating.value = false
+        isTranslateMode.value = true
     }
 
     /**
-     * Wired to TranslateView's Done button (via KeyboardView's
-     * onTranslationCommitted). onTranslatedTextChanged above only ever
-     * calls setComposingText — that leaves the text as a live, still-
-     * editable composing span (visibly underlined) rather than plain
-     * committed text, same distinction as everywhere else in this file
-     * (see e.g. commitPendingWord). Finishing composing here is what
-     * actually "locks in" the translation, matching what tapping a normal
-     * suggestion chip does.
+     * Close (X) on the translate row. Clears whatever's currently composing
+     * from the live translation preview (see onTranslateSourceTextChanged)
+     * and returns the toolbar to its normal tools-row/suggestion-strip
+     * behaviour — deliberately does NOT commit the in-progress translation;
+     * closing is "cancel", same as StickerCreateView's Back arrow leaving
+     * without saving. There is no separate "Done" step: the live
+     * composing text already reflects the latest translation the moment
+     * it's set (see onTranslateSourceTextChanged), so the natural way to
+     * accept it is to just keep typing elsewhere or send the message —
+     * Close only needs to stop composing further changes into it.
      */
-    private fun onTranslationCommitted() {
-        val ic = currentInputConnection ?: return
-        ic.finishComposingText()
-        syncExpectedCursorPosition(ic)
+    private fun closeTranslateMode() {
+        translateJob?.cancel()
+        translateRequestId++
+        if (translateResultText.value.isNotEmpty()) {
+            val ic = currentInputConnection
+            if (ic != null) {
+                ic.finishComposingText()
+                syncExpectedCursorPosition(ic)
+            }
+        }
+        isTranslateMode.value = false
+        translateSourceText.value = ""
+        translateResultText.value = ""
+        isTranslating.value = false
+    }
+
+    private fun swapTranslateLanguages() {
+        val newSource = translateTargetLang.value
+        val newTarget = translateSourceLang.value
+        translateSourceLang.value = newSource
+        translateTargetLang.value = newTarget
+        // Whatever was already translated becomes the new starting point
+        // to keep typing from, rather than discarding it — matches the
+        // swap affordance in the reference screenshot.
+        val carried = translateResultText.value
+        translateResultText.value = ""
+        onTranslateSourceTextChanged(carried)
+    }
+
+    /**
+     * Wired to the translate row's key-typing path in handleKey() (see the
+     * isTranslateMode branch near the top of that function) — called on
+     * every character typed/deleted while the translate row is open.
+     * Debounces a call to TranslateService.translate and, once it replies,
+     * pushes the *whole* translated string into the real InputConnection as
+     * one composing span (see setComposingTextStyled) — replacing whatever
+     * was composing before, rather than diffing/appending against the
+     * previous value, since translating a longer sentence commonly changes
+     * earlier words too, unlike normal per-letter typing.
+     */
+    private fun onTranslateSourceTextChanged(newText: String) {
+        translateSourceText.value = newText
+        translateJob?.cancel()
+        translateRequestId++
+        val requestId = translateRequestId
+
+        if (newText.isBlank()) {
+            translateResultText.value = ""
+            isTranslating.value = false
+            currentInputConnection?.let { ic ->
+                ic.setComposingText("", 1)
+                ic.finishComposingText()
+                syncExpectedCursorPosition(ic)
+            }
+            return
+        }
+
+        isTranslating.value = true
+        translateJob = serviceScope.launch {
+            kotlinx.coroutines.delay(350)
+            val result = com.spmods.sinkey.data.TranslateService.translate(
+                newText, translateSourceLang.value, translateTargetLang.value
+            )
+            // Stale-reply guard, same idea as mixEnglishRequestId — if the
+            // user kept typing (or swapped languages, or closed the row)
+            // while this request was in flight, requestId no longer
+            // matches and the reply must be discarded rather than
+            // overwriting newer state.
+            if (requestId != translateRequestId) return@launch
+            isTranslating.value = false
+            if (result != null) {
+                translateResultText.value = result
+                val ic = currentInputConnection ?: return@launch
+                setComposingTextStyled(ic, result)
+                // See syncExpectedCursorPosition's doc comment — every edit
+                // path that touches the InputConnection must call this, or
+                // the next onUpdateSelection() for this self-caused move
+                // gets wrongly classified as an external cursor jump and
+                // the composing text just set here would be immediately
+                // finished/cleared again.
+                syncExpectedCursorPosition(ic)
+            }
+        }
     }
 
     /**
