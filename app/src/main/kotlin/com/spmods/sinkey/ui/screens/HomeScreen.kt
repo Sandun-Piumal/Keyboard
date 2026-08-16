@@ -20,14 +20,25 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.Button
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.ChevronRight
+import androidx.compose.material.icons.filled.Menu
+import androidx.compose.material.icons.filled.Palette
+import androidx.compose.material.icons.filled.Shield
+import androidx.compose.material.icons.filled.Star
+import androidx.compose.material.icons.filled.VerifiedUser
+import androidx.compose.material.icons.filled.WorkspacePremium
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -40,17 +51,30 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
-import com.spmods.sinkey.ui.theme.AccentGradient
 import kotlinx.coroutines.delay
+
+// ── Screenshot-matched palette (indigo/purple → pink) ──────────────────────
+private val IndigoDeep = Color(0xFF6C4CE0)
+private val IndigoMid = Color(0xFF7C5CF0)
+private val PinkAccent = Color(0xFFE0498A)
+private val TitleIndigo = Color(0xFF3B2F8C)
+private val BodyGrey = Color(0xFF6B7280)
+private val StepCardBg = Color(0xFFFFFFFF)
+private val FeatureStripBg = Color(0xFFF3F1FB)
+private val OutlineIndigo = Color(0xFF6C4CE0)
+private val OutlinePink = Color(0xFFE0498A)
 
 private fun isImeEnabled(context: Context): Boolean {
     val imm = context.getSystemService(InputMethodManager::class.java)
@@ -98,170 +122,431 @@ fun HomeScreen() {
         }
     }
 
-    var showSinhala by remember { mutableStateOf(true) }
-
+    var showSinhalaBubble by remember { mutableStateOf(true) }
     LaunchedEffect(Unit) {
         while (true) {
             delay(2800)
-            showSinhala = !showSinhala
+            showSinhalaBubble = !showSinhalaBubble
         }
     }
 
-    Column(modifier = Modifier.fillMaxWidth().padding(bottom = 24.dp)) {
-        Column(modifier = Modifier.padding(22.dp, 18.dp, 22.dp, 4.dp)) {
-            Text(
-                "SinKey Board",
-                fontSize = 22.sp,
-                fontWeight = FontWeight.ExtraBold,
-                color = MaterialTheme.colorScheme.onBackground
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(MaterialTheme.colorScheme.background)
+            .padding(bottom = 24.dp)
+    ) {
+        // ── Top bar: hamburger · title · crown badge ────────────────────
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(20.dp, 18.dp, 20.dp, 6.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Icon(
+                Icons.Filled.Menu,
+                contentDescription = "Menu",
+                tint = MaterialTheme.colorScheme.onBackground,
+                modifier = Modifier.size(26.dp)
             )
-            Text(
-                "Fast Sinhala & English typing, built for everyday conversations.",
-                fontSize = 13.sp,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.padding(top = 6.dp)
-            )
+
+            Column(
+                modifier = Modifier.weight(1f),
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                Row {
+                    Text(
+                        "SinKey ",
+                        fontSize = 24.sp,
+                        fontWeight = FontWeight.ExtraBold,
+                        color = TitleIndigo
+                    )
+                    Text(
+                        "Board",
+                        fontSize = 24.sp,
+                        fontWeight = FontWeight.ExtraBold,
+                        color = PinkAccent
+                    )
+                }
+                Text(
+                    "Type Smart. Type Easy. Type SinKey.",
+                    fontSize = 12.sp,
+                    color = BodyGrey,
+                    modifier = Modifier.padding(top = 2.dp)
+                )
+            }
+
+            Box(
+                modifier = Modifier
+                    .size(40.dp)
+                    .clip(RoundedCornerShape(12.dp))
+                    .background(Color(0xFFF0EBFB))
+                    .border(1.dp, Color(0xFFE1D8F7), RoundedCornerShape(12.dp)),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    Icons.Filled.WorkspacePremium,
+                    contentDescription = "Premium",
+                    tint = IndigoDeep,
+                    modifier = Modifier.size(20.dp)
+                )
+            }
         }
 
-        val cardGradient = Brush.linearGradient(
-            colors = listOf(Color(0xFF1A2744), Color(0xFF2C3E6B), Color(0xFF3D2060)),
-            start = androidx.compose.ui.geometry.Offset(0f, 0f),
-            end = androidx.compose.ui.geometry.Offset(Float.POSITIVE_INFINITY, 0f)
+        // ── Hero welcome card ───────────────────────────────────────────
+        val heroGradient = Brush.linearGradient(
+            colors = listOf(Color(0xFFE9E4FB), Color(0xFFF3E7F2), Color(0xFFFBE7EE)),
+            start = Offset(0f, 0f),
+            end = Offset(Float.POSITIVE_INFINITY, Float.POSITIVE_INFINITY)
         )
 
         Card(
             modifier = Modifier
-                .padding(22.dp, 14.dp, 22.dp, 0.dp)
+                .padding(20.dp, 14.dp, 20.dp, 0.dp)
                 .fillMaxWidth(),
-            shape = RoundedCornerShape(20.dp),
-            elevation = CardDefaults.cardElevation(defaultElevation = 6.dp),
-            colors = CardDefaults.cardColors(containerColor = Color(0xFF1A2744))
+            shape = RoundedCornerShape(24.dp),
+            elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
         ) {
-            Row(
+            Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .background(cardGradient)
-                    .padding(20.dp),
-                verticalAlignment = Alignment.CenterVertically
+                    .background(heroGradient)
+                    .padding(20.dp)
             ) {
-                Column(modifier = Modifier.weight(1f)) {
-                    AnimatedContent(
-                        targetState = showSinhala,
-                        transitionSpec = {
-                            (fadeIn() + slideInVertically { it / 2 })
-                                .togetherWith(fadeOut() + slideOutVertically { -it / 2 })
-                        },
-                        label = "greeting"
-                    ) { isSinhala ->
+                Column {
+                    Text(
+                        "WELCOME",
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Bold,
+                        letterSpacing = 1.sp,
+                        color = IndigoDeep
+                    )
+                    Spacer(Modifier.height(8.dp))
+                    Column {
                         Text(
-                            text = if (isSinhala) "ආයුබෝවන්" else "Welcome",
-                            fontSize = 26.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = Color.White
+                            "Type your world",
+                            fontSize = 22.sp,
+                            fontWeight = FontWeight.ExtraBold,
+                            color = Color(0xFF1E1B33)
+                        )
+                        Row {
+                            Text(
+                                "in ",
+                                fontSize = 22.sp,
+                                fontWeight = FontWeight.ExtraBold,
+                                color = Color(0xFF1E1B33)
+                            )
+                            Text(
+                                "Sinhala",
+                                fontSize = 22.sp,
+                                fontWeight = FontWeight.ExtraBold,
+                                color = IndigoDeep
+                            )
+                            Text(
+                                " or ",
+                                fontSize = 22.sp,
+                                fontWeight = FontWeight.ExtraBold,
+                                color = Color(0xFF1E1B33)
+                            )
+                            Text(
+                                "English",
+                                fontSize = 22.sp,
+                                fontWeight = FontWeight.ExtraBold,
+                                color = PinkAccent
+                            )
+                        }
+                    }
+                    Spacer(Modifier.height(8.dp))
+                    Text(
+                        "Switch anytime. Type naturally.",
+                        fontSize = 13.sp,
+                        color = BodyGrey
+                    )
+                    Spacer(Modifier.height(18.dp))
+
+                    Row(
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(50))
+                            .background(
+                                Brush.horizontalGradient(
+                                    listOf(IndigoDeep, IndigoMid)
+                                )
+                            )
+                            .clickable {
+                                context.startActivity(Intent(Settings.ACTION_INPUT_METHOD_SETTINGS))
+                            }
+                            .padding(horizontal = 22.dp, vertical = 13.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            "Start Typing",
+                            color = Color.White,
+                            fontSize = 14.sp,
+                            fontWeight = FontWeight.Bold
+                        )
+                        Spacer(Modifier.width(6.dp))
+                        Icon(
+                            Icons.Filled.ChevronRight,
+                            contentDescription = null,
+                            tint = Color.White,
+                            modifier = Modifier.size(16.dp)
                         )
                     }
-                    Text(
-                        "Type naturally in Sinhala or English — switch anytime.",
-                        fontSize = 13.sp,
-                        color = Color.White.copy(alpha = 0.85f),
-                        modifier = Modifier.padding(top = 4.dp)
-                    )
+                }
+
+                // Speech bubble + keyboard glyph illustration (top-right corner)
+                Box(
+                    modifier = Modifier
+                        .align(Alignment.TopEnd)
+                        .padding(top = 4.dp)
+                ) {
+                    AnimatedContent(
+                        targetState = showSinhalaBubble,
+                        transitionSpec = {
+                            (fadeIn() + slideInVertically { it / 3 })
+                                .togetherWith(fadeOut() + slideOutVertically { -it / 3 })
+                        },
+                        label = "bubble"
+                    ) { isSinhala ->
+                        Box(
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(14.dp))
+                                .background(Color.White)
+                                .padding(horizontal = 14.dp, vertical = 8.dp)
+                        ) {
+                            Text(
+                                if (isSinhala) "සිංහල" else "A",
+                                fontSize = 15.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = Color(0xFF2A2140)
+                            )
+                        }
+                    }
                 }
 
                 Box(
                     modifier = Modifier
-                        .size(56.dp)
+                        .align(Alignment.BottomEnd)
+                        .size(90.dp, 60.dp)
+                        .clip(RoundedCornerShape(16.dp))
                         .background(
-                            brush = Brush.radialGradient(
-                                colors = listOf(Color(0xFFE8D5C4), Color(0xFFD4B896))
-                            ),
-                            shape = CircleShape
+                            Brush.linearGradient(
+                                listOf(IndigoMid, Color(0xFF9B7CF0))
+                            )
                         )
-                        .border(2.dp, Color.White.copy(alpha = 0.3f), CircleShape),
-                    contentAlignment = Alignment.Center
+                )
+            }
+        }
+
+        // ── "Let's get you started" ─────────────────────────────────────
+        Text(
+            "Let's get you started",
+            fontSize = 15.sp,
+            fontWeight = FontWeight.Bold,
+            color = MaterialTheme.colorScheme.onBackground,
+            modifier = Modifier.padding(20.dp, 22.dp, 20.dp, 10.dp)
+        )
+
+        Card(
+            modifier = Modifier
+                .padding(20.dp, 0.dp, 20.dp, 0.dp)
+                .fillMaxWidth(),
+            shape = RoundedCornerShape(20.dp),
+            colors = CardDefaults.cardColors(containerColor = StepCardBg),
+            elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)
+        ) {
+            Column(modifier = Modifier.padding(vertical = 6.dp)) {
+                SetupStepRow(
+                    icon = Icons.Filled.Shield,
+                    iconBg = Color(0xFFEDE8FC),
+                    iconTint = IndigoDeep,
+                    title = "1. Enable SinKey",
+                    subtitle = "Turn on SinKey in system keyboard settings.",
+                    actionLabel = "Enable Now",
+                    actionOutline = OutlineIndigo,
+                    done = enabled
                 ) {
-                    Text("Sink", fontSize = 22.sp)
+                    context.startActivity(Intent(Settings.ACTION_INPUT_METHOD_SETTINGS))
+                }
+
+                HorizontalDivider(
+                    color = Color(0xFFF0EEF6),
+                    modifier = Modifier.padding(horizontal = 18.dp)
+                )
+
+                SetupStepRow(
+                    icon = Icons.Filled.Star,
+                    iconBg = Color(0xFFFCE8F0),
+                    iconTint = PinkAccent,
+                    title = "2. Set as Default Keyboard",
+                    subtitle = "Choose SinKey as your default keyboard.",
+                    actionLabel = "Set as Default",
+                    actionOutline = OutlinePink,
+                    done = isDefault
+                ) {
+                    val imm = context.getSystemService(InputMethodManager::class.java)
+                    imm.showInputMethodPicker()
                 }
             }
         }
 
-        Column(modifier = Modifier.padding(22.dp, 28.dp, 22.dp, 0.dp)) {
-            SetupStep(
-                number = "1",
-                title = "Enable SinKey",
-                subtitle = "Turn on in system keyboard settings",
-                done = enabled,
-                actionLabel = if (!enabled) "Enable" else null
-            ) {
-                context.startActivity(Intent(Settings.ACTION_INPUT_METHOD_SETTINGS))
-            }
-            SetupStep(
-                number = "2",
-                title = "Set as default keyboard",
-                subtitle = "Choose SinKey when typing",
-                done = isDefault,
-                actionLabel = if (enabled && !isDefault) "Set up" else null
-            ) {
-                val imm = context.getSystemService(InputMethodManager::class.java)
-                imm.showInputMethodPicker()
-            }
-        }
-
-        Button(
-            onClick = { context.startActivity(Intent(Settings.ACTION_INPUT_METHOD_SETTINGS)) },
+        // ── Feature strip ────────────────────────────────────────────────
+        Card(
             modifier = Modifier
-                .padding(22.dp, 20.dp, 22.dp, 0.dp)
-                .fillMaxWidth()
+                .padding(20.dp, 20.dp, 20.dp, 0.dp)
+                .fillMaxWidth(),
+            shape = RoundedCornerShape(20.dp),
+            colors = CardDefaults.cardColors(containerColor = FeatureStripBg),
+            elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
         ) {
-            Text(if (!enabled) "Enable SinKey keyboard" else "Set as default keyboard")
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(vertical = 20.dp),
+                horizontalArrangement = Arrangement.SpaceEvenly
+            ) {
+                FeatureItem(
+                    glyph = "සිං",
+                    glyphColor = IndigoDeep,
+                    bgColor = Color(0xFFEDE8FC),
+                    title = "Sinhala Typing",
+                    subtitle = "Easy & Natural"
+                )
+                FeatureItem(
+                    glyph = "A",
+                    glyphColor = PinkAccent,
+                    bgColor = Color(0xFFFCE8F0),
+                    title = "English Typing",
+                    subtitle = "Fast & Smart"
+                )
+                FeatureItem(
+                    icon = Icons.Filled.Palette,
+                    glyphColor = IndigoDeep,
+                    bgColor = Color(0xFFEDE8FC),
+                    title = "Themes",
+                    subtitle = "Style your keyboard"
+                )
+                FeatureItem(
+                    icon = Icons.Filled.VerifiedUser,
+                    glyphColor = PinkAccent,
+                    bgColor = Color(0xFFFCE8F0),
+                    title = "Privacy First",
+                    subtitle = "100% Secure"
+                )
+            }
         }
     }
 }
 
 @Composable
-private fun SetupStep(
-    number: String,
+private fun SetupStepRow(
+    icon: ImageVector,
+    iconBg: Color,
+    iconTint: Color,
     title: String,
     subtitle: String,
+    actionLabel: String,
+    actionOutline: Color,
     done: Boolean,
-    actionLabel: String?,
     onAction: () -> Unit
 ) {
-    androidx.compose.foundation.layout.Row(
+    Row(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(vertical = 12.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(12.dp)
+            .padding(18.dp, 14.dp, 18.dp, 14.dp),
+        verticalAlignment = Alignment.CenterVertically
     ) {
-        androidx.compose.foundation.layout.Box(
+        Box(
             modifier = Modifier
-                .clip(RoundedCornerShape(50))
-                .background(if (done) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surface)
-                .padding(10.dp)
+                .size(44.dp)
+                .clip(CircleShape)
+                .background(iconBg),
+            contentAlignment = Alignment.Center
         ) {
+            Icon(icon, contentDescription = null, tint = iconTint, modifier = Modifier.size(20.dp))
+        }
+
+        Spacer(Modifier.width(14.dp))
+
+        Column(modifier = Modifier.weight(1f)) {
+            Text(title, fontSize = 15.sp, fontWeight = FontWeight.Bold, color = Color(0xFF1E1B33))
             Text(
-                if (done) "✓" else number,
+                subtitle,
                 fontSize = 12.sp,
-                fontWeight = FontWeight.Bold,
-                color = if (done) Color.White else MaterialTheme.colorScheme.secondary
+                color = BodyGrey,
+                modifier = Modifier.padding(top = 2.dp)
             )
         }
-        Column(modifier = Modifier.weight(1f)) {
-            Text(title, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
-            Text(subtitle, fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
-        }
-        if (actionLabel != null) {
+
+        Spacer(Modifier.width(8.dp))
+
+        Row(
+            modifier = Modifier
+                .clip(RoundedCornerShape(50))
+                .border(1.dp, actionOutline.copy(alpha = 0.5f), RoundedCornerShape(50))
+                .clickable(enabled = !done) { onAction() }
+                .padding(horizontal = 14.dp, vertical = 9.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
             Text(
                 actionLabel,
                 fontSize = 12.sp,
                 fontWeight = FontWeight.Bold,
-                color = MaterialTheme.colorScheme.primary,
-                modifier = Modifier
-                    .clip(RoundedCornerShape(8.dp))
-                    .clickable { onAction() }
-                    .padding(4.dp)
+                color = actionOutline
+            )
+            Spacer(Modifier.width(2.dp))
+            Icon(
+                Icons.Filled.ChevronRight,
+                contentDescription = null,
+                tint = actionOutline,
+                modifier = Modifier.size(14.dp)
             )
         }
+    }
+}
+
+@Composable
+private fun FeatureItem(
+    glyph: String? = null,
+    icon: ImageVector? = null,
+    glyphColor: Color,
+    bgColor: Color,
+    title: String,
+    subtitle: String
+) {
+    Column(
+        horizontalAlignment = Alignment.CenterHorizontally,
+        modifier = Modifier.width(78.dp)
+    ) {
+        Box(
+            modifier = Modifier
+                .size(52.dp)
+                .clip(CircleShape)
+                .background(Color.White)
+                .border(1.dp, bgColor, CircleShape),
+            contentAlignment = Alignment.Center
+        ) {
+            if (icon != null) {
+                Icon(icon, contentDescription = null, tint = glyphColor, modifier = Modifier.size(22.dp))
+            } else if (glyph != null) {
+                Text(glyph, fontSize = 17.sp, fontWeight = FontWeight.Bold, color = glyphColor)
+            }
+        }
+        Spacer(Modifier.height(8.dp))
+        Text(
+            title,
+            fontSize = 11.sp,
+            fontWeight = FontWeight.Bold,
+            color = Color(0xFF1E1B33),
+            textAlign = TextAlign.Center,
+            maxLines = 1
+        )
+        Text(
+            subtitle,
+            fontSize = 9.sp,
+            color = BodyGrey,
+            textAlign = TextAlign.Center,
+            maxLines = 1
+        )
     }
 }
