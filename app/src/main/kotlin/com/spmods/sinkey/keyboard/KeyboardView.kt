@@ -1869,8 +1869,27 @@ private fun TranslateRow(
                     // boxCursor — since this isn't a real text field there's
                     // no built-in caret, so it's positioned manually from
                     // the same TextLayoutResult used for tap-to-place above.
+                    //
+                    // BUG FIX (IllegalArgumentException: offset(N) out of
+                    // bounds — crashed the keyboard, which made it look
+                    // like language mode switching itself was broken):
+                    // clampedCursor used to be clamped against
+                    // boxDisplayText.length (the current composable
+                    // parameter), but layout can still be the PREVIOUS
+                    // recomposition's TextLayoutResult for a moment —
+                    // onTextLayout only updates textLayout after this Text
+                    // finishes laying out the new value, so on the frame
+                    // where boxDisplayText just changed (e.g. switching
+                    // language mode re-transliterates the whole draft to a
+                    // shorter/longer string), layout can still refer to the
+                    // OLD, different-length text while boxCursor has
+                    // already moved to a position only valid for the NEW
+                    // text. Clamping against layout.layoutInput.text.length
+                    // instead always matches what layout itself was
+                    // actually built from, so getHorizontalPosition can
+                    // never be called with an out-of-bounds offset for it.
                     textLayout?.let { layout ->
-                        val clampedCursor = boxCursor.coerceIn(0, boxDisplayText.length)
+                        val clampedCursor = boxCursor.coerceIn(0, layout.layoutInput.text.length)
                         val caretX = layout.getHorizontalPosition(clampedCursor, usePrimaryDirection = true)
                         Box(
                             modifier = Modifier
