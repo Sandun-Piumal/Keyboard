@@ -1540,6 +1540,7 @@ class SinKeyInputMethodService : InputMethodService() {
             ""
         }
         if (newSource != translateSourceText.value) {
+            android.util.Log.d("SinKeyTranslate", "refresh: anchor='${translateAnchorText}' newSource='${newSource}'")
             onTranslateSourceTextChanged(newSource)
         }
     }
@@ -1651,6 +1652,7 @@ class SinKeyInputMethodService : InputMethodService() {
         translateResultText.value = ""
         isTranslating.value = false
         isTranslateMode.value = true
+        android.util.Log.d("SinKeyTranslate", "openTranslateMode: anchor='${translateAnchorText}' ic=${ic != null}")
     }
 
     /**
@@ -1723,9 +1725,11 @@ class SinKeyInputMethodService : InputMethodService() {
         isTranslating.value = true
         translateJob = serviceScope.launch {
             kotlinx.coroutines.delay(350)
+            android.util.Log.d("SinKeyTranslate", "calling TranslateService.translate('$newSourceText', ${translateSourceLang.value}, ${translateTargetLang.value})")
             val result = com.spmods.sinkey.data.TranslateService.translate(
                 newSourceText, translateSourceLang.value, translateTargetLang.value
             )
+            android.util.Log.d("SinKeyTranslate", "TranslateService result: '$result' (requestId=$requestId current=$translateRequestId)")
             // Stale-reply guard, same idea as mixEnglishRequestId — if the
             // user kept typing (or swapped languages, or closed the row)
             // while this request was in flight, requestId no longer
@@ -1754,10 +1758,17 @@ class SinKeyInputMethodService : InputMethodService() {
     private fun applyTranslationToField(expectedSourceText: String, result: String) {
         val ic = currentInputConnection ?: return
         val currentBeforeCursor = ic.getTextBeforeCursor(translateAnchorText.length + 500, 0)?.toString() ?: ""
-        if (!currentBeforeCursor.startsWith(translateAnchorText)) return
+        if (!currentBeforeCursor.startsWith(translateAnchorText)) {
+            android.util.Log.d("SinKeyTranslate", "applyTranslationToField ABORT: anchor mismatch. anchor='${translateAnchorText}' currentBeforeCursor='${currentBeforeCursor}'")
+            return
+        }
         val currentSource = currentBeforeCursor.substring(translateAnchorText.length)
-        if (currentSource != expectedSourceText) return // stale reply — see doc comment
+        if (currentSource != expectedSourceText) {
+            android.util.Log.d("SinKeyTranslate", "applyTranslationToField ABORT: stale. currentSource='${currentSource}' expected='${expectedSourceText}'")
+            return // stale reply — see doc comment
+        }
 
+        android.util.Log.d("SinKeyTranslate", "applyTranslationToField APPLYING: '${currentSource}' -> '${result}'")
         ic.beginBatchEdit()
         ic.finishComposingText()
         ic.deleteSurroundingText(currentSource.length, 0)
