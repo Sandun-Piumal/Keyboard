@@ -207,7 +207,7 @@ fun HomeScreen() {
                     modifier = Modifier
                         .fillMaxWidth()
                         .padding(20.dp),
-                    verticalAlignment = Alignment.CenterVertically
+                    verticalAlignment = Alignment.Top
                 ) {
                     Column(
                         modifier = Modifier.weight(1f)
@@ -234,13 +234,11 @@ fun HomeScreen() {
                             color = Color(0xFF1E1B33)
                         )
                         Text(
-                            "Sinhala",
+                            "Sinhala ",
                             fontSize = 22.sp,
                             fontWeight = FontWeight.ExtraBold,
                             color = IndigoDeep
                         )
-                    }
-                    Row {
                         Text(
                             "or ",
                             fontSize = 22.sp,
@@ -293,78 +291,80 @@ fun HomeScreen() {
                     }
                     }
 
-                    // Illustration — right column, vertically centered
-                    // against the text column via the Row's alignment.
+                    // Illustration — right column, shrunk and pulled up
+                    // to sit level with the heading/subtitle, matching
+                    // the original reference image.
                     Box(
                         modifier = Modifier
-                            .width(150.dp)
-                            .height(120.dp)
+                            .padding(top = 30.dp)
+                            .width(120.dp)
+                            .height(96.dp)
                     ) {
                     // sparkles above the keyboard
+                    Text(
+                        "✦",
+                        fontSize = 10.sp,
+                        color = Color.White,
+                        modifier = Modifier
+                            .align(Alignment.TopCenter)
+                            .offset(x = (-30).dp, y = 2.dp)
+                    )
                     Text(
                         "✦",
                         fontSize = 12.sp,
                         color = Color.White,
                         modifier = Modifier
                             .align(Alignment.TopCenter)
-                            .offset(x = (-38).dp, y = 2.dp)
-                    )
-                    Text(
-                        "✦",
-                        fontSize = 15.sp,
-                        color = Color.White,
-                        modifier = Modifier
-                            .align(Alignment.TopCenter)
-                            .offset(x = 14.dp, y = (-2).dp)
+                            .offset(x = 11.dp, y = (-2).dp)
                     )
 
                     // keyboard body with keys
                     Column(
                         modifier = Modifier
                             .align(Alignment.BottomCenter)
-                            .width(150.dp)
-                            .clip(RoundedCornerShape(14.dp))
+                            .width(118.dp)
+                            .clip(RoundedCornerShape(11.dp))
                             .background(
                                 Brush.linearGradient(
                                     listOf(Color(0xFFB08CF0), Color(0xFF7C4FE0))
                                 )
                             )
-                            .padding(10.dp),
-                        verticalArrangement = Arrangement.spacedBy(5.dp)
+                            .padding(8.dp),
+                        verticalArrangement = Arrangement.spacedBy(4.dp)
                     ) {
                         repeat(2) {
-                            Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                            Row(horizontalArrangement = Arrangement.spacedBy(3.dp)) {
                                 repeat(6) {
                                     Box(
                                         modifier = Modifier
                                             .weight(1f)
-                                            .height(15.dp)
-                                            .clip(RoundedCornerShape(4.dp))
+                                            .height(12.dp)
+                                            .clip(RoundedCornerShape(3.dp))
                                             .background(Color(0xFFC6B3F5).copy(alpha = 0.85f))
                                     )
                                 }
                             }
                         }
-                        Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                        Row(horizontalArrangement = Arrangement.spacedBy(3.dp)) {
                             Box(
                                 modifier = Modifier
                                     .weight(1.4f)
-                                    .height(15.dp)
-                                    .clip(RoundedCornerShape(4.dp))
+                                    .height(12.dp)
+                                    .clip(RoundedCornerShape(3.dp))
                                     .background(Color(0xFFC6B3F5).copy(alpha = 0.85f))
                             )
                             Box(
                                 modifier = Modifier
                                     .weight(3f)
-                                    .height(15.dp)
-                                    .clip(RoundedCornerShape(4.dp))
+                                    .height(12.dp)
+                                    .clip(RoundedCornerShape(3.dp))
                                     .background(Color(0xFFC6B3F5).copy(alpha = 0.85f))
                             )
                             Box(
                                 modifier = Modifier
                                     .weight(1.4f)
-                                    .height(15.dp)
-                                    .clip(RoundedCornerShape(4.dp))
+                                    .height(12.dp)
+                                    .clip(RoundedCornerShape(3.dp))
                                     .background(Color(0xFFC6B3F5).copy(alpha = 0.85f))
                             )
                         }
@@ -376,14 +376,14 @@ fun HomeScreen() {
                     Box(
                         modifier = Modifier
                             .align(Alignment.TopStart)
-                            .offset(x = (-46).dp, y = 18.dp)
-                            .clip(RoundedCornerShape(topStart = 12.dp, topEnd = 12.dp, bottomEnd = 12.dp, bottomStart = 2.dp))
+                            .offset(x = (-38).dp, y = 14.dp)
+                            .clip(RoundedCornerShape(topStart = 10.dp, topEnd = 10.dp, bottomEnd = 10.dp, bottomStart = 2.dp))
                             .background(Color.White)
-                            .padding(horizontal = 10.dp, vertical = 7.dp)
+                            .padding(horizontal = 9.dp, vertical = 6.dp)
                     ) {
                         Text(
                             "සිංහල",
-                            fontSize = 13.sp,
+                            fontSize = 12.sp,
                             fontWeight = FontWeight.Bold,
                             color = Color(0xFF241C3D)
                         )
@@ -393,14 +393,14 @@ fun HomeScreen() {
                     Box(
                         modifier = Modifier
                             .align(Alignment.TopEnd)
-                            .offset(x = 6.dp, y = 34.dp)
-                            .clip(RoundedCornerShape(topStart = 12.dp, topEnd = 12.dp, bottomEnd = 2.dp, bottomStart = 12.dp))
+                            .offset(x = 4.dp, y = 26.dp)
+                            .clip(RoundedCornerShape(topStart = 10.dp, topEnd = 10.dp, bottomEnd = 2.dp, bottomStart = 10.dp))
                             .background(Color(0xFFF6B8D6))
-                            .padding(horizontal = 12.dp, vertical = 6.dp)
+                            .padding(horizontal = 10.dp, vertical = 5.dp)
                     ) {
                         Text(
                             "A",
-                            fontSize = 16.sp,
+                            fontSize = 14.sp,
                             fontWeight = FontWeight.ExtraBold,
                             color = Color(0xFF241C3D)
                         )
@@ -410,15 +410,15 @@ fun HomeScreen() {
                     Box(
                         modifier = Modifier
                             .align(Alignment.BottomStart)
-                            .offset(x = (-14).dp, y = (-2).dp)
-                            .size(6.dp)
+                            .offset(x = (-10).dp, y = (-2).dp)
+                            .size(5.dp)
                             .clip(CircleShape)
                             .background(Color(0xFFC6B3F5))
                     )
                     Box(
                         modifier = Modifier
                             .align(Alignment.BottomStart)
-                            .offset(x = (-4).dp, y = 6.dp)
+                            .offset(x = (-3).dp, y = 5.dp)
                             .size(4.dp)
                             .clip(CircleShape)
                             .background(Color(0xFFC6B3F5))
