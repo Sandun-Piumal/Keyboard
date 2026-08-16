@@ -116,6 +116,7 @@ import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Undo
+import androidx.compose.material.icons.filled.SwapHoriz
 
 // Number labels for top row keys
 private val topRowNumbers = listOf("1","2","3","4","5","6","7","8","9","0")
@@ -413,7 +414,7 @@ private fun stepToBottomPadding(step: Float): Dp = when (Math.round(step)) {
 // Replaces the previous ad-hoc boolean flags (showSymbols, showEmojiPicker)
 // which had no memory of which board opened them, so back always went to MAIN.
 // Must be internal (not private) so SinKeyInputMethodService can reference it.
-enum class Board { MAIN, SYMBOLS, NUMPAD, EMOJI, CLIPBOARD, FONT, STICKER, STICKER_CREATE, STICKER_EDIT, TRANSLATE }
+enum class Board { MAIN, SYMBOLS, NUMPAD, EMOJI, CLIPBOARD, FONT, STICKER, STICKER_CREATE, STICKER_EDIT }
 
 /** Result of Board.STICKER_EDIT's async preview-image decode — see that branch in KeyboardView's content `when`. */
 private sealed class StickerEditDecodeResult {
@@ -488,20 +489,28 @@ internal fun KeyboardView(
     // Called when the user taps "Add to stickers" on Board.STICKER_EDIT,
     // wired to SinKeyInputMethodService.saveEditedImageSticker.
     onSaveImageSticker: (ImageStickerDraft) -> Unit = {},
-    // Board.TRANSLATE: fired on every debounced translation result (and
-    // with "" when the source text is cleared or the board is left) so the
-    // service can push the live-translated text into the real
-    // InputConnection as composing text — see TranslateView's doc comment
-    // for why the translation itself has to live in this Composable rather
-    // than the service (it owns the local, non-InputConnection draft
-    // buffer the user types into) while committing to the real field still
-    // has to happen in the service (only it holds the InputConnection).
-    onTranslatedTextChanged: (String) -> Unit = {},
-    // Board.TRANSLATE's Done button — finalizes whatever's currently
-    // composing (from the most recent onTranslatedTextChanged) as real
-    // committed text, instead of leaving it as an editable composing span
-    // forever. See SinKeyInputMethodService.onTranslationCommitted.
-    onTranslationCommitted: () -> Unit = {}
+    // ── Translate row state (TOOL_TRANSLATE) ──────────────────────────
+    // Unlike Clipboard/Font/Sticker, Translate is NOT a separate Board —
+    // it's a permanent-until-closed row that replaces the toolbar's
+    // suggestion-strip/tools-row slot in place, the same way typing swaps
+    // the tools row for the suggestion strip. This keeps the key rows
+    // below (and the language-switch/globe key on them) working normally
+    // while translating, matching the reference screenshot: a translate
+    // bar sitting above an otherwise-untouched QWERTY keyboard, not a
+    // full-screen board that hides everything else. All state here is
+    // owned by the service (SinKeyInputMethodService.translateState),
+    // since the service is what pushes each debounced translation result
+    // into the real InputConnection as composing text — see that class's
+    // TranslateState doc comment.
+    isTranslateMode: Boolean = false,
+    onTranslateModeChange: ((Boolean) -> Unit)? = null,
+    translateSourceLang: String = "en",
+    translateTargetLang: String = "si",
+    onTranslateLanguagesSwapped: () -> Unit = {},
+    translateSourceText: String = "",
+    onTranslateSourceTextChanged: (String) -> Unit = {},
+    translateResultText: String = "",
+    isTranslating: Boolean = false
 ) {
     // Read ahead of `colors` below (moved up from where these used to live,
     // further down this function) because keyboardColors() now needs the
@@ -687,7 +696,7 @@ internal fun KeyboardView(
             // except for the Emoji board — which moves its own category
             // tabs to the very top instead, in place of this toolbar) ──────
             if (currentBoard != Board.EMOJI && currentBoard != Board.CLIPBOARD && currentBoard != Board.FONT &&
-                currentBoard != Board.STICKER && currentBoard != Board.STICKER_CREATE && currentBoard != Board.TRANSLATE) {
+                currentBoard != Board.STICKER && currentBoard != Board.STICKER_CREATE) {
                 AppsMicBar(
                     colors = colors,
                     isDark = isDark,
@@ -699,7 +708,16 @@ internal fun KeyboardView(
                     onClipboardOpen = { pushBoard(Board.CLIPBOARD) },
                     onFontOpen = { pushBoard(Board.FONT) },
                     onStickerOpen = { pushBoard(Board.STICKER) },
-                    onTranslateOpen = { pushBoard(Board.TRANSLATE) },
+                    isTranslateMode = isTranslateMode,
+                    onTranslateOpen = onTranslateModeChange?.let { { it(true) } } ?: {},
+                    onTranslateClose = onTranslateModeChange?.let { { it(false) } } ?: {},
+                    translateSourceLang = translateSourceLang,
+                    translateTargetLang = translateTargetLang,
+                    onTranslateLanguagesSwapped = onTranslateLanguagesSwapped,
+                    translateSourceText = translateSourceText,
+                    onTranslateSourceTextChanged = onTranslateSourceTextChanged,
+                    translateResultText = translateResultText,
+                    isTranslating = isTranslating,
                     selectedFontStyle = FancyTextStyle.fromKey(selectedFontKey)
                 )
             }
@@ -711,8 +729,8 @@ internal fun KeyboardView(
             // (same slot, same 44dp height, so nothing else on the board
             // shifts or resizes) — the recent-emoji strip itself is not
             // shown at all while the banner is up.
-            if (!isPhoneInput && currentBoard != Board.EMOJI && currentBoard != Board.CLIPBOARD && currentBoard != Board.FONT &&
-                currentBoard != Board.STICKER && currentBoard != Board.STICKER_CREATE && currentBoard != Board.TRANSLATE) {
+            if (!isPhoneInput && !isTranslateMode && currentBoard != Board.EMOJI && currentBoard != Board.CLIPBOARD && currentBoard != Board.FONT &&
+                currentBoard != Board.STICKER && currentBoard != Board.STICKER_CREATE) {
                 if (showUpdateBanner) {
                     UpdateBanner(
                         colors = colors,
@@ -819,15 +837,6 @@ internal fun KeyboardView(
                         coroutineScope.launch { stickerRepository.createFromText(text, textColor) }
                         popBoard()
                     },
-                    onBack = { popBoard() }
-                )
-                currentBoard == Board.TRANSLATE -> TranslateView(
-                    colors = colors, keyHeight = keyHeight,
-                    bottomPadding = bottomPadding,
-                    targetContentHeight = measuredMainContentHeight + 48.dp +
-                        (if (!isPhoneInput && (showUpdateBanner || recentEmojis.isNotEmpty())) 44.dp else 0.dp),
-                    onTranslatedTextChanged = onTranslatedTextChanged,
-                    onTranslationCommitted = onTranslationCommitted,
                     onBack = { popBoard() }
                 )
                 currentBoard == Board.STICKER_EDIT -> {
@@ -1654,6 +1663,184 @@ private fun PhoneDialPadKeys(
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// Translate row (TOOL_TRANSLATE) — replaces the toolbar's tools-row/
+// suggestion-strip slot in place while active. See AppsMicBar's isTranslateMode
+// branch and KeyboardView's doc comment on the translate-row params.
+// ─────────────────────────────────────────────────────────────────────────────
+@Composable
+private fun TranslateRow(
+    colors: KeyboardColors,
+    sourceLang: String,
+    targetLang: String,
+    onLanguagesSwapped: () -> Unit,
+    sourceText: String,
+    onSourceTextChanged: (String) -> Unit,
+    resultText: String,
+    isTranslating: Boolean,
+    onClose: () -> Unit
+) {
+    val headerHeight = 40.dp
+    val languageBarHeight = 40.dp
+    val fieldHeight = 44.dp
+
+    Column(modifier = Modifier.fillMaxWidth().background(colors.bg)) {
+        // ── Header: "Translate" label + Close ──────────────────────────
+        Row(
+            modifier = Modifier.fillMaxWidth().height(headerHeight).padding(horizontal = 12.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(
+                text = "Translate",
+                fontSize = 14.sp,
+                fontWeight = FontWeight.Medium,
+                color = colors.keyText,
+                modifier = Modifier.weight(1f)
+            )
+            Box(
+                modifier = Modifier
+                    .size(28.dp)
+                    .clip(RoundedCornerShape(50))
+                    .clickable { onClose() },
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    imageVector = Icons.Filled.Close,
+                    contentDescription = "Close translate",
+                    modifier = Modifier.size(18.dp),
+                    tint = colors.subText
+                )
+            }
+        }
+
+        // ── Language pair + swap ───────────────────────────────────────
+        Row(
+            modifier = Modifier.fillMaxWidth().height(languageBarHeight).padding(horizontal = 12.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.Center
+        ) {
+            Box(
+                modifier = Modifier
+                    .clip(RoundedCornerShape(6.dp))
+                    .background(colors.keyBg)
+                    .padding(horizontal = 16.dp, vertical = 6.dp)
+            ) {
+                Text(text = translateLanguageLabel(sourceLang), fontSize = 13.sp, fontWeight = FontWeight.Medium, color = colors.keyText)
+            }
+            Box(
+                modifier = Modifier
+                    .padding(horizontal = 12.dp)
+                    .size(26.dp)
+                    .clip(RoundedCornerShape(50))
+                    .clickable { onLanguagesSwapped() },
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    imageVector = Icons.Filled.SwapHoriz,
+                    contentDescription = "Swap languages",
+                    modifier = Modifier.size(18.dp),
+                    tint = DeshGreen
+                )
+            }
+            Box(
+                modifier = Modifier
+                    .clip(RoundedCornerShape(6.dp))
+                    .background(colors.keyBg)
+                    .padding(horizontal = 16.dp, vertical = 6.dp)
+            ) {
+                Text(text = translateLanguageLabel(targetLang), fontSize = 13.sp, fontWeight = FontWeight.Medium, color = colors.keyText)
+            }
+        }
+
+        // ── Input field ─────────────────────────────────────────────────
+        // NOT a real BasicTextField/TextField — this Composable runs inside
+        // the IME's own window (unlike e.g. StickerImageEditorView's field,
+        // which runs in a normal Activity). A real focusable text field
+        // here would try to request its own soft keyboard, since as far as
+        // Android is concerned it's just another editable view needing an
+        // IME — see StickerCreateView's top-level doc comment for the same
+        // reasoning applied to the sticker text composer. Typing instead
+        // happens through the real QWERTY keys already on screen below,
+        // same as StickerTextComposeView's draft buffer; the blinking
+        // cursor here is purely a visual affordance so this doesn't look
+        // like inert/disabled text, not an actual editable field — tapping
+        // it does nothing, exactly like tapping any other non-key part of
+        // the keyboard's own UI.
+        val infinite = rememberInfiniteTransition(label = "translateCursorBlink")
+        val cursorAlpha by infinite.animateFloat(
+            initialValue = 1f,
+            targetValue = 0f,
+            animationSpec = androidx.compose.animation.core.infiniteRepeatable(
+                animation = androidx.compose.animation.core.tween(durationMillis = 500, easing = androidx.compose.animation.core.LinearEasing),
+                repeatMode = androidx.compose.animation.core.RepeatMode.Reverse
+            ),
+            label = "translateCursorBlinkAlpha"
+        )
+
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(fieldHeight)
+                .padding(horizontal = 12.dp, vertical = 4.dp)
+                .clip(RoundedCornerShape(10.dp))
+                .background(colors.keyBg)
+                .padding(horizontal = 12.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            if (sourceText.isEmpty()) {
+                Text(
+                    text = "Type to translate…",
+                    fontSize = 15.sp,
+                    color = colors.subText,
+                    maxLines = 1,
+                    modifier = Modifier.weight(1f)
+                )
+            } else {
+                Text(
+                    text = sourceText,
+                    fontSize = 15.sp,
+                    color = colors.keyText,
+                    maxLines = 1,
+                    modifier = Modifier.weight(1f, fill = false)
+                )
+                Box(
+                    modifier = Modifier
+                        .padding(start = 2.dp)
+                        .width(1.5.dp)
+                        .height(18.dp)
+                        .background(DeshGreen.copy(alpha = cursorAlpha))
+                )
+                Spacer(modifier = Modifier.weight(1f))
+            }
+            if (isTranslating) {
+                androidx.compose.material3.CircularProgressIndicator(
+                    modifier = Modifier.size(14.dp),
+                    strokeWidth = 2.dp,
+                    color = DeshGreen
+                )
+            }
+        }
+
+        // ── Live translated result ─────────────────────────────────────
+        if (resultText.isNotEmpty()) {
+            Text(
+                text = resultText,
+                fontSize = 14.sp,
+                fontWeight = FontWeight.Medium,
+                color = DeshGreen,
+                maxLines = 1,
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 2.dp)
+            )
+        }
+    }
+}
+
+private fun translateLanguageLabel(code: String): String = when (code) {
+    "en" -> "English"
+    "si" -> "සිංහල"
+    else -> code
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // Toolbar — tools row OR suggestion strip depending on typing state
 // ─────────────────────────────────────────────────────────────────────────────
 @Composable
@@ -1671,7 +1858,20 @@ private fun AppsMicBar(
     onClipboardOpen: () -> Unit,
     onFontOpen: () -> Unit,
     onStickerOpen: () -> Unit,
-    onTranslateOpen: () -> Unit,
+    // See KeyboardView's own doc comment on these — the translate row is a
+    // third state of this same toolbar area (tools row / suggestion strip
+    // / translate row), not a separate board, so the key rows underneath
+    // and the language-switch key on them keep working while it's shown.
+    isTranslateMode: Boolean = false,
+    onTranslateOpen: () -> Unit = {},
+    onTranslateClose: () -> Unit = {},
+    translateSourceLang: String = "en",
+    translateTargetLang: String = "si",
+    onTranslateLanguagesSwapped: () -> Unit = {},
+    translateSourceText: String = "",
+    onTranslateSourceTextChanged: (String) -> Unit = {},
+    translateResultText: String = "",
+    isTranslating: Boolean = false,
     selectedFontStyle: FancyTextStyle = FancyTextStyle.NONE
 ) {
     // The undo chip must be able to show the strip even when there are no
@@ -1690,6 +1890,27 @@ private fun AppsMicBar(
     // That 8dp height difference caused the IME window to resize every time
     // typing started/stopped, which triggered WhatsApp's emoji panel to overlap
     // the keyboard producing the visible ghost/duplicate toolbar layer.
+    //
+    // The translate row is deliberately exempted from that same-height
+    // constraint (it's taller — header + language pair + text field) since
+    // entering/leaving it is always an explicit tap on TOOL_TRANSLATE/Close,
+    // never something that happens mid-typing-flow the way the tools-row ↔
+    // suggestion-strip swap does, so a resize here doesn't carry the same
+    // risk of racing WhatsApp's own panel animation.
+    if (isTranslateMode) {
+        TranslateRow(
+            colors = colors,
+            sourceLang = translateSourceLang,
+            targetLang = translateTargetLang,
+            onLanguagesSwapped = onTranslateLanguagesSwapped,
+            sourceText = translateSourceText,
+            onSourceTextChanged = onTranslateSourceTextChanged,
+            resultText = translateResultText,
+            isTranslating = isTranslating,
+            onClose = onTranslateClose
+        )
+        return
+    }
     if (isTyping) {
             // ── Suggestion strip ─────────────────────────────────────────
             // FIX: The grid/apps icon (TOOL_APPS) used to disappear entirely
