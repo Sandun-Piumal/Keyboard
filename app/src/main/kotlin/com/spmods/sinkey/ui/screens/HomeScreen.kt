@@ -8,6 +8,7 @@ import android.os.Looper
 import android.provider.Settings
 import android.view.inputmethod.InputMethodManager
 import androidx.compose.ui.draw.shadow
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -48,30 +49,32 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalLifecycleOwner
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
+import com.spmods.sinkey.R
 
-// ── Screenshot-matched palette (indigo/purple → pink) ──────────────────────
-private val IndigoDeep = Color(0xFF6C4CE0)
-private val IndigoMid = Color(0xFF7C5CF0)
-private val PinkAccent = Color(0xFFE0498A)
-private val TitleIndigo = Color(0xFF3B2F8C)
-private val BodyGrey = Color(0xFF6B7280)
-private val StepCardBg = Color(0xFFFFFFFF)
+// ── Palette ──────────────────────────────────────────────────────────────────
+private val IndigoDeep   = Color(0xFF6C4CE0)
+private val IndigoMid    = Color(0xFF7C5CF0)
+private val PinkAccent   = Color(0xFFE0498A)
+private val TitleIndigo  = Color(0xFF3B2F8C)
+private val BodyGrey     = Color(0xFF6B7280)
+private val StepCardBg   = Color(0xFFFFFFFF)
 private val FeatureStripBg = Color(0xFFF3F1FB)
 private val OutlineIndigo = Color(0xFF6C4CE0)
-private val OutlinePink = Color(0xFFE0498A)
+private val OutlinePink  = Color(0xFFE0498A)
 
 private fun isImeEnabled(context: Context): Boolean {
     val imm = context.getSystemService(InputMethodManager::class.java)
@@ -79,7 +82,9 @@ private fun isImeEnabled(context: Context): Boolean {
 }
 
 private fun isImeDefault(context: Context): Boolean {
-    val defaultIme = Settings.Secure.getString(context.contentResolver, Settings.Secure.DEFAULT_INPUT_METHOD)
+    val defaultIme = Settings.Secure.getString(
+        context.contentResolver, Settings.Secure.DEFAULT_INPUT_METHOD
+    )
     return defaultIme?.startsWith(context.packageName) == true
 }
 
@@ -88,12 +93,12 @@ fun HomeScreen() {
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
 
-    var enabled by remember { mutableStateOf(isImeEnabled(context)) }
+    var enabled   by remember { mutableStateOf(isImeEnabled(context)) }
     var isDefault by remember { mutableStateOf(isImeDefault(context)) }
 
     DisposableEffect(lifecycleOwner) {
         fun refresh() {
-            enabled = isImeEnabled(context)
+            enabled   = isImeEnabled(context)
             isDefault = isImeDefault(context)
         }
 
@@ -102,10 +107,12 @@ fun HomeScreen() {
             override fun onChange(selfChange: Boolean) = refresh()
         }
         context.contentResolver.registerContentObserver(
-            Settings.Secure.getUriFor(Settings.Secure.DEFAULT_INPUT_METHOD), false, contentObserver
+            Settings.Secure.getUriFor(Settings.Secure.DEFAULT_INPUT_METHOD),
+            false, contentObserver
         )
         context.contentResolver.registerContentObserver(
-            Settings.Secure.getUriFor(Settings.Secure.ENABLED_INPUT_METHODS), false, contentObserver
+            Settings.Secure.getUriFor(Settings.Secure.ENABLED_INPUT_METHODS),
+            false, contentObserver
         )
 
         val lifecycleObserver = LifecycleEventObserver { _, event ->
@@ -125,7 +132,7 @@ fun HomeScreen() {
             .background(MaterialTheme.colorScheme.background)
             .padding(bottom = 24.dp)
     ) {
-        // ── Top bar: hamburger · title · crown badge ────────────────────
+        // ── Top bar ─────────────────────────────────────────────────────────
         Row(
             modifier = Modifier
                 .fillMaxWidth()
@@ -182,15 +189,13 @@ fun HomeScreen() {
             }
         }
 
-        // ── Hero welcome card ───────────────────────────────────────────
+        // ── Hero card ────────────────────────────────────────────────────────
         val heroGradient = Brush.linearGradient(
             colors = listOf(Color(0xFFE9E4FB), Color(0xFFF3E7F2), Color(0xFFFBE7EE)),
             start = Offset(0f, 0f),
             end = Offset(Float.POSITIVE_INFINITY, Float.POSITIVE_INFINITY)
         )
 
-        // Hero card — no clipping so keyboard illustration can bleed
-        // below the card edge (matching the reference design).
         Box(
             modifier = Modifier
                 .padding(20.dp, 14.dp, 20.dp, 0.dp)
@@ -202,261 +207,134 @@ fun HomeScreen() {
                     .clip(RoundedCornerShape(24.dp))
                     .background(heroGradient)
             ) {
-                // Two-column layout: text + CTA on the left, illustration
-                // on the right — matches the original wide, short hero
-                // card. Row height is driven by content (max of the two
-                // columns), so the card stays compact.
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
                         .padding(20.dp),
                     verticalAlignment = Alignment.Top
                 ) {
-                    Column(
-                        modifier = Modifier.weight(1f)
-                    ) {
-                    Text(
-                        "WELCOME",
-                        fontSize = 11.sp,
-                        fontWeight = FontWeight.Bold,
-                        letterSpacing = 1.sp,
-                        color = IndigoDeep
-                    )
-                    Spacer(Modifier.height(8.dp))
-                    Text(
-                        "Type your world",
-                        fontSize = 22.sp,
-                        fontWeight = FontWeight.ExtraBold,
-                        color = Color(0xFF1E1B33)
-                    )
-                    Row {
+                    // ── Left: text + CTA ─────────────────────────────────
+                    Column(modifier = Modifier.weight(1f)) {
                         Text(
-                            "in ",
-                            fontSize = 22.sp,
-                            fontWeight = FontWeight.ExtraBold,
-                            color = Color(0xFF1E1B33)
-                        )
-                        Text(
-                            "Sinhala ",
-                            fontSize = 22.sp,
-                            fontWeight = FontWeight.ExtraBold,
+                            "WELCOME",
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.Bold,
+                            letterSpacing = 1.sp,
                             color = IndigoDeep
                         )
+                        Spacer(Modifier.height(8.dp))
                         Text(
-                            "or ",
+                            "Type your world",
                             fontSize = 22.sp,
                             fontWeight = FontWeight.ExtraBold,
                             color = Color(0xFF1E1B33)
                         )
+                        Row {
+                            Text("in ", fontSize = 22.sp, fontWeight = FontWeight.ExtraBold, color = Color(0xFF1E1B33))
+                            Text("Sinhala ", fontSize = 22.sp, fontWeight = FontWeight.ExtraBold, color = IndigoDeep)
+                            Text("or ", fontSize = 22.sp, fontWeight = FontWeight.ExtraBold, color = Color(0xFF1E1B33))
+                            Text("English", fontSize = 22.sp, fontWeight = FontWeight.ExtraBold, color = PinkAccent)
+                        }
+                        Spacer(Modifier.height(8.dp))
                         Text(
-                            "English",
-                            fontSize = 22.sp,
-                            fontWeight = FontWeight.ExtraBold,
-                            color = PinkAccent
+                            "Switch anytime. Type naturally.",
+                            fontSize = 13.sp,
+                            color = BodyGrey
                         )
-                    }
-                    Spacer(Modifier.height(8.dp))
-                    Text(
-                        "Switch anytime. Type naturally.",
-                        fontSize = 13.sp,
-                        color = BodyGrey
-                    )
+                        Spacer(Modifier.height(18.dp))
 
-                    Spacer(Modifier.height(18.dp))
-
-                    Row(
-                        modifier = Modifier
-                            .clip(RoundedCornerShape(50))
-                            .background(
-                                Brush.horizontalGradient(
-                                    listOf(IndigoDeep, IndigoMid)
+                        // CTA button
+                        Row(
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(50))
+                                .background(
+                                    Brush.horizontalGradient(listOf(IndigoDeep, IndigoMid))
                                 )
+                                .clickable {
+                                    context.startActivity(
+                                        Intent(Settings.ACTION_INPUT_METHOD_SETTINGS)
+                                    )
+                                }
+                                .padding(horizontal = 22.dp, vertical = 13.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                "Start Typing",
+                                color = Color.White,
+                                fontSize = 14.sp,
+                                fontWeight = FontWeight.Bold
                             )
-                            .clickable {
-                                context.startActivity(Intent(Settings.ACTION_INPUT_METHOD_SETTINGS))
-                            }
-                            .padding(horizontal = 22.dp, vertical = 13.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Text(
-                            "Start Typing",
-                            color = Color.White,
-                            fontSize = 14.sp,
-                            fontWeight = FontWeight.Bold
-                        )
-                        Spacer(Modifier.width(6.dp))
-                        Icon(
-                            Icons.Filled.ChevronRight,
-                            contentDescription = null,
-                            tint = Color.White,
-                            modifier = Modifier.size(16.dp)
-                        )
-                    }
+                            Spacer(Modifier.width(6.dp))
+                            Icon(
+                                Icons.Filled.ChevronRight,
+                                contentDescription = null,
+                                tint = Color.White,
+                                modifier = Modifier.size(16.dp)
+                            )
+                        }
                     }
 
-                    // ── Hero illustration ──────────────────────────────
-                    // Box is 170×190dp. The card Row has verticalAlignment
-                    // = Top, so this column's Box bleeds below the card.
-                    // keyboard top = 190 - 120 = 70dp from Box top.
-                    // Bubble tails touch keyboard top → bubble y offsets:
-                    //   සිංහල: bubble(~36dp) + tail(8dp) = 44dp → y = 70-44 = 26dp
-                    //   A:      bubble(~44dp) + tail(8dp) = 52dp → y = 70-52 = 18dp
+                    // ── Right: keyboard image + sparkles + dots ───────────
                     Box(
                         modifier = Modifier
-                            .width(170.dp)
-                            .height(190.dp)
+                            .width(180.dp)
+                            .height(200.dp)
                     ) {
-                        // keyboard — back layer, height=120dp at bottom
-                        Column(
+                        // Keyboard image (transparent background PNG)
+                        Image(
+                            painter = painterResource(id = R.drawable.keyboard_hero),
+                            contentDescription = "Keyboard illustration",
+                            contentScale = ContentScale.Fit,
                             modifier = Modifier
-                                .align(Alignment.BottomCenter)
                                 .fillMaxWidth()
-                                .height(120.dp)
-                                .clip(RoundedCornerShape(16.dp))
-                                .background(
-                                    Brush.linearGradient(
-                                        colors = listOf(Color(0xFF9D7FE8), Color(0xFF7C4FE0)),
-                                        start = Offset(0f, 0f),
-                                        end = Offset(0f, Float.POSITIVE_INFINITY)
-                                    )
-                                )
-                                .padding(horizontal = 8.dp, vertical = 8.dp),
-                            verticalArrangement = Arrangement.spacedBy(5.dp)
-                        ) {
-                            // row 1
-                            Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                                repeat(7) {
-                                    Box(
-                                        modifier = Modifier
-                                            .weight(1f)
-                                            .height(15.dp)
-                                            .clip(RoundedCornerShape(4.dp))
-                                            .background(Color(0xFFC8B4F6).copy(alpha = 0.75f))
-                                    )
-                                }
-                            }
-                            // row 2
-                            Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                                repeat(7) {
-                                    Box(
-                                        modifier = Modifier
-                                            .weight(1f)
-                                            .height(15.dp)
-                                            .clip(RoundedCornerShape(4.dp))
-                                            .background(Color(0xFFC8B4F6).copy(alpha = 0.75f))
-                                    )
-                                }
-                            }
-                            // row 3 — space bar
-                            Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                                Box(
-                                    modifier = Modifier
-                                        .weight(1.3f).height(15.dp)
-                                        .clip(RoundedCornerShape(4.dp))
-                                        .background(Color(0xFFCBBAF8).copy(alpha = 0.75f))
-                                )
-                                Box(
-                                    modifier = Modifier
-                                        .weight(4f).height(15.dp)
-                                        .clip(RoundedCornerShape(4.dp))
-                                        .background(Color(0xFFCBBAF8).copy(alpha = 0.75f))
-                                )
-                                Box(
-                                    modifier = Modifier
-                                        .weight(1.3f).height(15.dp)
-                                        .clip(RoundedCornerShape(4.dp))
-                                        .background(Color(0xFFCBBAF8).copy(alpha = 0.75f))
-                                )
-                            }
-                        }
+                                .align(Alignment.BottomCenter)
+                        )
 
-                        // sparkles
-                        Text("✦", fontSize = 11.sp, color = Color(0xFFD4C5F9),
-                            modifier = Modifier.align(Alignment.TopStart)
-                                .offset(x = 70.dp, y = 4.dp))
-                        Text("✦", fontSize = 14.sp, color = Color(0xFFD4C5F9),
-                            modifier = Modifier.align(Alignment.TopEnd)
-                                .offset(x = (-2).dp, y = 14.dp))
-
-                        // සිංහල bubble — tail bottom touches keyboard top (y=70dp)
-                        // bubble box ~36dp tall + 8dp tail = 44dp → top = 70-44 = 26dp
-                        Column(
+                        // ── Sparkle small — top left area ─────────────────
+                        Text(
+                            "✦",
+                            fontSize = 10.sp,
+                            color = Color(0xFFB8A0EC),
                             modifier = Modifier
                                 .align(Alignment.TopStart)
-                                .offset(x = 2.dp, y = 26.dp)
-                        ) {
-                            Box(
-                                modifier = Modifier
-                                    .shadow(3.dp, RoundedCornerShape(12.dp))
-                                    .clip(RoundedCornerShape(12.dp))
-                                    .background(Color.White)
-                                    .padding(horizontal = 12.dp, vertical = 8.dp)
-                            ) {
-                                Text("සිංහල", fontSize = 14.sp,
-                                    fontWeight = FontWeight.Bold,
-                                    color = Color(0xFF1E1B33))
-                            }
-                            Box(
-                                modifier = Modifier
-                                    .padding(start = 14.dp)
-                                    .size(10.dp)
-                                    .offset(y = (-5).dp)
-                                    .rotate(45f)
-                                    .background(Color.White)
-                            )
-                        }
+                                .offset(x = 28.dp, y = 2.dp)
+                        )
 
-                        // A bubble — tail bottom touches keyboard top (y=70dp)
-                        // bubble box ~44dp tall + 8dp tail = 52dp → top = 70-52 = 18dp
-                        Column(
+                        // ── Sparkle large — top right ─────────────────────
+                        Text(
+                            "✦",
+                            fontSize = 18.sp,
+                            color = Color(0xFFD4C5F9),
                             modifier = Modifier
                                 .align(Alignment.TopEnd)
-                                .offset(x = (-2).dp, y = 18.dp)
-                        ) {
-                            Box(
-                                modifier = Modifier
-                                    .shadow(3.dp, RoundedCornerShape(14.dp))
-                                    .clip(RoundedCornerShape(14.dp))
-                                    .background(Color(0xFFF4B8D4))
-                                    .padding(horizontal = 16.dp, vertical = 10.dp)
-                            ) {
-                                Text("A", fontSize = 22.sp,
-                                    fontWeight = FontWeight.ExtraBold,
-                                    color = Color(0xFF1E1B33))
-                            }
-                            Box(
-                                modifier = Modifier
-                                    .padding(start = 12.dp)
-                                    .size(10.dp)
-                                    .offset(y = (-5).dp)
-                                    .rotate(45f)
-                                    .background(Color(0xFFF4B8D4))
-                            )
-                        }
-
-                        // decorative dots — left of keyboard, at keyboard top area
-                        Box(
-                            modifier = Modifier
-                                .align(Alignment.TopStart)
-                                .offset(x = 2.dp, y = 130.dp)
-                                .size(7.dp)
-                                .clip(CircleShape)
-                                .background(Color(0xFFB8A0EC).copy(alpha = 0.7f))
+                                .offset(x = (-8).dp, y = 4.dp)
                         )
+
+                        // ── Dot large — left side ─────────────────────────
                         Box(
                             modifier = Modifier
-                                .align(Alignment.TopStart)
-                                .offset(x = 10.dp, y = 142.dp)
+                                .align(Alignment.CenterStart)
+                                .offset(x = (-2).dp, y = 28.dp)
+                                .size(8.dp)
+                                .clip(CircleShape)
+                                .background(Color(0xFFB8A0EC))
+                        )
+
+                        // ── Dot small — below large dot ───────────────────
+                        Box(
+                            modifier = Modifier
+                                .align(Alignment.CenterStart)
+                                .offset(x = 8.dp, y = 42.dp)
                                 .size(5.dp)
                                 .clip(CircleShape)
-                                .background(Color(0xFFB8A0EC).copy(alpha = 0.7f))
+                                .background(Color(0xFFB8A0EC))
                         )
                     }
                 }
             }
         }
 
-        // ── "Let's get you started" ─────────────────────────────────────
+        // ── "Let's get you started" ──────────────────────────────────────────
         Text(
             "Let's get you started",
             fontSize = 15.sp,
@@ -508,7 +386,7 @@ fun HomeScreen() {
             }
         }
 
-        // ── Feature strip ────────────────────────────────────────────────
+        // ── Feature strip ────────────────────────────────────────────────────
         Card(
             modifier = Modifier
                 .padding(20.dp, 20.dp, 20.dp, 0.dp)
@@ -582,9 +460,19 @@ private fun SetupStepRow(
             contentAlignment = Alignment.Center
         ) {
             if (done) {
-                Icon(Icons.Filled.Check, contentDescription = null, tint = Color(0xFF1E8A4C), modifier = Modifier.size(20.dp))
+                Icon(
+                    Icons.Filled.Check,
+                    contentDescription = null,
+                    tint = Color(0xFF1E8A4C),
+                    modifier = Modifier.size(20.dp)
+                )
             } else {
-                Icon(icon, contentDescription = null, tint = iconTint, modifier = Modifier.size(20.dp))
+                Icon(
+                    icon,
+                    contentDescription = null,
+                    tint = iconTint,
+                    modifier = Modifier.size(20.dp)
+                )
             }
         }
 
@@ -603,9 +491,6 @@ private fun SetupStepRow(
         Spacer(Modifier.width(8.dp))
 
         if (done) {
-            // Completed state: filled green pill with a checkmark, no
-            // longer clickable — visually distinct from the pending
-            // outline-only pill so the user can see the step registered.
             Row(
                 modifier = Modifier
                     .clip(RoundedCornerShape(50))
@@ -676,9 +561,19 @@ private fun FeatureItem(
             contentAlignment = Alignment.Center
         ) {
             if (icon != null) {
-                Icon(icon, contentDescription = null, tint = glyphColor, modifier = Modifier.size(22.dp))
+                Icon(
+                    icon,
+                    contentDescription = null,
+                    tint = glyphColor,
+                    modifier = Modifier.size(22.dp)
+                )
             } else if (glyph != null) {
-                Text(glyph, fontSize = 17.sp, fontWeight = FontWeight.Bold, color = glyphColor)
+                Text(
+                    glyph,
+                    fontSize = 17.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = glyphColor
+                )
             }
         }
         Spacer(Modifier.height(8.dp))
