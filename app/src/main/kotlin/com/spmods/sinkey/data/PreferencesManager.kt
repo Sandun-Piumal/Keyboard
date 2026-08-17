@@ -434,29 +434,10 @@ enum class KeyColorPalette(val key: String, val label: String, val accent: andro
 enum class KeyEffect(val key: String, val label: String) {
     /** Flat key background only, no extra border/glow — original look. */
     NONE("none", "None"),
-    /** Thin solid border in the palette accent color around every key. */
-    OUTLINE("outline", "Outline"),
-    /** Soft colored glow (blurred shadow) behind every key in the accent color. */
-    GLOW("glow", "Glow"),
-    /** Bottom-edge-only accent underline, like a subtle key "shadow" cue. */
-    UNDERLINE("underline", "Underline"),
     /** Expanding ripple circle from the touch point, on key press. */
     RIPPLE("ripple", "Ripple"),
-    /** Key briefly scales up on press, like a soft "pop". */
-    POP_SCALE("pop_scale", "Pop"),
-    /** Bottom-edge drop shadow giving keys a raised/3D button look. */
-    SHADOW_3D("shadow_3d", "3D Shadow"),
-    /** Soft glow that continuously pulses in/out, not just on press. */
-    NEON_PULSE("neon_pulse", "Neon Pulse"),
-    /** Key border cycles through a loop of accent hues — RGB/cyberpunk look. */
-    RGB_CYCLE("rgb_cycle", "RGB Cycle"),
-    /**
-     * Touching any key sends an expanding neon/RGB color wave outward to
-     * every other key on the board, based on distance from the touched
-     * key — fades out as it travels and over time. Purely touch-reactive;
-     * keys show no color at rest, unlike RGB_CYCLE's always-on animation.
-     */
-    RGB_RIPPLE("rgb_ripple", "RGB Ripple");
+    /** Soft colored glow (blurred shadow) behind every key in the accent color. */
+    GLOW("glow", "Mech Glow");
 
     companion object {
         fun fromKey(key: String): KeyEffect = entries.find { it.key == key } ?: NONE
