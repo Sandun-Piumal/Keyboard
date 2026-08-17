@@ -35,7 +35,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.draw.shadow
@@ -476,21 +475,10 @@ private fun EffectPreviewKey(letter: String, effect: KeyEffect, accent: Color, m
     val shape = RoundedCornerShape(6.dp)
     val decorated = when (effect) {
         KeyEffect.NONE -> modifier
-        KeyEffect.OUTLINE -> modifier.border(1.5.dp, accent.copy(alpha = 0.85f), shape)
         KeyEffect.GLOW -> modifier.shadow(elevation = 6.dp, shape = shape, ambientColor = accent, spotColor = accent)
-        KeyEffect.UNDERLINE -> modifier.drawBehind {
-            val strokeWidth = 2.dp.toPx()
-            drawLine(
-                color = accent,
-                start = androidx.compose.ui.geometry.Offset(size.width * 0.18f, size.height - strokeWidth),
-                end = androidx.compose.ui.geometry.Offset(size.width * 0.82f, size.height - strokeWidth),
-                strokeWidth = strokeWidth,
-                cap = StrokeCap.Round
-            )
-        }
-        // Static previews for the new effects — the real animated versions
-        // (pulse/RGB cycle/ripple) run on the actual keyboard; these cards
-        // just need to communicate the *idea* of each style at a glance.
+        // Static preview for Ripple — the real animated expanding-circle
+        // version runs on the actual keyboard; this card just needs to
+        // communicate the *idea* of the style at a glance.
         KeyEffect.RIPPLE -> modifier.drawBehind {
             drawCircle(
                 color = accent.copy(alpha = 0.35f),
@@ -498,17 +486,6 @@ private fun EffectPreviewKey(letter: String, effect: KeyEffect, accent: Color, m
                 center = androidx.compose.ui.geometry.Offset(size.width / 2f, size.height / 2f)
             )
         }
-        KeyEffect.POP_SCALE -> modifier.border(1.5.dp, accent.copy(alpha = 0.6f), shape)
-        KeyEffect.SHADOW_3D -> modifier
-            .shadow(elevation = 4.dp, shape = shape, ambientColor = Color.Black, spotColor = Color.Black)
-            .border(0.75.dp, accent.copy(alpha = 0.4f), shape)
-        KeyEffect.NEON_PULSE -> modifier.shadow(elevation = 8.dp, shape = shape, ambientColor = accent, spotColor = accent)
-        KeyEffect.RGB_CYCLE -> modifier.border(1.75.dp, accent, shape)
-        // Static preview only — the real wave-outward-by-distance animation
-        // only makes sense across a full keyboard's worth of keys, not a
-        // 3-key card, so this just hints at the neon-ring look with the
-        // middle key highlighted as if a wave just passed through it.
-        KeyEffect.RGB_RIPPLE -> modifier.border(1.75.dp, accent.copy(alpha = 0.9f), shape)
     }
     Box(
         modifier = decorated
