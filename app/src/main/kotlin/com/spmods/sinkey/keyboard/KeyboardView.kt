@@ -25,7 +25,6 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.ui.draw.drawBehind
@@ -192,122 +191,17 @@ internal fun keyboardColors(
 private fun Modifier.keyEffectDecoration(colors: KeyboardColors, keyShape: RoundedCornerShape): Modifier {
     return when (colors.keyEffect) {
         com.spmods.sinkey.data.KeyEffect.NONE -> this
-        com.spmods.sinkey.data.KeyEffect.OUTLINE -> this.border(
-            width = 1.5.dp,
-            color = colors.accent.copy(alpha = 0.85f),
-            shape = keyShape
-        )
         com.spmods.sinkey.data.KeyEffect.GLOW -> this.shadow(
             elevation = 6.dp,
             shape = keyShape,
             ambientColor = colors.accent,
             spotColor = colors.accent
         )
-        com.spmods.sinkey.data.KeyEffect.UNDERLINE -> this.drawBehind {
-            val strokeWidth = 2.dp.toPx()
-            drawLine(
-                color = colors.accent,
-                start = androidx.compose.ui.geometry.Offset(size.width * 0.18f, size.height - strokeWidth),
-                end = androidx.compose.ui.geometry.Offset(size.width * 0.82f, size.height - strokeWidth),
-                strokeWidth = strokeWidth,
-                cap = androidx.compose.ui.graphics.StrokeCap.Round
-            )
-        }
-        // Bottom-edge drop shadow only (offset shadow), giving a raised
-        // "3D button" look rather than GLOW's even all-around blur.
-        com.spmods.sinkey.data.KeyEffect.SHADOW_3D -> this
-            .shadow(
-                elevation = 4.dp,
-                shape = keyShape,
-                ambientColor = Color.Black.copy(alpha = 0.35f),
-                spotColor = Color.Black.copy(alpha = 0.45f)
-            )
-            .border(width = 0.75.dp, color = colors.accent.copy(alpha = 0.35f), shape = keyShape)
-        // Continuously-pulsing glow — animated version of GLOW. Uses
-        // Modifier.composed so it can host its own infinite animation
-        // without every call site needing to be touched.
-        com.spmods.sinkey.data.KeyEffect.NEON_PULSE -> this.composed {
-            val infinite = rememberInfiniteTransition(label = "neonPulse")
-            val pulse by infinite.animateFloat(
-                initialValue = 2.dp.value,
-                targetValue = 10.dp.value,
-                animationSpec = infiniteRepeatable(
-                    animation = tween(1100, easing = androidx.compose.animation.core.FastOutSlowInEasing),
-                    repeatMode = RepeatMode.Reverse
-                ),
-                label = "neonPulseElevation"
-            )
-            this.shadow(
-                elevation = pulse.dp,
-                shape = keyShape,
-                ambientColor = colors.accent,
-                spotColor = colors.accent
-            )
-        }
-        // Border hue cycles through a small loop of colors derived from the
-        // chosen accent — the "gaming RGB / cyberpunk" look.
-        com.spmods.sinkey.data.KeyEffect.RGB_CYCLE -> this.composed {
-            val infinite = rememberInfiniteTransition(label = "rgbCycle")
-            val hueShift by infinite.animateFloat(
-                initialValue = 0f,
-                targetValue = 360f,
-                animationSpec = infiniteRepeatable(
-                    animation = tween(3000, easing = androidx.compose.animation.core.LinearEasing)
-                ),
-                label = "rgbHueShift"
-            )
-            val cycledColor = remember(hueShift) { rotateHue(colors.accent, hueShift) }
-            this.border(width = 1.75.dp, color = cycledColor, shape = keyShape)
-        }
         // Ripple handled separately via .keyRippleEffect() at the call site
         // (needs the actual touch position from pointerInput), so it's a
         // no-op here — see LetterKey/NumberedLetterKey/NumpadDigitKey.
         com.spmods.sinkey.data.KeyEffect.RIPPLE -> this
-        // Pop/scale handled via rememberKeyBumpScale's existing pressed-scale
-        // animation at the call site (bumpScale already responds to
-        // `pressed`) — see keyPopScaleMultiplier() used alongside .scale().
-        com.spmods.sinkey.data.KeyEffect.POP_SCALE -> this
-        // Drawn entirely by RgbRippleOverlay (a Box layered above all keys —
-        // see KeyboardView's rgbRippleActive branch), since the wave needs
-        // to travel across *every* key's position relative to whichever key
-        // was touched, not just decorate that one key itself. No-op here.
-        com.spmods.sinkey.data.KeyEffect.RGB_RIPPLE -> this
     }
-}
-
-/**
- * Rotates [color]'s hue by [degrees] (0–360) in HSV space, keeping
- * saturation/value the same — used by RGB_CYCLE to animate through a loop
- * of hues derived from whichever accent color the user picked, rather than
- * a hardcoded rainbow unrelated to their chosen palette.
- */
-private fun rotateHue(color: Color, degrees: Float): Color {
-    val hsv = FloatArray(3)
-    android.graphics.Color.RGBToHSV(
-        (color.red * 255).toInt(),
-        (color.green * 255).toInt(),
-        (color.blue * 255).toInt(),
-        hsv
-    )
-    hsv[0] = (hsv[0] + degrees) % 360f
-    return Color(android.graphics.Color.HSVToColor(hsv))
-}
-
-/**
- * Extra scale multiplier for KeyEffect.POP_SCALE, layered on top of the
- * existing press-bump scale so "Pop" reads as a clearly bigger bounce than
- * the default subtle bump. Returns 1f (no-op) for every other effect so
- * this is safe to multiply into .scale() unconditionally at call sites.
- */
-@Composable
-private fun keyPopScaleMultiplier(pressed: Boolean, keyEffect: com.spmods.sinkey.data.KeyEffect): Float {
-    if (keyEffect != com.spmods.sinkey.data.KeyEffect.POP_SCALE) return 1f
-    val scale by animateFloatAsState(
-        targetValue = if (pressed) 1.18f else 1f,
-        animationSpec = spring(dampingRatio = Spring.DampingRatioMediumBouncy, stiffness = Spring.StiffnessLow),
-        label = "popScale"
-    )
-    return scale
 }
 
 /**
@@ -585,12 +479,12 @@ internal fun KeyboardView(
     // actual key), LED/Neon ripple (glow spreading from the actual key),
     // and LED idle-dimming (any press counts as activity). Populated by
     // the touch-down pointerInput inside the MAIN board's key Box below
-    // (see rgbRippleActive/ledPattern/typingAnimation branch there) —
+    // (see ledPattern/typingAnimation branch there) —
     // hoisted up to this top level, rather than kept local to that nested
     // block, specifically so this composable's own TypingAnimationPopup
     // and KeyboardLedRipple calls at the bottom of the function can read
-    // them. pressOrigin/pressTriggerId intentionally mirror the existing
-    // rgbRippleOrigin/rgbRippleTriggerId pattern (see RgbRippleOverlay) —
+    // them. pressOrigin/pressTriggerId use the same restart-even-on-
+    // identical-value reasoning as the rest of this state —
     // same restart-even-on-identical-value reasoning: bumping triggerId on
     // every touch-down, even two touches of the same key in a row, is what
     // makes the LaunchedEffect(triggerId) in each consumer actually restart
@@ -962,7 +856,7 @@ internal fun KeyboardView(
                     // each letter key (see LetterKey/NumberedLetterKey's
                     // onPositioned) — used once a swipe finishes to translate
                     // the touch path into a letter sequence, AND to know
-                    // every other key's position for RGB_RIPPLE / the LED
+                    // every other key's position for the LED
                     // ripple / the Typing Animation pop-up, all of which
                     // need to know where the actually-touched key is. This
                     // map itself is hoisted to the top of KeyboardView (see
@@ -971,10 +865,9 @@ internal fun KeyboardView(
                     // not inside this nested Box — only the *touch watcher*
                     // that fills it in lives here, since only the MAIN
                     // board's keys currently report their positions.
-                    val rgbRippleActive = colors.keyEffect == com.spmods.sinkey.data.KeyEffect.RGB_RIPPLE
                     val ledActive = ledPattern != com.spmods.sinkey.data.LedPattern.NONE
                     val typingAnimActive = typingAnimation != com.spmods.sinkey.data.TypingAnimation.NONE
-                    val needsKeyPositions = rgbRippleActive || ledActive || typingAnimActive || swipeTypingEnabled
+                    val needsKeyPositions = ledActive || typingAnimActive || swipeTypingEnabled
                     // Gesture-in-progress state, hoisted up to this shared
                     // Box (see the pointerInput placement below for why it
                     // can't live inside GestureTypingOverlay itself anymore).
@@ -987,8 +880,8 @@ internal fun KeyboardView(
                     // in whatever coordinate space `coords.positionInParent()`
                     // would have given (that key's own direct parent Row —
                     // several layout levels below this Box, and a different
-                    // origin for every row). RgbRippleOverlay/
-                    // KeyboardLedRipple/TypingAnimationPopup are all drawn
+                    // origin for every row). KeyboardLedRipple/
+                    // TypingAnimationPopup are drawn
                     // as direct children of THIS Box (via matchParentSize()/
                     // Popup below), so their (0,0) origin is this Box's
                     // top-left corner — key positions need to be measured
@@ -1095,7 +988,7 @@ internal fun KeyboardView(
                                     // underneath exactly as before — this
                                     // purely observes "a finger just went
                                     // down here" to record which key was hit
-                                    // for RGB_RIPPLE / the LED ripple / the
+                                    // for the LED ripple / the
                                     // Typing Animation pop-up, all three of
                                     // which key off the same pressOrigin +
                                     // pressTriggerId pair.
@@ -1132,7 +1025,7 @@ internal fun KeyboardView(
                                             // as the plain tap-watcher branch
                                             // above (see needsKeyPositions) —
                                             // swipe typing being on doesn't
-                                            // mean RGB_RIPPLE/LED/Typing
+                                            // mean LED/Typing
                                             // Animation should stop reacting
                                             // to ordinary taps, so this needs
                                             // to happen here too rather than
@@ -1286,27 +1179,11 @@ internal fun KeyboardView(
                             } } else null
                         )
 
-                        if (rgbRippleActive) {
-                            // Pure drawing layer, same non-hit-testing
-                            // reasoning as GestureTypingOverlay below — this
-                            // Box has no pointerInput of its own so it can
-                            // sit on top of every key without blocking taps.
-                            RgbRippleOverlay(
-                                origin = pressOrigin,
-                                triggerId = pressTriggerId,
-                                keyPositions = keyPositions.values.toList(),
-                                accent = colors.accent,
-                                modifier = Modifier.matchParentSize()
-                            )
-                        }
-
                         if (ledActive) {
-                            // Same pressOrigin/pressTriggerId as RGB_RIPPLE
-                            // above — both can be active together (a
-                            // KeyEffect ripple on the keys themselves, plus
-                            // a separate LED glow), since they're keyed off
-                            // the same shared touch state but draw distinct
-                            // visuals.
+                            // pressOrigin/pressTriggerId are the same shared
+                            // touch state Typing Animation also reads from —
+                            // each consumer draws its own distinct visual off
+                            // of it.
                             KeyboardLedRipple(
                                 pattern = ledPattern,
                                 origin = pressOrigin,
@@ -1386,7 +1263,7 @@ internal fun KeyboardView(
 // the way a letter key does. Never shown, typed, committed, or matched
 // against real text; U+E000-U+E005 sit in the Unicode Private Use Area,
 // which is guaranteed never to collide with any real Sinhala, English, or
-// symbol character. Exists so RGB_RIPPLE / the LED ripple / the Typing
+// symbol character. Exists so the LED ripple / the Typing
 // Animation pop-up can find these keys' real board positions too, same as
 // they already could for every letter key.
 private const val KEY_SENTINEL_SHIFT = '\uE000'
@@ -1445,7 +1322,7 @@ internal fun MainKeyboardKeys(
                 // letter key does, so each gets its own private-use-area
                 // Unicode sentinel (U+E000..U+E005) purely as a unique map
                 // key for `keyPositions` — never shown, typed, or matched
-                // against anything; only used so RGB_RIPPLE/the LED ripple/
+                // against anything; only used so the LED ripple/
                 // the Typing Animation pop-up can find these keys' real
                 // positions too, the same way they already could for every
                 // letter key.
@@ -1529,79 +1406,6 @@ internal fun MainKeyboardKeys(
  * actually fixes that; drawing the trail here on top is still fine and
  * layout-safe, since drawing and hit-testing are independent.
  */
-/**
- * KeyEffect.RGB_RIPPLE: draws an expanding neon/RGB color wave, centered on
- * [origin] (the touched key's center, in this Box's local coordinates),
- * that colors every other known key position by distance from that origin
- * as the wave front passes over it, then fades. Pure drawing layer — same
- * non-hit-testing reasoning as GestureTypingOverlay (see its doc comment),
- * so it can sit on top of every key without blocking taps.
- *
- * [triggerId] is bumped by the caller on every touch-down, including two
- * consecutive touches on the exact same key — keying the restart animation
- * off triggerId rather than off `origin` itself means the wave still
- * restarts from scratch even when origin didn't change value.
- */
-@Composable
-private fun RgbRippleOverlay(
-    origin: Offset?,
-    triggerId: Int,
-    keyPositions: List<KeyPoint>,
-    accent: Color,
-    modifier: Modifier = Modifier
-) {
-    if (origin == null || keyPositions.isEmpty()) return
-
-    // 0f..1f once per triggerId — represents how far the wave front has
-    // traveled (as a fraction of RIPPLE_MAX_RADIUS_DP) and how much it's
-    // faded, both driven off the same progress value for simplicity.
-    val progress = remember { Animatable(0f) }
-    LaunchedEffect(triggerId) {
-        progress.snapTo(0f)
-        progress.animateTo(1f, animationSpec = tween(650, easing = androidx.compose.animation.core.LinearOutSlowInEasing))
-    }
-
-    if (progress.value >= 1f) return
-
-    Canvas(modifier = modifier) {
-        val maxRadiusPx = RIPPLE_MAX_RADIUS_DP.dp.toPx()
-        val waveFrontRadius = progress.value * maxRadiusPx
-        // How wide the visible "band" of the wave is, in px — keys well
-        // behind the front (already passed) or well ahead of it (not yet
-        // reached) stay undrawn; only keys near the current front glow.
-        val bandWidthPx = 0.42f * maxRadiusPx
-
-        keyPositions.forEach { key ->
-            val dx = key.x - origin.x
-            val dy = key.y - origin.y
-            val dist = kotlin.math.sqrt(dx * dx + dy * dy)
-            val distanceFromFront = kotlin.math.abs(dist - waveFrontRadius)
-            if (distanceFromFront < bandWidthPx) {
-                // Closer to the exact front = brighter; also fades globally
-                // as the whole wave ages (1f - progress).
-                val bandStrength = 1f - (distanceFromFront / bandWidthPx)
-                val overallFade = 1f - progress.value
-                val alpha = (bandStrength * overallFade).coerceIn(0f, 1f)
-                if (alpha > 0.02f) {
-                    // Hue cycles with distance so the wave reads as a
-                    // genuine RGB/rainbow ring rather than a single flat
-                    // accent-colored blob.
-                    val hueShift = (dist / maxRadiusPx) * 300f
-                    val waveColor = rotateHue(accent, hueShift)
-                    drawCircle(
-                        color = waveColor.copy(alpha = alpha * 0.8f),
-                        radius = 26.dp.toPx(),
-                        center = Offset(key.x, key.y)
-                    )
-                }
-            }
-        }
-    }
-}
-
-/** Max travel distance (dp) of the RGB_RIPPLE wave front from its origin key. */
-private const val RIPPLE_MAX_RADIUS_DP = 260
-
 @Composable
 private fun GestureTypingOverlay(
     isDragging: Boolean,
@@ -2740,7 +2544,6 @@ private fun RowScope.NumberedLetterKey(
     var pressTick by remember { mutableStateOf(0) } // see LetterKey for why the preview triggers off this, not `pressed`
     val bumpScale = rememberKeyBumpScale(pressed)
     val bumpOffsetY = rememberKeyBumpOffsetY(pressed)
-    val popScale = keyPopScaleMultiplier(pressed, colors.keyEffect)
 
     // Long-press popup (accented alternates PLUS this key's own row
     // number, inserted as an extra cell in the middle of the bottom row —
@@ -2803,7 +2606,7 @@ private fun RowScope.NumberedLetterKey(
     Box(
         modifier = Modifier
             .height(keyHeight).weight(weight)
-            .scale(bumpScale * popScale)
+            .scale(bumpScale)
             .offset(y = bumpOffsetY)
             .clip(keyShape)
             .background(if (pressed) colors.keyBg.copy(alpha = 0.6f) else colors.keyBg)
@@ -2957,7 +2760,6 @@ private fun RowScope.LetterKey(
     var pressTick by remember { mutableStateOf(0) }
     val bumpScale = rememberKeyBumpScale(pressed)
     val bumpOffsetY = rememberKeyBumpOffsetY(pressed)
-    val popScale = keyPopScaleMultiplier(pressed, colors.keyEffect)
 
     // Long-press popup (accented alternates — see LongPressPopupData.kt).
     // Looked up from the key's own base (lowercase) character; empty when
@@ -3007,7 +2809,7 @@ private fun RowScope.LetterKey(
     Box(
         modifier = Modifier
             .height(keyHeight).weight(weight)
-            .scale(bumpScale * popScale)
+            .scale(bumpScale)
             .offset(y = bumpOffsetY)
             .clip(keyShape)
             .background(if (pressed) colors.keyBg.copy(alpha = 0.6f) else colors.keyBg)
