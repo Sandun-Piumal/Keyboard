@@ -278,8 +278,8 @@ fun HomeScreen() {
                     Box(
                         modifier = Modifier
                             .width(180.dp)
-                            .height(200.dp)
-                            .offset(y = (0).dp)
+                            .height(180.dp)
+                            .offset(y = (-5).dp)
                     ) {
                         // Keyboard image (transparent background PNG)
                         Image(
