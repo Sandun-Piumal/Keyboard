@@ -28,10 +28,13 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.ChevronRight
+import androidx.compose.material.icons.filled.EmojiEmotions
 import androidx.compose.material.icons.filled.Menu
 import androidx.compose.material.icons.filled.Palette
 import androidx.compose.material.icons.filled.Shield
 import androidx.compose.material.icons.filled.Star
+import androidx.compose.material.icons.filled.TextFields
+import androidx.compose.material.icons.filled.Translate
 import androidx.compose.material.icons.filled.VerifiedUser
 import androidx.compose.material.icons.filled.WorkspacePremium
 import androidx.compose.material3.Card
@@ -281,7 +284,6 @@ fun HomeScreen() {
                             .height(180.dp)
                             .offset(y = (-5).dp)
                     ) {
-                        // Keyboard image (transparent background PNG)
                         Image(
                             painter = painterResource(id = R.drawable.keyboard_hero),
                             contentDescription = "Keyboard illustration",
@@ -291,7 +293,6 @@ fun HomeScreen() {
                                 .align(Alignment.Center)
                         )
 
-                        // ── Sparkle small — top left area ─────────────────
                         Text(
                             "✦",
                             fontSize = 10.sp,
@@ -301,7 +302,6 @@ fun HomeScreen() {
                                 .offset(x = 28.dp, y = 2.dp)
                         )
 
-                        // ── Sparkle large — top right ─────────────────────
                         Text(
                             "✦",
                             fontSize = 18.sp,
@@ -311,7 +311,6 @@ fun HomeScreen() {
                                 .offset(x = (-8).dp, y = 4.dp)
                         )
 
-                        // ── Dot large — left side ─────────────────────────
                         Box(
                             modifier = Modifier
                                 .align(Alignment.CenterStart)
@@ -321,7 +320,6 @@ fun HomeScreen() {
                                 .background(Color(0xFFB8A0EC))
                         )
 
-                        // ── Dot small — below large dot ───────────────────
                         Box(
                             modifier = Modifier
                                 .align(Alignment.CenterStart)
@@ -396,40 +394,81 @@ fun HomeScreen() {
             colors = CardDefaults.cardColors(containerColor = FeatureStripBg),
             elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
         ) {
-            Row(
+            Column(
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(vertical = 20.dp),
-                horizontalArrangement = Arrangement.SpaceEvenly
+                verticalArrangement = Arrangement.spacedBy(16.dp)
             ) {
-                FeatureItem(
-                    glyph = "සිං",
-                    glyphColor = IndigoDeep,
-                    bgColor = Color(0xFFEDE8FC),
-                    title = "Sinhala Typing",
-                    subtitle = "Easy & Natural"
-                )
-                FeatureItem(
-                    glyph = "A",
-                    glyphColor = PinkAccent,
-                    bgColor = Color(0xFFFCE8F0),
-                    title = "English Typing",
-                    subtitle = "Fast & Smart"
-                )
-                FeatureItem(
-                    icon = Icons.Filled.Palette,
-                    glyphColor = IndigoDeep,
-                    bgColor = Color(0xFFEDE8FC),
-                    title = "Themes",
-                    subtitle = "Style your keyboard"
-                )
-                FeatureItem(
-                    icon = Icons.Filled.VerifiedUser,
-                    glyphColor = PinkAccent,
-                    bgColor = Color(0xFFFCE8F0),
-                    title = "Privacy First",
-                    subtitle = "100% Secure"
-                )
+                // ── Row 1 — Original features ────────────────────────────
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceEvenly
+                ) {
+                    FeatureItem(
+                        glyph = "සිං",
+                        glyphColor = IndigoDeep,
+                        bgColor = Color(0xFFEDE8FC),
+                        title = "Sinhala Typing",
+                        subtitle = "Easy & Natural"
+                    )
+                    FeatureItem(
+                        glyph = "A",
+                        glyphColor = PinkAccent,
+                        bgColor = Color(0xFFFCE8F0),
+                        title = "English Typing",
+                        subtitle = "Fast & Smart"
+                    )
+                    FeatureItem(
+                        icon = Icons.Filled.Palette,
+                        glyphColor = IndigoDeep,
+                        bgColor = Color(0xFFEDE8FC),
+                        title = "Themes",
+                        subtitle = "Style your keyboard"
+                    )
+                    FeatureItem(
+                        icon = Icons.Filled.VerifiedUser,
+                        glyphColor = PinkAccent,
+                        bgColor = Color(0xFFFCE8F0),
+                        title = "Privacy First",
+                        subtitle = "100% Secure"
+                    )
+                }
+
+                // ── Row 2 — New features ─────────────────────────────────
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceEvenly
+                ) {
+                    FeatureItem(
+                        glyph = "සිA",
+                        glyphColor = IndigoDeep,
+                        bgColor = Color(0xFFEDE8FC),
+                        title = "Mix & Match",
+                        subtitle = "Type both freely"
+                    )
+                    FeatureItem(
+                        icon = Icons.Filled.Translate,
+                        glyphColor = PinkAccent,
+                        bgColor = Color(0xFFFCE8F0),
+                        title = "Instant Translate",
+                        subtitle = "Translate as you type"
+                    )
+                    FeatureItem(
+                        icon = Icons.Filled.EmojiEmotions,
+                        glyphColor = IndigoDeep,
+                        bgColor = Color(0xFFEDE8FC),
+                        title = "Sticker Studio",
+                        subtitle = "Create & send stickers"
+                    )
+                    FeatureItem(
+                        icon = Icons.Filled.TextFields,
+                        glyphColor = PinkAccent,
+                        bgColor = Color(0xFFFCE8F0),
+                        title = "Font Collection",
+                        subtitle = "10+ unique styles"
+                    )
+                }
             }
         }
     }
