@@ -293,22 +293,37 @@ fun HomeScreen() {
                     }
 
                     // Illustration — right column.
-                    // Layout (top-to-bottom inside a fixed Box):
-                    //   • bubbles sit in the top ~55% of the box
-                    //   • keyboard fills the bottom ~65% (overlapping the
-                    //     bubble layer by ~20%), matching the reference art.
+                    // Fixed layout so keyboard top is at y=58dp and
+                    // bubbles overlap the keyboard's top edge, matching
+                    // the reference image exactly.
+                    //
+                    //  Box (155 x 150 dp)
+                    //  ┌─────────────────────┐
+                    //  │ ✦  sparkles     ✦   │  y ≈ 2–8
+                    //  │ [සිංහල]   [A]       │  y ≈ 16–50  (bubbles)
+                    //  │ ┌───────keyboard───┐ │  y = 58–150 (keyboard)
+                    //  │ │ □ □ □ □ □ □      │ │
+                    //  │ │ □ □ □ □ □ □      │ │
+                    //  │ │ □  [space]  □    │ │
+                    //  │ └─────────────────┘ │
+                    //  └─────────────────────┘
+                    //
+                    // keyboard top = 58dp  →  bubbles bottom ≈ 62dp
+                    // → overlap ≈ 4dp  (matches reference)
+
+                    val keyboardTopDp = 62.dp   // keyboard starts here
+
                     Box(
                         modifier = Modifier
                             .padding(top = 4.dp, start = 4.dp)
                             .width(155.dp)
-                            .height(148.dp)
+                            .height(150.dp)
                     ) {
-                        // ── keyboard body ──────────────────────────────
-                        // Placed first so bubbles draw on top of it.
+                        // ── keyboard body — drawn FIRST (bottom z-layer) ──
                         Column(
                             modifier = Modifier
-                                .align(Alignment.BottomCenter)
                                 .fillMaxWidth()
+                                .padding(top = keyboardTopDp)
                                 .clip(RoundedCornerShape(12.dp))
                                 .background(
                                     Brush.linearGradient(
@@ -324,7 +339,7 @@ fun HomeScreen() {
                                         Box(
                                             modifier = Modifier
                                                 .weight(1f)
-                                                .height(11.dp)
+                                                .height(12.dp)
                                                 .clip(RoundedCornerShape(3.dp))
                                                 .background(Color(0xFFC6B3F5).copy(alpha = 0.85f))
                                         )
@@ -335,51 +350,53 @@ fun HomeScreen() {
                                 Box(
                                     modifier = Modifier
                                         .weight(1.4f)
-                                        .height(11.dp)
+                                        .height(12.dp)
                                         .clip(RoundedCornerShape(3.dp))
                                         .background(Color(0xFFC6B3F5).copy(alpha = 0.85f))
                                 )
                                 Box(
                                     modifier = Modifier
                                         .weight(3f)
-                                        .height(11.dp)
+                                        .height(12.dp)
                                         .clip(RoundedCornerShape(3.dp))
                                         .background(Color(0xFFC6B3F5).copy(alpha = 0.85f))
                                 )
                                 Box(
                                     modifier = Modifier
                                         .weight(1.4f)
-                                        .height(11.dp)
+                                        .height(12.dp)
                                         .clip(RoundedCornerShape(3.dp))
                                         .background(Color(0xFFC6B3F5).copy(alpha = 0.85f))
                                 )
                             }
                         }
 
-                        // ── sparkles ───────────────────────────────────
+                        // ── sparkles — above bubbles ───────────────────
                         Text(
                             "✦",
                             fontSize = 10.sp,
                             color = Color.White,
                             modifier = Modifier
-                                .align(Alignment.TopCenter)
-                                .offset(x = 10.dp, y = 4.dp)
+                                .align(Alignment.TopStart)
+                                .offset(x = 52.dp, y = 2.dp)
                         )
                         Text(
                             "✦",
                             fontSize = 13.sp,
                             color = Color.White,
                             modifier = Modifier
-                                .align(Alignment.TopCenter)
-                                .offset(x = 34.dp, y = 0.dp)
+                                .align(Alignment.TopEnd)
+                                .offset(x = (-8).dp, y = 6.dp)
                         )
 
-                        // ── white "සිංහල" bubble ────────────────────────
-                        // Sits top-left, tail points down toward keyboard.
+                        // ── white "සිංහල" bubble ─────────────────────────
+                        // Tail points downward; bottom of tail = keyboardTopDp
+                        // bubble height ≈ 34dp + 8dp tail = 42dp
+                        // so top of bubble = 62 - 42 = 20dp
                         Column(
                             modifier = Modifier
                                 .align(Alignment.TopStart)
-                                .offset(x = 2.dp, y = 12.dp)
+                                .offset(x = 0.dp, y = 18.dp)
                         ) {
                             Box(
                                 modifier = Modifier
@@ -394,55 +411,54 @@ fun HomeScreen() {
                                     color = Color(0xFF241C3D)
                                 )
                             }
-                            // tail
+                            // tail nub
                             Box(
                                 modifier = Modifier
                                     .padding(start = 14.dp)
-                                    .size(8.dp)
-                                    .offset(y = (-4).dp)
+                                    .size(9.dp)
+                                    .offset(y = (-5).dp)
                                     .rotate(45f)
-                                    .clip(RoundedCornerShape(bottomStart = 2.dp))
                                     .background(Color.White)
                             )
                         }
 
                         // ── pink "A" bubble ────────────────────────────
-                        // Sits top-right, tail points down toward keyboard.
+                        // bubble height ≈ 30dp + 8dp tail = 38dp
+                        // top = 62 - 38 = 24dp
                         Column(
                             modifier = Modifier
                                 .align(Alignment.TopEnd)
-                                .offset(x = (-2).dp, y = 18.dp)
+                                .offset(x = 0.dp, y = 24.dp)
                         ) {
                             Box(
                                 modifier = Modifier
                                     .clip(RoundedCornerShape(10.dp))
                                     .background(Color(0xFFF6B8D6))
-                                    .padding(horizontal = 12.dp, vertical = 5.dp)
+                                    .padding(horizontal = 13.dp, vertical = 5.dp)
                             ) {
                                 Text(
                                     "A",
-                                    fontSize = 15.sp,
+                                    fontSize = 16.sp,
                                     fontWeight = FontWeight.ExtraBold,
                                     color = Color(0xFF241C3D)
                                 )
                             }
-                            // tail
+                            // tail nub
                             Box(
                                 modifier = Modifier
                                     .padding(start = 10.dp)
-                                    .size(8.dp)
-                                    .offset(y = (-4).dp)
+                                    .size(9.dp)
+                                    .offset(y = (-5).dp)
                                     .rotate(45f)
-                                    .clip(RoundedCornerShape(bottomStart = 2.dp))
                                     .background(Color(0xFFF6B8D6))
                             )
                         }
 
-                        // ── decorative dots (bottom-left) ──────────────
+                        // ── decorative dots ────────────────────────────
                         Box(
                             modifier = Modifier
                                 .align(Alignment.BottomStart)
-                                .offset(x = (-6).dp, y = (-8).dp)
+                                .offset(x = (-4).dp, y = (-22).dp)
                                 .size(6.dp)
                                 .clip(CircleShape)
                                 .background(Color(0xFFC6B3F5))
@@ -450,7 +466,7 @@ fun HomeScreen() {
                         Box(
                             modifier = Modifier
                                 .align(Alignment.BottomStart)
-                                .offset(x = 2.dp, y = 0.dp)
+                                .offset(x = 4.dp, y = (-14).dp)
                                 .size(4.dp)
                                 .clip(CircleShape)
                                 .background(Color(0xFFC6B3F5))
