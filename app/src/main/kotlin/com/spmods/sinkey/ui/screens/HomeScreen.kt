@@ -7,6 +7,7 @@ import android.os.Handler
 import android.os.Looper
 import android.provider.Settings
 import android.view.inputmethod.InputMethodManager
+import androidx.compose.ui.draw.shadow
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -188,16 +189,17 @@ fun HomeScreen() {
             end = Offset(Float.POSITIVE_INFINITY, Float.POSITIVE_INFINITY)
         )
 
-        Card(
+        // Hero card — no clipping so keyboard illustration can bleed
+        // below the card edge (matching the reference design).
+        Box(
             modifier = Modifier
                 .padding(20.dp, 14.dp, 20.dp, 0.dp)
-                .fillMaxWidth(),
-            shape = RoundedCornerShape(24.dp),
-            elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
+                .fillMaxWidth()
         ) {
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
+                    .clip(RoundedCornerShape(24.dp))
                     .background(heroGradient)
             ) {
                 // Two-column layout: text + CTA on the left, illustration
@@ -292,184 +294,184 @@ fun HomeScreen() {
                     }
                     }
 
-                    // Illustration — right column.
-                    // Fixed layout so keyboard top is at y=58dp and
-                    // bubbles overlap the keyboard's top edge, matching
-                    // the reference image exactly.
+                    // ── Hero illustration ──────────────────────────────
+                    // Reference: large keyboard overflows the card bottom.
+                    // Bubbles overlap the keyboard top-left and top-right.
                     //
-                    //  Box (155 x 150 dp)
-                    //  ┌─────────────────────┐
-                    //  │ ✦  sparkles     ✦   │  y ≈ 2–8
-                    //  │ [සිංහල]   [A]       │  y ≈ 16–50  (bubbles)
-                    //  │ ┌───────keyboard───┐ │  y = 58–150 (keyboard)
-                    //  │ │ □ □ □ □ □ □      │ │
-                    //  │ │ □ □ □ □ □ □      │ │
-                    //  │ │ □  [space]  □    │ │
-                    //  │ └─────────────────┘ │
-                    //  └─────────────────────┘
-                    //
-                    // keyboard top = 58dp  →  bubbles bottom ≈ 62dp
-                    // → overlap ≈ 4dp  (matches reference)
-
-                    val keyboardTopDp = 62.dp   // keyboard starts here
-
+                    // Strategy: use a Box with clipToPadding=false so the
+                    // keyboard can bleed below. The outer Box height = card
+                    // content height. Keyboard is absolutely placed so its
+                    // top is at ~50% of the box, making it bleed below.
                     Box(
                         modifier = Modifier
-                            .padding(top = 4.dp, start = 4.dp)
-                            .width(155.dp)
-                            .height(150.dp)
+                            .width(170.dp)
+                            .height(190.dp)  // taller than card; bottom bleeds out
                     ) {
-                        // ── keyboard body — drawn FIRST (bottom z-layer) ──
+                        // ── keyboard — drawn first (back layer) ────────
+                        // Top of keyboard at y=70dp; 3 key rows + space row
+                        // inside a purple rounded rect.
                         Column(
                             modifier = Modifier
+                                .align(Alignment.BottomCenter)
                                 .fillMaxWidth()
-                                .padding(top = keyboardTopDp)
-                                .clip(RoundedCornerShape(12.dp))
+                                .height(130.dp)
+                                .clip(RoundedCornerShape(16.dp))
                                 .background(
-                                    Brush.linearGradient(
-                                        listOf(Color(0xFFB08CF0), Color(0xFF7C4FE0))
+                                    Brush.verticalGradient(
+                                        listOf(Color(0xFFAA90EE), Color(0xFF6E40D8))
                                     )
                                 )
-                                .padding(8.dp),
-                            verticalArrangement = Arrangement.spacedBy(4.dp)
+                                .padding(horizontal = 8.dp, vertical = 10.dp),
+                            verticalArrangement = Arrangement.spacedBy(5.dp)
                         ) {
-                            repeat(2) {
-                                Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                                    repeat(6) {
-                                        Box(
-                                            modifier = Modifier
-                                                .weight(1f)
-                                                .height(12.dp)
-                                                .clip(RoundedCornerShape(3.dp))
-                                                .background(Color(0xFFC6B3F5).copy(alpha = 0.85f))
-                                        )
-                                    }
+                            // row 1 — 7 keys
+                            Row(horizontalArrangement = Arrangement.spacedBy(5.dp)) {
+                                repeat(7) {
+                                    Box(
+                                        modifier = Modifier
+                                            .weight(1f)
+                                            .height(16.dp)
+                                            .clip(RoundedCornerShape(4.dp))
+                                            .background(Color(0xFFCBBAF8).copy(alpha = 0.80f))
+                                    )
                                 }
                             }
-                            Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                            // row 2 — 7 keys
+                            Row(horizontalArrangement = Arrangement.spacedBy(5.dp)) {
+                                repeat(7) {
+                                    Box(
+                                        modifier = Modifier
+                                            .weight(1f)
+                                            .height(16.dp)
+                                            .clip(RoundedCornerShape(4.dp))
+                                            .background(Color(0xFFCBBAF8).copy(alpha = 0.80f))
+                                    )
+                                }
+                            }
+                            // row 3 — space bar row
+                            Row(horizontalArrangement = Arrangement.spacedBy(5.dp)) {
                                 Box(
                                     modifier = Modifier
-                                        .weight(1.4f)
-                                        .height(12.dp)
-                                        .clip(RoundedCornerShape(3.dp))
-                                        .background(Color(0xFFC6B3F5).copy(alpha = 0.85f))
+                                        .weight(1.2f)
+                                        .height(16.dp)
+                                        .clip(RoundedCornerShape(4.dp))
+                                        .background(Color(0xFFCBBAF8).copy(alpha = 0.80f))
                                 )
                                 Box(
                                     modifier = Modifier
-                                        .weight(3f)
-                                        .height(12.dp)
-                                        .clip(RoundedCornerShape(3.dp))
-                                        .background(Color(0xFFC6B3F5).copy(alpha = 0.85f))
+                                        .weight(4f)
+                                        .height(16.dp)
+                                        .clip(RoundedCornerShape(4.dp))
+                                        .background(Color(0xFFCBBAF8).copy(alpha = 0.80f))
                                 )
                                 Box(
                                     modifier = Modifier
-                                        .weight(1.4f)
-                                        .height(12.dp)
-                                        .clip(RoundedCornerShape(3.dp))
-                                        .background(Color(0xFFC6B3F5).copy(alpha = 0.85f))
+                                        .weight(1.2f)
+                                        .height(16.dp)
+                                        .clip(RoundedCornerShape(4.dp))
+                                        .background(Color(0xFFCBBAF8).copy(alpha = 0.80f))
                                 )
                             }
                         }
 
-                        // ── sparkles — above bubbles ───────────────────
+                        // ── sparkles ────────────────────────────────────
                         Text(
                             "✦",
-                            fontSize = 10.sp,
-                            color = Color.White,
+                            fontSize = 11.sp,
+                            color = Color(0xFFD4C5F9),
                             modifier = Modifier
-                                .align(Alignment.TopStart)
-                                .offset(x = 52.dp, y = 2.dp)
+                                .align(Alignment.TopCenter)
+                                .offset(x = (-10).dp, y = 0.dp)
                         )
                         Text(
                             "✦",
-                            fontSize = 13.sp,
-                            color = Color.White,
+                            fontSize = 15.sp,
+                            color = Color(0xFFD4C5F9),
                             modifier = Modifier
                                 .align(Alignment.TopEnd)
-                                .offset(x = (-8).dp, y = 6.dp)
+                                .offset(x = (-4).dp, y = 10.dp)
                         )
 
-                        // ── white "සිංහල" bubble ─────────────────────────
-                        // Tail points downward; bottom of tail = keyboardTopDp
-                        // bubble height ≈ 34dp + 8dp tail = 42dp
-                        // so top of bubble = 62 - 42 = 20dp
+                        // ── white "සිංහල" bubble ──────────────────────────
+                        // Overlaps keyboard top-left corner.
                         Column(
                             modifier = Modifier
                                 .align(Alignment.TopStart)
-                                .offset(x = 0.dp, y = 18.dp)
+                                .offset(x = 4.dp, y = 30.dp)
                         ) {
                             Box(
                                 modifier = Modifier
-                                    .clip(RoundedCornerShape(10.dp))
+                                    .shadow(4.dp, RoundedCornerShape(12.dp))
+                                    .clip(RoundedCornerShape(12.dp))
                                     .background(Color.White)
-                                    .padding(horizontal = 10.dp, vertical = 6.dp)
+                                    .padding(horizontal = 12.dp, vertical = 8.dp)
                             ) {
                                 Text(
                                     "සිංහල",
-                                    fontSize = 12.sp,
+                                    fontSize = 14.sp,
                                     fontWeight = FontWeight.Bold,
-                                    color = Color(0xFF241C3D)
+                                    color = Color(0xFF1E1B33)
                                 )
                             }
-                            // tail nub
+                            // tail — points down-left
                             Box(
                                 modifier = Modifier
-                                    .padding(start = 14.dp)
-                                    .size(9.dp)
-                                    .offset(y = (-5).dp)
+                                    .padding(start = 16.dp)
+                                    .size(10.dp)
+                                    .offset(y = (-6).dp)
                                     .rotate(45f)
                                     .background(Color.White)
                             )
                         }
 
                         // ── pink "A" bubble ────────────────────────────
-                        // bubble height ≈ 30dp + 8dp tail = 38dp
-                        // top = 62 - 38 = 24dp
+                        // Overlaps keyboard top-right corner.
                         Column(
                             modifier = Modifier
                                 .align(Alignment.TopEnd)
-                                .offset(x = 0.dp, y = 24.dp)
+                                .offset(x = (-4).dp, y = 38.dp)
                         ) {
                             Box(
                                 modifier = Modifier
-                                    .clip(RoundedCornerShape(10.dp))
-                                    .background(Color(0xFFF6B8D6))
-                                    .padding(horizontal = 13.dp, vertical = 5.dp)
+                                    .shadow(4.dp, RoundedCornerShape(14.dp))
+                                    .clip(RoundedCornerShape(14.dp))
+                                    .background(Color(0xFFF4B8D4))
+                                    .padding(horizontal = 16.dp, vertical = 8.dp)
                             ) {
                                 Text(
                                     "A",
-                                    fontSize = 16.sp,
+                                    fontSize = 22.sp,
                                     fontWeight = FontWeight.ExtraBold,
-                                    color = Color(0xFF241C3D)
+                                    color = Color(0xFF1E1B33)
                                 )
                             }
-                            // tail nub
+                            // tail — points down-right
                             Box(
                                 modifier = Modifier
-                                    .padding(start = 10.dp)
-                                    .size(9.dp)
-                                    .offset(y = (-5).dp)
+                                    .padding(start = 12.dp)
+                                    .size(10.dp)
+                                    .offset(y = (-6).dp)
                                     .rotate(45f)
-                                    .background(Color(0xFFF6B8D6))
+                                    .background(Color(0xFFF4B8D4))
                             )
                         }
 
-                        // ── decorative dots ────────────────────────────
+                        // ── decorative dots bottom-left ─────────────────
                         Box(
                             modifier = Modifier
                                 .align(Alignment.BottomStart)
-                                .offset(x = (-4).dp, y = (-22).dp)
-                                .size(6.dp)
+                                .offset(x = 2.dp, y = (-52).dp)
+                                .size(7.dp)
                                 .clip(CircleShape)
-                                .background(Color(0xFFC6B3F5))
+                                .background(Color(0xFFB8A0EC))
                         )
                         Box(
                             modifier = Modifier
                                 .align(Alignment.BottomStart)
-                                .offset(x = 4.dp, y = (-14).dp)
-                                .size(4.dp)
+                                .offset(x = 10.dp, y = (-42).dp)
+                                .size(5.dp)
                                 .clip(CircleShape)
-                                .background(Color(0xFFC6B3F5))
+                                .background(Color(0xFFB8A0EC))
                         )
                     }
                 }
