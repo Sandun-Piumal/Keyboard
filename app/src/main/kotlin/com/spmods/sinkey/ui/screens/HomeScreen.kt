@@ -200,22 +200,19 @@ fun HomeScreen() {
                     .fillMaxWidth()
                     .background(heroGradient)
             ) {
-                // BUG FIX (redesign): the illustration used to be crammed
-                // into a narrow side column (150×96dp) next to the text in
-                // a single Row, at the same height as the heading — which
-                // meant it was tiny and got visually clipped/cut off by
-                // the card's own edge (see the reference image: the "A"
-                // bubble and keyboard's right edge were being cut by the
-                // card boundary). Restructured to a Column instead: text +
-                // CTA on top at full width, illustration as its own full-
-                // width zone underneath — matching the reference where the
-                // keyboard illustration gets a large dedicated area rather
-                // than being squeezed beside the copy.
-                Column(
+                // Two-column layout: text + CTA on the left, illustration
+                // on the right — matches the original wide, short hero
+                // card. Row height is driven by content (max of the two
+                // columns), so the card stays compact.
+                Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(20.dp)
+                        .padding(20.dp),
+                    verticalAlignment = Alignment.Top
                 ) {
+                    Column(
+                        modifier = Modifier.weight(1f)
+                    ) {
                     Text(
                         "WELCOME",
                         fontSize = 11.sp,
@@ -226,32 +223,32 @@ fun HomeScreen() {
                     Spacer(Modifier.height(8.dp))
                     Text(
                         "Type your world",
-                        fontSize = 24.sp,
+                        fontSize = 22.sp,
                         fontWeight = FontWeight.ExtraBold,
                         color = Color(0xFF1E1B33)
                     )
                     Row {
                         Text(
                             "in ",
-                            fontSize = 24.sp,
+                            fontSize = 22.sp,
                             fontWeight = FontWeight.ExtraBold,
                             color = Color(0xFF1E1B33)
                         )
                         Text(
                             "Sinhala ",
-                            fontSize = 24.sp,
+                            fontSize = 22.sp,
                             fontWeight = FontWeight.ExtraBold,
                             color = IndigoDeep
                         )
                         Text(
                             "or ",
-                            fontSize = 24.sp,
+                            fontSize = 22.sp,
                             fontWeight = FontWeight.ExtraBold,
                             color = Color(0xFF1E1B33)
                         )
                         Text(
                             "English",
-                            fontSize = 24.sp,
+                            fontSize = 22.sp,
                             fontWeight = FontWeight.ExtraBold,
                             color = PinkAccent
                         )
@@ -293,173 +290,144 @@ fun HomeScreen() {
                             modifier = Modifier.size(16.dp)
                         )
                     }
+                    }
 
-                    Spacer(Modifier.height(28.dp))
-
-                    // Illustration — now its own full-width zone (matches
-                    // reference: a tall dedicated area, not a squeezed side
-                    // column), so the keyboard and both bubbles have room
-                    // to render at full size without touching the card's
-                    // edges.
+                    // Illustration — right column, sized to fill the
+                    // available space and match the reference artwork.
                     Box(
                         modifier = Modifier
-                            .fillMaxWidth()
-                            .height(220.dp)
+                            .padding(top = 8.dp, start = 4.dp)
+                            .width(160.dp)
+                            .height(160.dp)
                     ) {
                     // sparkles above the keyboard
                     Text(
                         "✦",
-                        fontSize = 16.sp,
+                        fontSize = 11.sp,
                         color = Color.White,
                         modifier = Modifier
                             .align(Alignment.TopCenter)
-                            .offset(x = (-70).dp, y = 6.dp)
+                            .offset(x = (-20).dp, y = 30.dp)
                     )
                     Text(
                         "✦",
-                        fontSize = 20.sp,
+                        fontSize = 14.sp,
                         color = Color.White,
                         modifier = Modifier
                             .align(Alignment.TopCenter)
-                            .offset(x = 55.dp, y = (-4).dp)
+                            .offset(x = 18.dp, y = 22.dp)
                     )
 
-                    // soft drop shadow "puddle" beneath the keyboard, same
-                    // effect as the reference image's base shadow — makes
-                    // the keyboard read as sitting on a surface rather than
-                    // floating flat against the card background
-                    Box(
-                        modifier = Modifier
-                            .align(Alignment.BottomCenter)
-                            .offset(y = (-6).dp)
-                            .width(190.dp)
-                            .height(18.dp)
-                            .clip(RoundedCornerShape(50))
-                            .background(Color(0x33241C3D))
-                    )
-
-                    // keyboard body with keys — scaled up substantially
-                    // (from 100dp to 230dp wide) to fill the new full-width
-                    // illustration zone, with a slightly larger corner
-                    // radius so it doesn't look pinched at this larger size
+                    // keyboard body with keys
                     Column(
                         modifier = Modifier
                             .align(Alignment.BottomCenter)
-                            .width(230.dp)
-                            .clip(RoundedCornerShape(22.dp))
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(14.dp))
                             .background(
                                 Brush.linearGradient(
                                     listOf(Color(0xFFB08CF0), Color(0xFF7C4FE0))
                                 )
                             )
-                            .padding(16.dp),
-                        verticalArrangement = Arrangement.spacedBy(7.dp)
+                            .padding(9.dp),
+                        verticalArrangement = Arrangement.spacedBy(4.dp)
                     ) {
                         repeat(2) {
-                            Row(horizontalArrangement = Arrangement.spacedBy(7.dp)) {
+                            Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                                 repeat(6) {
                                     Box(
                                         modifier = Modifier
                                             .weight(1f)
-                                            .height(22.dp)
-                                            .clip(RoundedCornerShape(6.dp))
+                                            .height(13.dp)
+                                            .clip(RoundedCornerShape(4.dp))
                                             .background(Color(0xFFC6B3F5).copy(alpha = 0.85f))
                                     )
                                 }
                             }
                         }
-                        Row(horizontalArrangement = Arrangement.spacedBy(7.dp)) {
+                        Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                             Box(
                                 modifier = Modifier
                                     .weight(1.4f)
-                                    .height(22.dp)
-                                    .clip(RoundedCornerShape(6.dp))
+                                    .height(13.dp)
+                                    .clip(RoundedCornerShape(4.dp))
                                     .background(Color(0xFFC6B3F5).copy(alpha = 0.85f))
                             )
                             Box(
                                 modifier = Modifier
                                     .weight(3f)
-                                    .height(22.dp)
-                                    .clip(RoundedCornerShape(6.dp))
+                                    .height(13.dp)
+                                    .clip(RoundedCornerShape(4.dp))
                                     .background(Color(0xFFC6B3F5).copy(alpha = 0.85f))
                             )
                             Box(
                                 modifier = Modifier
                                     .weight(1.4f)
-                                    .height(22.dp)
-                                    .clip(RoundedCornerShape(6.dp))
+                                    .height(13.dp)
+                                    .clip(RoundedCornerShape(4.dp))
                                     .background(Color(0xFFC6B3F5).copy(alpha = 0.85f))
                             )
                         }
                     }
 
-                    // white "සිංහල" bubble — repositioned/rescaled for the
-                    // larger illustration zone; sits above the keyboard's
-                    // left edge, matching the reference image's proportions
+                    // white "සිංහල" bubble — top-left, overlapping keyboard
                     Column(
                         modifier = Modifier
                             .align(Alignment.TopStart)
-                            .offset(x = 46.dp, y = 66.dp)
+                            .offset(x = 0.dp, y = 46.dp)
                     ) {
                         Box(
                             modifier = Modifier
-                                .clip(RoundedCornerShape(14.dp))
+                                .clip(RoundedCornerShape(10.dp))
                                 .background(Color.White)
-                                .padding(horizontal = 14.dp, vertical = 9.dp)
+                                .padding(horizontal = 10.dp, vertical = 7.dp)
                         ) {
                             Text(
                                 "සිංහල",
-                                fontSize = 16.sp,
+                                fontSize = 13.sp,
                                 fontWeight = FontWeight.Bold,
                                 color = Color(0xFF241C3D)
                             )
                         }
-                        // speech-bubble tail — small nub, left-of-center,
-                        // tucked close against the bubble (as in reference)
+                        // speech-bubble tail
                         Box(
                             modifier = Modifier
-                                .padding(start = 20.dp)
-                                .size(10.dp)
-                                .offset(y = (-8).dp)
+                                .padding(start = 16.dp)
+                                .size(8.dp)
+                                .offset(y = (-5).dp)
                                 .rotate(45f)
-                                .clip(RoundedCornerShape(bottomStart = 3.dp))
+                                .clip(RoundedCornerShape(bottomStart = 2.dp))
                                 .background(Color.White)
                         )
                     }
 
-                    // pink "A" bubble — repositioned/rescaled for the
-                    // larger illustration zone; sits above the keyboard's
-                    // right edge, fully inside the illustration box (unlike
-                    // before, no longer clipped by the card edge). Anchored
-                    // TopStart (not TopEnd) so the offset is measured from
-                    // its own top-left corner, independent of bubble width.
+                    // pink "A" bubble — top-right, overlapping keyboard
                     Column(
                         modifier = Modifier
-                            .align(Alignment.TopStart)
-                            .offset(x = 220.dp, y = 78.dp)
+                            .align(Alignment.TopEnd)
+                            .offset(x = 0.dp, y = 52.dp)
                     ) {
                         Box(
                             modifier = Modifier
-                                .clip(RoundedCornerShape(14.dp))
+                                .clip(RoundedCornerShape(10.dp))
                                 .background(Color(0xFFF6B8D6))
-                                .padding(horizontal = 15.dp, vertical = 8.dp)
+                                .padding(horizontal = 12.dp, vertical = 6.dp)
                         ) {
                             Text(
                                 "A",
-                                fontSize = 18.sp,
+                                fontSize = 16.sp,
                                 fontWeight = FontWeight.ExtraBold,
                                 color = Color(0xFF241C3D)
                             )
                         }
-                        // speech-bubble tail — small nub tucked against
-                        // the bottom-left corner, matching the reference
+                        // speech-bubble tail
                         Box(
                             modifier = Modifier
-                                .padding(start = 14.dp)
-                                .size(10.dp)
-                                .offset(y = (-8).dp)
+                                .padding(start = 10.dp)
+                                .size(8.dp)
+                                .offset(y = (-5).dp)
                                 .rotate(45f)
-                                .clip(RoundedCornerShape(bottomStart = 3.dp))
+                                .clip(RoundedCornerShape(bottomStart = 2.dp))
                                 .background(Color(0xFFF6B8D6))
                         )
                     }
@@ -468,16 +436,16 @@ fun HomeScreen() {
                     Box(
                         modifier = Modifier
                             .align(Alignment.BottomStart)
-                            .offset(x = 30.dp, y = (-22).dp)
-                            .size(9.dp)
+                            .offset(x = (-8).dp, y = (-4).dp)
+                            .size(6.dp)
                             .clip(CircleShape)
                             .background(Color(0xFFC6B3F5))
                     )
                     Box(
                         modifier = Modifier
                             .align(Alignment.BottomStart)
-                            .offset(x = 48.dp, y = (-8).dp)
-                            .size(7.dp)
+                            .offset(x = (-2).dp, y = 4.dp)
+                            .size(5.dp)
                             .clip(CircleShape)
                             .background(Color(0xFFC6B3F5))
                     )
