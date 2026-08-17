@@ -279,7 +279,7 @@ fun HomeScreen() {
                         modifier = Modifier
                             .width(180.dp)
                             .height(200.dp)
-                            .offset(y = (-20).dp)
+                            .offset(y = (0).dp)
                     ) {
                         // Keyboard image (transparent background PNG)
                         Image(
@@ -288,7 +288,7 @@ fun HomeScreen() {
                             contentScale = ContentScale.Fit,
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .align(Alignment.TopCenter)
+                                .align(Alignment.Center)
                         )
 
                         // ── Sparkle small — top left area ─────────────────
