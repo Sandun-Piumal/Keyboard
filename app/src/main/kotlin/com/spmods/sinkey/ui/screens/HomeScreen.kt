@@ -21,6 +21,9 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.isSystemInDarkTheme
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
@@ -74,8 +77,7 @@ private val IndigoMid    = Color(0xFF7C5CF0)
 private val PinkAccent   = Color(0xFFE0498A)
 private val TitleIndigo  = Color(0xFF3B2F8C)
 private val BodyGrey     = Color(0xFF6B7280)
-private val StepCardBg   = Color(0xFFFFFFFF)
-private val FeatureStripBg = Color(0xFFF3F1FB)
+// StepCardBg and FeatureStripBg now use MaterialTheme — see usages below
 private val OutlineIndigo = Color(0xFF6C4CE0)
 private val OutlinePink  = Color(0xFFE0498A)
 
@@ -132,6 +134,7 @@ fun HomeScreen() {
     Column(
         modifier = Modifier
             .fillMaxWidth()
+            .verticalScroll(rememberScrollState())
             .background(MaterialTheme.colorScheme.background)
             .padding(bottom = 24.dp)
     ) {
@@ -179,7 +182,7 @@ fun HomeScreen() {
                 modifier = Modifier
                     .size(40.dp)
                     .clip(RoundedCornerShape(12.dp))
-                    .background(Color(0xFFF0EBFB))
+                    .background(MaterialTheme.colorScheme.surfaceVariant)
                     .border(1.dp, Color(0xFFE1D8F7), RoundedCornerShape(12.dp)),
                 contentAlignment = Alignment.Center
             ) {
@@ -193,8 +196,12 @@ fun HomeScreen() {
         }
 
         // ── Hero card ────────────────────────────────────────────────────────
+        val isDark = isSystemInDarkTheme()
         val heroGradient = Brush.linearGradient(
-            colors = listOf(Color(0xFFE9E4FB), Color(0xFFF3E7F2), Color(0xFFFBE7EE)),
+            colors = if (isDark)
+                listOf(Color(0xFF1E1840), Color(0xFF1F1520), Color(0xFF20101A))
+            else
+                listOf(Color(0xFFE9E4FB), Color(0xFFF3E7F2), Color(0xFFFBE7EE)),
             start = Offset(0f, 0f),
             end = Offset(Float.POSITIVE_INFINITY, Float.POSITIVE_INFINITY)
         )
@@ -230,12 +237,12 @@ fun HomeScreen() {
                             "Type your world",
                             fontSize = 22.sp,
                             fontWeight = FontWeight.ExtraBold,
-                            color = Color(0xFF1E1B33)
+                            color = MaterialTheme.colorScheme.onBackground
                         )
                         Row {
-                            Text("in ", fontSize = 22.sp, fontWeight = FontWeight.ExtraBold, color = Color(0xFF1E1B33))
+                            Text("in ", fontSize = 22.sp, fontWeight = FontWeight.ExtraBold, color = MaterialTheme.colorScheme.onBackground)
                             Text("Sinhala ", fontSize = 22.sp, fontWeight = FontWeight.ExtraBold, color = IndigoDeep)
-                            Text("or ", fontSize = 22.sp, fontWeight = FontWeight.ExtraBold, color = Color(0xFF1E1B33))
+                            Text("or ", fontSize = 22.sp, fontWeight = FontWeight.ExtraBold, color = MaterialTheme.colorScheme.onBackground)
                             Text("English", fontSize = 22.sp, fontWeight = FontWeight.ExtraBold, color = PinkAccent)
                         }
                         Spacer(Modifier.height(8.dp))
@@ -347,7 +354,7 @@ fun HomeScreen() {
                 .padding(20.dp, 0.dp, 20.dp, 0.dp)
                 .fillMaxWidth(),
             shape = RoundedCornerShape(20.dp),
-            colors = CardDefaults.cardColors(containerColor = StepCardBg),
+            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
             elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)
         ) {
             Column(modifier = Modifier.padding(vertical = 6.dp)) {
@@ -365,7 +372,7 @@ fun HomeScreen() {
                 }
 
                 HorizontalDivider(
-                    color = Color(0xFFF0EEF6),
+                    color = MaterialTheme.colorScheme.outlineVariant,
                     modifier = Modifier.padding(horizontal = 18.dp)
                 )
 
@@ -391,7 +398,7 @@ fun HomeScreen() {
                 .padding(20.dp, 20.dp, 20.dp, 0.dp)
                 .fillMaxWidth(),
             shape = RoundedCornerShape(20.dp),
-            colors = CardDefaults.cardColors(containerColor = FeatureStripBg),
+            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
             elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
         ) {
             Column(
@@ -519,7 +526,7 @@ private fun SetupStepRow(
         Spacer(Modifier.width(14.dp))
 
         Column(modifier = Modifier.weight(1f)) {
-            Text(title, fontSize = 15.sp, fontWeight = FontWeight.Bold, color = Color(0xFF1E1B33))
+            Text(title, fontSize = 15.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurface)
             Text(
                 subtitle,
                 fontSize = 12.sp,
@@ -596,7 +603,7 @@ private fun FeatureItem(
             modifier = Modifier
                 .size(52.dp)
                 .clip(CircleShape)
-                .background(Color.White)
+                .background(MaterialTheme.colorScheme.surface)
                 .border(1.dp, bgColor, CircleShape),
             contentAlignment = Alignment.Center
         ) {
@@ -621,7 +628,7 @@ private fun FeatureItem(
             title,
             fontSize = 11.sp,
             fontWeight = FontWeight.Bold,
-            color = Color(0xFF1E1B33),
+            color = MaterialTheme.colorScheme.onSurface,
             textAlign = TextAlign.Center,
             maxLines = 1
         )
