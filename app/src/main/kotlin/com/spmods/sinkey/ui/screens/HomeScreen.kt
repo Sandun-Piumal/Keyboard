@@ -277,18 +277,18 @@ fun HomeScreen() {
                     // ── Right: keyboard image + sparkles + dots ───────────
                     Box(
                         modifier = Modifier
-                            .width(200.dp)
-                            .height(220.dp)
+                            .width(180.dp)
+                            .height(200.dp)
+                            .offset(y = (-20).dp)
                     ) {
                         // Keyboard image (transparent background PNG)
                         Image(
                             painter = painterResource(id = R.drawable.keyboard_hero),
                             contentDescription = "Keyboard illustration",
-                            contentScale = ContentScale.FillWidth,
+                            contentScale = ContentScale.Fit,
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .align(Alignment.Center)
-                                .offset(y = 10.dp)
+                                .align(Alignment.TopCenter)
                         )
 
                         // ── Sparkle small — top left area ─────────────────
@@ -298,25 +298,25 @@ fun HomeScreen() {
                             color = Color(0xFFB8A0EC),
                             modifier = Modifier
                                 .align(Alignment.TopStart)
-                                .offset(x = 20.dp, y = 2.dp)
+                                .offset(x = 28.dp, y = 2.dp)
                         )
 
                         // ── Sparkle large — top right ─────────────────────
                         Text(
                             "✦",
-                            fontSize = 20.sp,
+                            fontSize = 18.sp,
                             color = Color(0xFFD4C5F9),
                             modifier = Modifier
                                 .align(Alignment.TopEnd)
-                                .offset(x = (-4).dp, y = 2.dp)
+                                .offset(x = (-8).dp, y = 4.dp)
                         )
 
                         // ── Dot large — left side ─────────────────────────
                         Box(
                             modifier = Modifier
                                 .align(Alignment.CenterStart)
-                                .offset(x = (-4).dp, y = 40.dp)
-                                .size(9.dp)
+                                .offset(x = (-2).dp, y = 28.dp)
+                                .size(8.dp)
                                 .clip(CircleShape)
                                 .background(Color(0xFFB8A0EC))
                         )
@@ -325,8 +325,8 @@ fun HomeScreen() {
                         Box(
                             modifier = Modifier
                                 .align(Alignment.CenterStart)
-                                .offset(x = 6.dp, y = 56.dp)
-                                .size(6.dp)
+                                .offset(x = 8.dp, y = 42.dp)
+                                .size(5.dp)
                                 .clip(CircleShape)
                                 .background(Color(0xFFB8A0EC))
                         )
