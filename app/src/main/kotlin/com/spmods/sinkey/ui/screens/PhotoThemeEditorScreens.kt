@@ -14,6 +14,7 @@ import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -244,8 +245,7 @@ fun PhotoEditThemeScreen(
                     .let { if (blur > 0.01f) it.blur(20.dp * blur) else it }
             )
             Column(modifier = Modifier.fillMaxSize()) {
-                Box(modifier = Modifier.weight(1f))
-                MockKeyboardRows(showKeyBorders = showKeyBorders)
+                MockKeyboardRows(showKeyBorders = showKeyBorders, modifier = Modifier.weight(1f))
             }
         }
 
@@ -308,7 +308,7 @@ fun PhotoEditThemeScreen(
 
 /** A plain, non-interactive QWERTY row mock for the Edit theme preview — visual only. */
 @Composable
-private fun MockKeyboardRows(showKeyBorders: Boolean) {
+private fun MockKeyboardRows(showKeyBorders: Boolean, modifier: Modifier = Modifier) {
     val rows = listOf("QWERTYUIOP", "ASDFGHJKL", "ZXCVBNM")
     val keyShape = RoundedCornerShape(6.dp)
     val keyBorderModifier = if (showKeyBorders) {
@@ -317,16 +317,21 @@ private fun MockKeyboardRows(showKeyBorders: Boolean) {
         Modifier
     }
 
+    // No dark background band — Desh's real screenshot shows the photo
+    // directly behind the keys with no separate overlay strip, so this
+    // Column only carries padding, not a .background() of its own. Every
+    // row (including the bottom row) gets equal .weight(1f) so all 4 rows
+    // together fill the *entire* preview box height with no leftover
+    // blank space above or below, matching the reference exactly.
     Column(
-        modifier = Modifier
+        modifier = modifier
             .fillMaxWidth()
-            .background(Color.Black.copy(alpha = 0.25f))
             .padding(vertical = 10.dp, horizontal = 6.dp),
         verticalArrangement = Arrangement.spacedBy(6.dp)
     ) {
         rows.forEachIndexed { rowIndex, row ->
             Row(
-                modifier = Modifier.fillMaxWidth(),
+                modifier = Modifier.fillMaxWidth().weight(1f),
                 horizontalArrangement = Arrangement.spacedBy(4.dp)
             ) {
                 // Middle/bottom rows get a half-key-width side inset so
@@ -337,7 +342,7 @@ private fun MockKeyboardRows(showKeyBorders: Boolean) {
                     Box(
                         modifier = Modifier
                             .weight(1f)
-                            .height(38.dp)
+                            .fillMaxHeight()
                             .clip(keyShape)
                             .then(keyBorderModifier)
                             .background(Color.White.copy(alpha = 0.12f)),
@@ -352,7 +357,7 @@ private fun MockKeyboardRows(showKeyBorders: Boolean) {
         // Bottom row: ?123 / emoji / space / backspace, matching the
         // reference recording's real bottom row layout.
         Row(
-            modifier = Modifier.fillMaxWidth(),
+            modifier = Modifier.fillMaxWidth().weight(1f),
             horizontalArrangement = Arrangement.spacedBy(4.dp)
         ) {
             MockSpecialKey("?123", weight = 1.3f, showKeyBorders = showKeyBorders)
@@ -374,7 +379,7 @@ private fun RowScope.MockSpecialKey(label: String, weight: Float, showKeyBorders
     Box(
         modifier = Modifier
             .weight(weight)
-            .height(38.dp)
+            .fillMaxHeight()
             .clip(keyShape)
             .then(keyBorderModifier)
             .background(Color.White.copy(alpha = 0.12f)),
