@@ -104,7 +104,10 @@ import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.waitForUpOrCancellation
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.gestures.detectDragGestures
+import androidx.compose.ui.draw.blur
 import androidx.compose.foundation.Canvas
+import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.drawscope.clipPath
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.input.pointer.changedToUpIgnoreConsumed
 import androidx.compose.ui.input.pointer.PointerInputChange
@@ -191,58 +194,64 @@ internal fun keyboardColors(
 private fun Modifier.keyEffectDecoration(colors: KeyboardColors, keyShape: RoundedCornerShape): Modifier {
     return when (colors.keyEffect) {
         com.spmods.sinkey.data.KeyEffect.NONE -> this
-        // Static fallback shadow for contexts that call keyEffectDecoration
-        // but don't track their own pressed-state pulse (see keyGlowPulse
-        // for the real animated Desh-style version, chained at LetterKey/
-        // NumberedLetterKey/NumpadDigitKey call sites instead).
-        com.spmods.sinkey.data.KeyEffect.GLOW -> this.shadow(
-            elevation = 6.dp,
-            shape = keyShape,
-            ambientColor = colors.accent,
-            spotColor = colors.accent
-        )
-        // Ripple is a board-wide overlay now (see ColorfulRippleOverlay),
-        // not a per-key decoration — no-op here.
+        // Both GLOW and RIPPLE are board-wide overlays now (see
+        // MechGlowOverlay / ColorfulRippleOverlay), not per-key
+        // decorations — no-op here either way.
+        com.spmods.sinkey.data.KeyEffect.GLOW -> this
         com.spmods.sinkey.data.KeyEffect.RIPPLE -> this
     }
 }
 
 /**
- * KeyEffect.GLOW, Desh "Mech Glow" behavior: each key press pulses a glow
- * whose hue rotates +50° (mod 360°, full saturation/value) from the last
- * press's hue, over 1500ms — so consecutive taps visibly cycle through a
- * rainbow rather than glowing a single fixed accent color. Hue state is
- * remembered per-key-composable, matching Desh's per-renderer-instance hue
- * field. No-op Modifier for every other effect.
+ * KeyEffect.GLOW, Desh "Mech Glow" behavior: each key press blooms a large,
+ * soft, blurred radial glow centered on the touched key — big enough to
+ * wash over several neighboring keys, not just the one pressed — whose hue
+ * rotates +50° (mod 360°, full saturation/value) from the last press's hue,
+ * over 1500ms, so consecutive taps visibly cycle through a rainbow rather
+ * than glowing a single fixed accent color. Board-wide overlay (same
+ * pressOrigin/pressTriggerId plumbing as ColorfulRippleOverlay/
+ * KeyboardLedRipple), drawn UNCLIPPED — unlike RIPPLE, Desh's glow is
+ * meant to bleed softly over the key faces themselves.
  */
-private fun Modifier.keyGlowPulse(
-    colors: KeyboardColors,
-    pressed: Boolean,
-    keyShape: RoundedCornerShape
-): Modifier = composed {
-    if (colors.keyEffect != com.spmods.sinkey.data.KeyEffect.GLOW) return@composed this
+@Composable
+private fun MechGlowOverlay(
+    origin: Offset?,
+    triggerId: Int,
+    modifier: Modifier = Modifier
+) {
+    if (origin == null) return
 
     var hue by remember { mutableStateOf(0f) }
-    val glowProgress = remember { Animatable(0f) }
-    LaunchedEffect(pressed) {
-        if (pressed) {
-            hue = (hue + 50f) % 360f
-            glowProgress.snapTo(0f)
-            glowProgress.animateTo(1f, animationSpec = tween(1500, easing = androidx.compose.animation.core.LinearOutSlowInEasing))
-        }
+    val glowColor = remember(hue) { Color(android.graphics.Color.HSVToColor(floatArrayOf(hue, 1f, 1f))) }
+    val progress = remember { Animatable(0f) }
+
+    LaunchedEffect(triggerId) {
+        hue = (hue + 50f) % 360f
+        progress.snapTo(0f)
+        progress.animateTo(1f, animationSpec = tween(1500, easing = androidx.compose.animation.core.LinearOutSlowInEasing))
     }
 
-    if (glowProgress.value <= 0f || glowProgress.value >= 1f) return@composed this
+    if (progress.value >= 1f) return
 
-    val glowColor = remember(hue) { Color(android.graphics.Color.HSVToColor(floatArrayOf(hue, 1f, 1f))) }
-    val elevation = (1f - glowProgress.value) * 14.dp.value
-
-    this.shadow(
-        elevation = elevation.dp,
-        shape = keyShape,
-        ambientColor = glowColor,
-        spotColor = glowColor
-    )
+    Canvas(modifier = modifier.blur(28.dp)) {
+        // Fixed-size soft blob (not travelling across the whole board like
+        // RIPPLE) — width is a few keys' worth, matching the "wash over
+        // neighboring keys" look from the reference recording, and it
+        // simply fades out over the 1500ms rather than expanding.
+        val blobRadiusPx = size.width * 0.22f
+        val alpha = (1f - progress.value).coerceIn(0f, 1f) * 0.85f
+        if (alpha > 0.01f) {
+            drawCircle(
+                brush = androidx.compose.ui.graphics.Brush.radialGradient(
+                    colors = listOf(glowColor.copy(alpha = alpha), glowColor.copy(alpha = 0f)),
+                    center = origin,
+                    radius = blobRadiusPx
+                ),
+                radius = blobRadiusPx,
+                center = origin
+            )
+        }
+    }
 }
 
 /**
@@ -259,6 +268,8 @@ private fun Modifier.keyGlowPulse(
 private fun ColorfulRippleOverlay(
     origin: Offset?,
     triggerId: Int,
+    keyPositions: List<KeyPoint>,
+    keySizes: Map<Char, androidx.compose.ui.geometry.Size>,
     modifier: Modifier = Modifier
 ) {
     if (origin == null) return
@@ -288,15 +299,37 @@ private fun ColorfulRippleOverlay(
         val radius = (progress.value.coerceIn(0f, 1f)) * maxRadiusPx
         val alpha = (1f - progress.value).coerceIn(0f, 1f)
         if (alpha > 0.01f) {
-            drawCircle(
-                brush = androidx.compose.ui.graphics.Brush.radialGradient(
-                    colors = listOf(rippleColor.copy(alpha = alpha), rippleColor.copy(alpha = 0f)),
-                    center = origin,
-                    radius = radius.coerceAtLeast(1f)
-                ),
-                radius = radius.coerceAtLeast(1f),
-                center = origin
-            )
+            // Desh clips the key rectangles OUT of the ripple draw, so the
+            // color only shows in the gaps between keys and the rows above
+            // the keyboard (suggestions bar, toolbar) — never washing over
+            // the key faces themselves. clipPath(Difference) reproduces
+            // that: start from the full canvas, subtract every known key's
+            // rounded rect, draw the gradient into what's left.
+            val keysPath = Path().apply {
+                keyPositions.forEach { kp ->
+                    val sz = keySizes[kp.char] ?: return@forEach
+                    addRoundRect(
+                        androidx.compose.ui.geometry.RoundRect(
+                            left = kp.x - sz.width / 2f,
+                            top = kp.y - sz.height / 2f,
+                            right = kp.x + sz.width / 2f,
+                            bottom = kp.y + sz.height / 2f,
+                            cornerRadius = androidx.compose.ui.geometry.CornerRadius(8.dp.toPx())
+                        )
+                    )
+                }
+            }
+            clipPath(keysPath, clipOp = androidx.compose.ui.graphics.ClipOp.Difference) {
+                drawCircle(
+                    brush = androidx.compose.ui.graphics.Brush.radialGradient(
+                        colors = listOf(rippleColor.copy(alpha = alpha), rippleColor.copy(alpha = 0f)),
+                        center = origin,
+                        radius = radius.coerceAtLeast(1f)
+                    ),
+                    radius = radius.coerceAtLeast(1f),
+                    center = origin
+                )
+            }
         }
     }
 }
@@ -946,7 +979,8 @@ internal fun KeyboardView(
                     // touch-position plumbing as the LED ripple/Typing
                     // Animation below.
                     val colorfulRippleActive = colors.keyEffect == com.spmods.sinkey.data.KeyEffect.RIPPLE
-                    val needsKeyPositions = ledActive || typingAnimActive || swipeTypingEnabled || colorfulRippleActive
+                    val glowActive = colors.keyEffect == com.spmods.sinkey.data.KeyEffect.GLOW
+                    val needsKeyPositions = ledActive || typingAnimActive || swipeTypingEnabled || colorfulRippleActive || glowActive
                     // Gesture-in-progress state, hoisted up to this shared
                     // Box (see the pointerInput placement below for why it
                     // can't live inside GestureTypingOverlay itself anymore).
@@ -1266,6 +1300,20 @@ internal fun KeyboardView(
                             // drawing layer — no pointerInput of its own —
                             // so it never blocks taps.
                             ColorfulRippleOverlay(
+                                origin = pressOrigin,
+                                triggerId = pressTriggerId,
+                                keyPositions = keyPositions.values.toList(),
+                                keySizes = keySizes,
+                                modifier = Modifier.matchParentSize()
+                            )
+                        }
+
+                        if (glowActive) {
+                            // Desh-style mech glow: a soft blurred blob
+                            // centered on the touched key, hue rotating per
+                            // tap. Same shared pressOrigin/pressTriggerId as
+                            // every other press-reactive overlay here.
+                            MechGlowOverlay(
                                 origin = pressOrigin,
                                 triggerId = pressTriggerId,
                                 modifier = Modifier.matchParentSize()
@@ -2704,7 +2752,6 @@ private fun RowScope.NumberedLetterKey(
             .clip(keyShape)
             .background(if (pressed) colors.keyBg.copy(alpha = 0.6f) else colors.keyBg)
             .keyEffectDecoration(colors, keyShape)
-            .keyGlowPulse(colors, pressed, keyShape)
             .let { m -> if (onPositioned != null) m.onGloballyPositioned(onPositioned) else m }
             .onSizeChanged { keyWidthPx = it.width }
             .pointerInput(alternates) {
@@ -2907,7 +2954,6 @@ private fun RowScope.LetterKey(
             .clip(keyShape)
             .background(if (pressed) colors.keyBg.copy(alpha = 0.6f) else colors.keyBg)
             .keyEffectDecoration(colors, keyShape)
-            .keyGlowPulse(colors, pressed, keyShape)
             .let { m -> if (onPositioned != null) m.onGloballyPositioned(onPositioned) else m }
             .onSizeChanged { keyWidthPx = it.width }
             .pointerInput(alternates) {
