@@ -191,50 +191,123 @@ internal fun keyboardColors(
 private fun Modifier.keyEffectDecoration(colors: KeyboardColors, keyShape: RoundedCornerShape): Modifier {
     return when (colors.keyEffect) {
         com.spmods.sinkey.data.KeyEffect.NONE -> this
+        // Static fallback shadow for contexts that call keyEffectDecoration
+        // but don't track their own pressed-state pulse (see keyGlowPulse
+        // for the real animated Desh-style version, chained at LetterKey/
+        // NumberedLetterKey/NumpadDigitKey call sites instead).
         com.spmods.sinkey.data.KeyEffect.GLOW -> this.shadow(
             elevation = 6.dp,
             shape = keyShape,
             ambientColor = colors.accent,
             spotColor = colors.accent
         )
-        // Ripple handled separately via .keyRippleEffect() at the call site
-        // (needs the actual touch position from pointerInput), so it's a
-        // no-op here — see LetterKey/NumberedLetterKey/NumpadDigitKey.
+        // Ripple is a board-wide overlay now (see ColorfulRippleOverlay),
+        // not a per-key decoration — no-op here.
         com.spmods.sinkey.data.KeyEffect.RIPPLE -> this
     }
 }
 
 /**
- * Draws an expanding, fading ripple circle from the last touch-down point
- * for KeyEffect.RIPPLE. No-op Modifier for every other effect. Meant to be
- * chained right after .keyEffectDecoration() at key call sites that track
- * their own `pressed`/touch state (LetterKey, NumberedLetterKey,
- * NumpadDigitKey).
+ * KeyEffect.GLOW, Desh "Mech Glow" behavior: each key press pulses a glow
+ * whose hue rotates +50° (mod 360°, full saturation/value) from the last
+ * press's hue, over 1500ms — so consecutive taps visibly cycle through a
+ * rainbow rather than glowing a single fixed accent color. Hue state is
+ * remembered per-key-composable, matching Desh's per-renderer-instance hue
+ * field. No-op Modifier for every other effect.
  */
-private fun Modifier.keyRippleEffect(
+private fun Modifier.keyGlowPulse(
     colors: KeyboardColors,
     pressed: Boolean
 ): Modifier = composed {
-    if (colors.keyEffect != com.spmods.sinkey.data.KeyEffect.RIPPLE) return@composed this
+    if (colors.keyEffect != com.spmods.sinkey.data.KeyEffect.GLOW) return@composed this
 
-    val rippleProgress = remember { Animatable(0f) }
+    var hue by remember { mutableStateOf(0f) }
+    val glowProgress = remember { Animatable(0f) }
     LaunchedEffect(pressed) {
         if (pressed) {
-            rippleProgress.snapTo(0f)
-            rippleProgress.animateTo(1f, animationSpec = tween(420, easing = androidx.compose.animation.core.LinearOutSlowInEasing))
+            hue = (hue + 50f) % 360f
+            glowProgress.snapTo(0f)
+            glowProgress.animateTo(1f, animationSpec = tween(1500, easing = androidx.compose.animation.core.LinearOutSlowInEasing))
         }
     }
-    this.drawWithContent {
-        drawContent()
-        if (rippleProgress.value > 0f && rippleProgress.value < 1f) {
-            val maxRadius = kotlin.math.max(size.width, size.height) * 0.75f
+
+    if (glowProgress.value <= 0f || glowProgress.value >= 1f) return@composed this
+
+    val glowColor = remember(hue) { Color(android.graphics.Color.HSVToColor(floatArrayOf(hue, 1f, 1f))) }
+    val elevation = (1f - glowProgress.value) * 14.dp.value
+
+    this.shadow(
+        elevation = elevation.dp,
+        shape = keyShape,
+        ambientColor = glowColor,
+        spotColor = glowColor
+    )
+}
+
+/**
+ * KeyEffect.RIPPLE, Desh "Colorful Ripple" behavior: a single radial glow
+ * — random color per tap, drawn from the same palette Desh ships — expands
+ * from the touched key's position out across the *entire keyboard width*
+ * (radius grows to 1.2x canvas width, not just one key), over 2000ms, using
+ * an overshoot-then-settle interpolator so it slightly overshoots full size
+ * before easing back, fading alpha to 0 as it goes. Board-wide overlay, so
+ * it's drawn once at the KeyboardView level (see the colorfulRippleActive
+ * branch above), not chained per-key like the old implementation.
+ */
+@Composable
+private fun ColorfulRippleOverlay(
+    origin: Offset?,
+    triggerId: Int,
+    modifier: Modifier = Modifier
+) {
+    if (origin == null) return
+
+    // Same 5-color palette Desh's ColorfulRippleIKeyboardVisualEffectRenderer
+    // ships (h:[F] hue array), one entry picked at random per tap.
+    val paletteHues = remember { floatArrayOf(0f, 72f, 144f, 216f, 288f) }
+    var rippleColor by remember { mutableStateOf(Color.White) }
+    val progress = remember { Animatable(0f) }
+
+    LaunchedEffect(triggerId) {
+        rippleColor = Color(android.graphics.Color.HSVToColor(floatArrayOf(paletteHues.random(), 0.85f, 1f)))
+        progress.snapTo(0f)
+        progress.animateTo(
+            1f,
+            animationSpec = tween(2000, easing = androidx.compose.animation.core.Easing { fraction -> overshootEase(fraction, 0.5f) })
+        )
+    }
+
+    if (progress.value >= 1f) return
+
+    Canvas(modifier = modifier) {
+        val maxRadiusPx = size.width * 1.2f
+        // Overshoot easing can push progress slightly above 1f mid-animation
+        // before settling — coerce only the *radius* so the circle doesn't
+        // draw outside a sane bound, while alpha still reads the raw value.
+        val radius = (progress.value.coerceIn(0f, 1f)) * maxRadiusPx
+        val alpha = (1f - progress.value).coerceIn(0f, 1f)
+        if (alpha > 0.01f) {
             drawCircle(
-                color = colors.accent.copy(alpha = (1f - rippleProgress.value) * 0.45f),
-                radius = maxRadius * rippleProgress.value,
-                center = androidx.compose.ui.geometry.Offset(size.width / 2f, size.height / 2f)
+                brush = androidx.compose.ui.graphics.Brush.radialGradient(
+                    colors = listOf(rippleColor.copy(alpha = alpha), rippleColor.copy(alpha = 0f)),
+                    center = origin,
+                    radius = radius.coerceAtLeast(1f)
+                ),
+                radius = radius.coerceAtLeast(1f),
+                center = origin
             )
         }
     }
+}
+
+/**
+ * Matches Android's OvershootInterpolator(tension) formula: overshoots past
+ * 1f then settles back, rather than easing straight to 1f — this is what
+ * gives Desh's ripple its slight "bounce" at the end of the expansion.
+ */
+private fun overshootEase(t: Float, tension: Float): Float {
+    val x = t - 1f
+    return (x * x * ((tension + 1f) * x + tension) + 1f)
 }
 
 @Composable
@@ -867,7 +940,12 @@ internal fun KeyboardView(
                     // board's keys currently report their positions.
                     val ledActive = ledPattern != com.spmods.sinkey.data.LedPattern.NONE
                     val typingAnimActive = typingAnimation != com.spmods.sinkey.data.TypingAnimation.NONE
-                    val needsKeyPositions = ledActive || typingAnimActive || swipeTypingEnabled
+                    // Desh-style RIPPLE is a board-wide overlay (not a
+                    // per-key decoration), so it needs the same shared
+                    // touch-position plumbing as the LED ripple/Typing
+                    // Animation below.
+                    val colorfulRippleActive = colors.keyEffect == com.spmods.sinkey.data.KeyEffect.RIPPLE
+                    val needsKeyPositions = ledActive || typingAnimActive || swipeTypingEnabled || colorfulRippleActive
                     // Gesture-in-progress state, hoisted up to this shared
                     // Box (see the pointerInput placement below for why it
                     // can't live inside GestureTypingOverlay itself anymore).
@@ -1178,6 +1256,20 @@ internal fun KeyboardView(
                                 }
                             } } else null
                         )
+
+                        if (colorfulRippleActive) {
+                            // Desh-style ripple: a random-colored radial
+                            // glow expanding from the touched key out across
+                            // the *whole* board (not just that one key), with
+                            // a slight overshoot-then-settle bounce. Pure
+                            // drawing layer — no pointerInput of its own —
+                            // so it never blocks taps.
+                            ColorfulRippleOverlay(
+                                origin = pressOrigin,
+                                triggerId = pressTriggerId,
+                                modifier = Modifier.matchParentSize()
+                            )
+                        }
 
                         if (ledActive) {
                             // pressOrigin/pressTriggerId are the same shared
@@ -2611,7 +2703,7 @@ private fun RowScope.NumberedLetterKey(
             .clip(keyShape)
             .background(if (pressed) colors.keyBg.copy(alpha = 0.6f) else colors.keyBg)
             .keyEffectDecoration(colors, keyShape)
-            .keyRippleEffect(colors, pressed)
+            .keyGlowPulse(colors, pressed)
             .let { m -> if (onPositioned != null) m.onGloballyPositioned(onPositioned) else m }
             .onSizeChanged { keyWidthPx = it.width }
             .pointerInput(alternates) {
@@ -2814,7 +2906,7 @@ private fun RowScope.LetterKey(
             .clip(keyShape)
             .background(if (pressed) colors.keyBg.copy(alpha = 0.6f) else colors.keyBg)
             .keyEffectDecoration(colors, keyShape)
-            .keyRippleEffect(colors, pressed)
+            .keyGlowPulse(colors, pressed)
             .let { m -> if (onPositioned != null) m.onGloballyPositioned(onPositioned) else m }
             .onSizeChanged { keyWidthPx = it.width }
             .pointerInput(alternates) {
