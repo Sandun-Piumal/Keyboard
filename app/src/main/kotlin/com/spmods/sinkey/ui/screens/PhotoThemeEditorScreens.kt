@@ -4,18 +4,19 @@ import android.graphics.Bitmap
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.gestures.detectTransformGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
@@ -73,17 +74,18 @@ fun PhotoCropScreen(
     onBack: () -> Unit,
     onNext: (Bitmap) -> Unit
 ) {
-    // Pan/zoom state for the photo underneath the fixed crop window, in the
-    // crop preview's own local px space (see onGloballyPositioned below for
-    // where cropBoxSizePx/previewSizePx get filled in).
+    // Pan/zoom state for the photo *inside* the crop box itself — matching
+    // the reference recording exactly: the crop box IS the photo container
+    // (ContentScale.Crop-filled, full brightness, no dimming), with only
+    // grid lines + a white border drawn on top of it. There's no separate
+    // full-screen preview with a dimmed mask around a smaller window.
     var scale by remember { mutableStateOf(1f) }
     var offset by remember { mutableStateOf(Offset.Zero) }
-    var previewSizePx by remember { mutableStateOf(Size.Zero) }
+    var boxSizePx by remember { mutableStateOf(Size.Zero) }
 
-    // Keyboard-shaped crop window — a tall, narrow phone-keyboard aspect
-    // roughly matching the reference screenshot's crop box (about 0.62 of
-    // the preview's width, centered, keyboard-ish 1.62:1 height:width).
-    val cropBoxWidthFraction = 0.62f
+    // Keyboard-shaped crop window — matches the reference recording's box
+    // (roughly square-ish, slightly taller than wide).
+    val cropBoxWidthFraction = 0.82f
 
     Column(modifier = Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
         Row(
@@ -102,62 +104,48 @@ fun PhotoCropScreen(
         }
 
         Box(
-            modifier = Modifier
-                .weight(1f)
-                .fillMaxWidth()
-                .padding(horizontal = 20.dp)
-                .clip(RoundedCornerShape(12.dp))
-                .background(Color.Black)
-                .pointerInput(sourceBitmap) {
-                    detectTransformGestures { _, panDelta, zoomDelta, _ ->
-                        scale = (scale * zoomDelta).coerceIn(1f, 5f)
-                        offset += panDelta
-                    }
-                }
-                .onSizeChangedPx { previewSizePx = it },
+            modifier = Modifier.weight(1f).fillMaxWidth(),
             contentAlignment = Alignment.Center
         ) {
-            Image(
-                bitmap = sourceBitmap.asImageBitmap(),
-                contentDescription = null,
-                contentScale = ContentScale.Crop,
+            Box(
                 modifier = Modifier
-                    .fillMaxSize()
-                    .graphicsLayerPanZoom(scale, offset)
-            )
-
-            // Crop window + 3x3 grid lines + dimmed surroundings, drawn as a
-            // single Canvas overlay so the grid lines sit exactly on the
-            // crop box edges regardless of preview size.
-            Canvas(modifier = Modifier.fillMaxSize()) {
-                val boxWidth = size.width * cropBoxWidthFraction
-                val boxHeight = boxWidth * 1.62f
-                val left = (size.width - boxWidth) / 2f
-                val top = (size.height - boxHeight) / 2f
-
-                // Dim everything outside the crop box.
-                drawRect(color = Color.Black.copy(alpha = 0.55f))
-                drawRect(
-                    color = Color.Transparent,
-                    topLeft = Offset(left, top),
-                    size = Size(boxWidth, boxHeight),
-                    blendMode = androidx.compose.ui.graphics.BlendMode.Clear
+                    .fillMaxWidth(cropBoxWidthFraction)
+                    .aspectRatio(1f)
+                    .clip(RoundedCornerShape(4.dp))
+                    .background(Color.Black)
+                    .pointerInput(sourceBitmap) {
+                        detectTransformGestures { _, panDelta, zoomDelta, _ ->
+                            scale = (scale * zoomDelta).coerceIn(1f, 5f)
+                            offset += panDelta
+                        }
+                    }
+                    .onSizeChangedPx { boxSizePx = it }
+            ) {
+                Image(
+                    bitmap = sourceBitmap.asImageBitmap(),
+                    contentDescription = null,
+                    contentScale = ContentScale.Crop,
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .graphicsLayerPanZoom(scale, offset)
                 )
 
-                // 3x3 grid lines inside the box.
-                val gridColor = Color.White.copy(alpha = 0.85f)
-                for (i in 1..2) {
-                    val x = left + boxWidth * i / 3f
-                    drawLine(gridColor, Offset(x, top), Offset(x, top + boxHeight), strokeWidth = 1.dp.toPx())
-                    val y = top + boxHeight * i / 3f
-                    drawLine(gridColor, Offset(left, y), Offset(left + boxWidth, y), strokeWidth = 1.dp.toPx())
+                // 3x3 grid lines + white border, drawn directly over the
+                // photo — no dimming, no separate mask layer, so the photo
+                // itself stays fully visible under the grid.
+                Canvas(modifier = Modifier.fillMaxSize()) {
+                    val gridColor = Color.White.copy(alpha = 0.85f)
+                    for (i in 1..2) {
+                        val x = size.width * i / 3f
+                        drawLine(gridColor, Offset(x, 0f), Offset(x, size.height), strokeWidth = 1.dp.toPx())
+                        val y = size.height * i / 3f
+                        drawLine(gridColor, Offset(0f, y), Offset(size.width, y), strokeWidth = 1.dp.toPx())
+                    }
+                    drawRect(
+                        color = Color.White,
+                        style = androidx.compose.ui.graphics.drawscope.Stroke(width = 2.dp.toPx())
+                    )
                 }
-                drawRect(
-                    color = Color.White,
-                    topLeft = Offset(left, top),
-                    size = Size(boxWidth, boxHeight),
-                    style = androidx.compose.ui.graphics.drawscope.Stroke(width = 2.dp.toPx())
-                )
             }
         }
 
@@ -166,14 +154,13 @@ fun PhotoCropScreen(
                 onNext(
                     cropBitmap(
                         source = sourceBitmap,
-                        previewSizePx = previewSizePx,
+                        boxSizePx = boxSizePx,
                         scale = scale,
-                        offset = offset,
-                        cropBoxWidthFraction = cropBoxWidthFraction
+                        offset = offset
                     )
                 )
             },
-            enabled = previewSizePx.width > 0f,
+            enabled = boxSizePx.width > 0f,
             colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary),
             modifier = Modifier.fillMaxWidth().padding(20.dp).height(52.dp)
         ) {
@@ -236,9 +223,10 @@ fun PhotoEditThemeScreen(
             )
         }
 
-        // Mock keyboard preview — WhatsApp chat header mock above a plain
-        // QWERTY grid, background photo showing through with the live
-        // blur/brightness applied, matching the reference screenshot.
+        // Mock keyboard preview — matches the reference recording: no chat
+        // header, photo fills the whole preview box (blank space above),
+        // full QWERTY (all 3 letter rows + suggestion strip) with the
+        // photo showing through every key, live blur/brightness applied.
         Box(
             modifier = Modifier
                 .fillMaxWidth()
@@ -256,31 +244,8 @@ fun PhotoEditThemeScreen(
                     .let { if (blur > 0.01f) it.blur(20.dp * blur) else it }
             )
             Column(modifier = Modifier.fillMaxSize()) {
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .background(Color.Black.copy(alpha = 0.35f))
-                        .padding(12.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Box(
-                        modifier = Modifier
-                            .size(22.dp)
-                            .clip(CircleShape)
-                            .background(Color(0xFF25D366)),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Text("W", color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.Bold)
-                    }
-                    Text(
-                        "WhatsApp",
-                        color = Color.White,
-                        fontSize = 14.sp,
-                        modifier = Modifier.padding(start = 8.dp)
-                    )
-                }
                 Box(modifier = Modifier.weight(1f))
-                MockKeyboardRows()
+                MockKeyboardRows(showKeyBorders = showKeyBorders)
             }
         }
 
@@ -343,8 +308,15 @@ fun PhotoEditThemeScreen(
 
 /** A plain, non-interactive QWERTY row mock for the Edit theme preview — visual only. */
 @Composable
-private fun MockKeyboardRows() {
+private fun MockKeyboardRows(showKeyBorders: Boolean) {
     val rows = listOf("QWERTYUIOP", "ASDFGHJKL", "ZXCVBNM")
+    val keyShape = RoundedCornerShape(6.dp)
+    val keyBorderModifier = if (showKeyBorders) {
+        Modifier.border(1.dp, Color.White.copy(alpha = 0.4f), keyShape)
+    } else {
+        Modifier
+    }
+
     Column(
         modifier = Modifier
             .fillMaxWidth()
@@ -352,25 +324,63 @@ private fun MockKeyboardRows() {
             .padding(vertical = 10.dp, horizontal = 6.dp),
         verticalArrangement = Arrangement.spacedBy(6.dp)
     ) {
-        rows.forEach { row ->
+        rows.forEachIndexed { rowIndex, row ->
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(4.dp)
             ) {
+                // Middle/bottom rows get a half-key-width side inset so
+                // the staggered QWERTY look reads correctly, matching the
+                // reference recording's real keyboard rows.
+                if (rowIndex > 0) Box(modifier = Modifier.weight(0.5f))
                 row.forEach { ch ->
                     Box(
                         modifier = Modifier
                             .weight(1f)
                             .height(38.dp)
-                            .clip(RoundedCornerShape(6.dp))
+                            .clip(keyShape)
+                            .then(keyBorderModifier)
                             .background(Color.White.copy(alpha = 0.12f)),
                         contentAlignment = Alignment.Center
                     ) {
                         Text(ch.toString(), color = Color.White, fontSize = 13.sp)
                     }
                 }
+                if (rowIndex > 0) Box(modifier = Modifier.weight(0.5f))
             }
         }
+        // Bottom row: ?123 / emoji / space / backspace, matching the
+        // reference recording's real bottom row layout.
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(4.dp)
+        ) {
+            MockSpecialKey("?123", weight = 1.3f, showKeyBorders = showKeyBorders)
+            MockSpecialKey("☺", weight = 1f, showKeyBorders = showKeyBorders)
+            MockSpecialKey("", weight = 4f, showKeyBorders = showKeyBorders)
+            MockSpecialKey("⌫", weight = 1.3f, showKeyBorders = showKeyBorders)
+        }
+    }
+}
+
+@Composable
+private fun RowScope.MockSpecialKey(label: String, weight: Float, showKeyBorders: Boolean) {
+    val keyShape = RoundedCornerShape(6.dp)
+    val keyBorderModifier = if (showKeyBorders) {
+        Modifier.border(1.dp, Color.White.copy(alpha = 0.4f), keyShape)
+    } else {
+        Modifier
+    }
+    Box(
+        modifier = Modifier
+            .weight(weight)
+            .height(38.dp)
+            .clip(keyShape)
+            .then(keyBorderModifier)
+            .background(Color.White.copy(alpha = 0.12f)),
+        contentAlignment = Alignment.Center
+    ) {
+        Text(label, color = Color.White, fontSize = 13.sp)
     }
 }
 
@@ -396,56 +406,46 @@ private fun Modifier.onSizeChangedPx(onSize: (Size) -> Unit): Modifier =
     )
 
 /**
- * Crops [source] to whatever the fixed crop window in [PhotoCropScreen]
- * is currently showing, given the photo's current [scale]/[offset] within
- * a [previewSizePx]-sized preview box (ContentScale.Crop-filled, then
- * panned/zoomed on top of that).
+ * Crops [source] to exactly what's visible inside the crop box in
+ * [PhotoCropScreen] — the box IS the photo's container (ContentScale.Crop
+ * + pan/zoom applied directly inside it), so this is a direct inverse of
+ * that fit: no separate "box position within a bigger preview" step needed
+ * since [boxSizePx] already *is* that box.
  */
 private fun cropBitmap(
     source: Bitmap,
-    previewSizePx: Size,
+    boxSizePx: Size,
     scale: Float,
-    offset: Offset,
-    cropBoxWidthFraction: Float
+    offset: Offset
 ): Bitmap {
-    if (previewSizePx.width <= 0f || previewSizePx.height <= 0f) return source
+    if (boxSizePx.width <= 0f || boxSizePx.height <= 0f) return source
 
-    // Step 1: figure out the base ContentScale.Crop fit of `source` into
-    // the preview box (before any user pan/zoom) — the same math
-    // ContentScale.Crop itself uses: scale up uniformly until the image
-    // covers the box on both axes, then center.
+    // Base ContentScale.Crop fit of `source` into the box (before pan/zoom)
+    // — scale up uniformly until the image covers the box on both axes,
+    // then center.
     val baseScale = max(
-        previewSizePx.width / source.width.toFloat(),
-        previewSizePx.height / source.height.toFloat()
+        boxSizePx.width / source.width.toFloat(),
+        boxSizePx.height / source.height.toFloat()
     )
     val baseDrawWidth = source.width * baseScale
     val baseDrawHeight = source.height * baseScale
-    val baseLeft = (previewSizePx.width - baseDrawWidth) / 2f
-    val baseTop = (previewSizePx.height - baseDrawHeight) / 2f
+    val baseLeft = (boxSizePx.width - baseDrawWidth) / 2f
+    val baseTop = (boxSizePx.height - baseDrawHeight) / 2f
 
-    // Step 2: total effective scale/position on top of that base fit,
-    // including the user's pinch-zoom (applied from the preview's center)
-    // and pan.
+    // Total effective scale/position including the user's pinch-zoom
+    // (applied from the box's center) and pan.
     val totalScale = baseScale * scale
-    val centerX = previewSizePx.width / 2f
-    val centerY = previewSizePx.height / 2f
-    // Where the image's top-left ends up on screen after the scale-from-
-    // center transform plus pan.
+    val centerX = boxSizePx.width / 2f
+    val centerY = boxSizePx.height / 2f
     val drawLeft = centerX - (centerX - baseLeft) * scale + offset.x
     val drawTop = centerY - (centerY - baseTop) * scale + offset.y
 
-    // Step 3: crop window position (matches PhotoCropScreen's Canvas math).
-    val boxWidth = previewSizePx.width * cropBoxWidthFraction
-    val boxHeight = boxWidth * 1.62f
-    val boxLeft = (previewSizePx.width - boxWidth) / 2f
-    val boxTop = (previewSizePx.height - boxHeight) / 2f
-
-    // Step 4: map the crop window from preview-space back into the
+    // Map the box's four corners (0,0)..(boxWidth,boxHeight) back into the
     // original bitmap's pixel space.
-    val srcLeft = ((boxLeft - drawLeft) / totalScale).coerceIn(0f, source.width.toFloat())
-    val srcTop = ((boxTop - drawTop) / totalScale).coerceIn(0f, source.height.toFloat())
-    val srcRight = ((boxLeft + boxWidth - drawLeft) / totalScale).coerceIn(0f, source.width.toFloat())
-    val srcBottom = ((boxTop + boxHeight - drawTop) / totalScale).coerceIn(0f, source.height.toFloat())
+    val srcLeft = ((0f - drawLeft) / totalScale).coerceIn(0f, source.width.toFloat())
+    val srcTop = ((0f - drawTop) / totalScale).coerceIn(0f, source.height.toFloat())
+    val srcRight = ((boxSizePx.width - drawLeft) / totalScale).coerceIn(0f, source.width.toFloat())
+    val srcBottom = ((boxSizePx.height - drawTop) / totalScale).coerceIn(0f, source.height.toFloat())
 
     val cropW = (srcRight - srcLeft).toInt().coerceAtLeast(1)
     val cropH = (srcBottom - srcTop).toInt().coerceAtLeast(1)
