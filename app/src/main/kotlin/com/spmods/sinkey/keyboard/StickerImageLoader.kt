@@ -17,6 +17,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.blur
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
@@ -113,7 +114,12 @@ fun StickerImage(
  * jarring color swap once decoding finishes.
  */
 @Composable
-fun KeyboardCustomBackground(uriString: String, modifier: Modifier = Modifier) {
+fun KeyboardCustomBackground(
+    uriString: String,
+    modifier: Modifier = Modifier,
+    blur: Float = 0f,
+    brightness: Float = 0.5f
+) {
     val context = LocalContext.current
     var isAnimatedGif by remember(uriString) { mutableStateOf<Boolean?>(null) }
     var bitmap by remember(uriString) { mutableStateOf<Bitmap?>(null) }
@@ -128,6 +134,33 @@ fun KeyboardCustomBackground(uriString: String, modifier: Modifier = Modifier) {
         }
     }
 
+    // Blur/brightness only make sense on a static frame — matches the
+    // reference "Edit theme" screen, which only offers these sliders for
+    // a still photo, not for the animated-GIF case (AnimatedGifBackground
+    // below is drawn as-is).
+    val blurModifier = if (blur > 0.01f) {
+        Modifier.blur(MAX_CUSTOM_BACKGROUND_BLUR_DP.dp * blur)
+    } else {
+        Modifier
+    }
+    // brightness is 0f..1f with 0.5f = unchanged (matches the reference
+    // slider's default thumb position) — below 0.5f darkens toward black,
+    // above 0.5f brightens toward white, via a brightness-only ColorMatrix
+    // so hue/saturation aren't touched.
+    val brightnessDelta = (brightness - 0.5f) * 2f * 255f
+    val brightnessColorFilter = remember(brightnessDelta) {
+        androidx.compose.ui.graphics.ColorFilter.colorMatrix(
+            androidx.compose.ui.graphics.ColorMatrix(
+                floatArrayOf(
+                    1f, 0f, 0f, 0f, brightnessDelta,
+                    0f, 1f, 0f, 0f, brightnessDelta,
+                    0f, 0f, 1f, 0f, brightnessDelta,
+                    0f, 0f, 0f, 1f, 0f
+                )
+            )
+        )
+    }
+
     when {
         isAnimatedGif == true && android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.P -> {
             AnimatedGifBackground(uriString = uriString, modifier = modifier)
@@ -137,12 +170,16 @@ fun KeyboardCustomBackground(uriString: String, modifier: Modifier = Modifier) {
                 bitmap = bitmap!!.asImageBitmap(),
                 contentDescription = null,
                 contentScale = ContentScale.Crop,
-                modifier = modifier
+                colorFilter = brightnessColorFilter,
+                modifier = modifier.then(blurModifier)
             )
         }
         else -> Unit
     }
 }
+
+/** Max blur radius (dp) at blur slider = 1f — matches a visibly strong but not fully-illegible blur. */
+private const val MAX_CUSTOM_BACKGROUND_BLUR_DP = 20
 
 /** Reads just enough bytes to check for the GIF magic header — no full decode needed to answer "is this a GIF". */
 private fun sniffIsGif(context: Context, uriString: String): Boolean {
