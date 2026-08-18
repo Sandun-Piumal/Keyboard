@@ -73,6 +73,13 @@ class PreferencesManager(private val context: Context) {
         // colors.bg look. Layered UNDER customBackgroundUri: if the user has
         // also picked a photo/GIF, the photo wins (see KeyboardView).
         val BACKGROUND_STYLE = stringPreferencesKey("background_style")
+        // "My themes" photo editor: blur radius (0f..1f, fraction of a fixed
+        // max blur dp) and brightness (0f..1f, 0.5f = unchanged, matching
+        // the reference "Edit theme" screen's Blur/Brightness sliders).
+        // Both only apply to CUSTOM_BACKGROUND_URI, not the built-in
+        // BackgroundStyle patterns.
+        val CUSTOM_BACKGROUND_BLUR = androidx.datastore.preferences.core.floatPreferencesKey("custom_background_blur")
+        val CUSTOM_BACKGROUND_BRIGHTNESS = androidx.datastore.preferences.core.floatPreferencesKey("custom_background_brightness")
         // Material You (Android 12+ dynamic color from system wallpaper)
         // applied to the keyboard itself, independent of the app UI's own
         // Material You usage (if any). Default off — purely opt-in since it
@@ -194,6 +201,16 @@ class PreferencesManager(private val context: Context) {
         BackgroundStyle.fromKey(prefs[Keys.BACKGROUND_STYLE] ?: BackgroundStyle.NONE.key)
     }
 
+    /** Blur amount (0f..1f) applied to the "My themes" custom photo background. Default 0f (no blur). */
+    val customBackgroundBlur: Flow<Float> = context.dataStore.data.map { prefs ->
+        prefs[Keys.CUSTOM_BACKGROUND_BLUR] ?: 0f
+    }
+
+    /** Brightness applied to the "My themes" custom photo background (0f..1f, 0.5f = unchanged). Default 0.5f. */
+    val customBackgroundBrightness: Flow<Float> = context.dataStore.data.map { prefs ->
+        prefs[Keys.CUSTOM_BACKGROUND_BRIGHTNESS] ?: 0.5f
+    }
+
     /** Whether Material You dynamic color is applied to the keyboard. Default off. */
     val materialYouEnabled: Flow<Boolean> = context.dataStore.data.map { prefs ->
         prefs[Keys.MATERIAL_YOU_ENABLED] ?: false
@@ -294,6 +311,14 @@ class PreferencesManager(private val context: Context) {
      */
     suspend fun setCustomBackgroundUri(uri: String?) {
         context.dataStore.edit { it[Keys.CUSTOM_BACKGROUND_URI] = uri ?: "" }
+    }
+
+    suspend fun setCustomBackgroundBlur(blur: Float) {
+        context.dataStore.edit { it[Keys.CUSTOM_BACKGROUND_BLUR] = blur.coerceIn(0f, 1f) }
+    }
+
+    suspend fun setCustomBackgroundBrightness(brightness: Float) {
+        context.dataStore.edit { it[Keys.CUSTOM_BACKGROUND_BRIGHTNESS] = brightness.coerceIn(0f, 1f) }
     }
 
     suspend fun setBackgroundStyle(style: BackgroundStyle) {
