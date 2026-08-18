@@ -436,6 +436,12 @@ private fun ColorsGrid(selected: KeyColorPalette, onSelect: (KeyColorPalette) ->
                     ColorSwatchCard(
                         accent = palette.accent,
                         selected = isSelected,
+                        // "Default" (the first palette) means "no accent
+                        // chosen" — showing a green dot on it contradicted
+                        // that, since it looked like a real color pick
+                        // rather than the neutral/default option. Every
+                        // other palette keeps its dot as the swatch cue.
+                        showAccentDot = palette != KeyColorPalette.DEFAULT,
                         onClick = { onSelect(palette) },
                         modifier = Modifier.weight(1f)
                     )
@@ -462,7 +468,8 @@ private fun ColorSwatchCard(
     accent: Color,
     selected: Boolean,
     onClick: () -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    showAccentDot: Boolean = true
 ) {
     Box(
         modifier = modifier
@@ -476,14 +483,16 @@ private fun ColorSwatchCard(
             .background(MaterialTheme.colorScheme.surface)
             .clickable(onClick = onClick)
     ) {
-        Box(
-            modifier = Modifier
-                .align(Alignment.TopEnd)
-                .padding(8.dp)
-                .size(9.dp)
-                .clip(CircleShape)
-                .background(accent)
-        )
+        if (showAccentDot) {
+            Box(
+                modifier = Modifier
+                    .align(Alignment.TopEnd)
+                    .padding(8.dp)
+                    .size(9.dp)
+                    .clip(CircleShape)
+                    .background(accent)
+            )
+        }
         Text(
             "Aa",
             fontSize = 20.sp,
