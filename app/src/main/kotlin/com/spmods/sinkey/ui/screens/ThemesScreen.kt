@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
@@ -148,52 +149,6 @@ fun ThemesScreen(
         // "scrolls in pieces" feel (competing nested-scroll containers).
         // A plain Column of Rows has no scroll behavior of its own, so the
         // whole page scrolls as a single smooth list.
-        Column(
-            modifier = Modifier.padding(horizontal = 16.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp)
-        ) {
-            themeOptions.chunked(2).forEach { rowOptions ->
-                Row(
-                    horizontalArrangement = Arrangement.spacedBy(12.dp),
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    rowOptions.forEach { option ->
-                        val selected = option.mode == currentMode
-                        Column(
-                            modifier = Modifier
-                                .weight(1f)
-                                .clip(RoundedCornerShape(16.dp))
-                                .border(
-                                    width = if (selected) 2.dp else 1.dp,
-                                    color = if (selected) MaterialTheme.colorScheme.secondary else MaterialTheme.colorScheme.outlineVariant,
-                                    shape = RoundedCornerShape(16.dp)
-                                )
-                                .background(MaterialTheme.colorScheme.surface)
-                                .clickable { option.mode?.let(onSelect) }
-                        ) {
-                            Box(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .height(70.dp)
-                                    .background(option.bg),
-                                contentAlignment = Alignment.Center
-                            ) {
-                                Text(option.emoji, fontSize = 22.sp)
-                            }
-                            Column(modifier = Modifier.padding(12.dp, 9.dp)) {
-                                Text(option.label, fontSize = 12.5.sp, fontWeight = FontWeight.SemiBold)
-                                Text(option.siLabel, fontSize = 11.5.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                            }
-                        }
-                    }
-                    // Pad out an odd last row so the single remaining tile
-                    // keeps half-width instead of stretching full-width.
-                    if (rowOptions.size == 1) {
-                        Box(modifier = Modifier.weight(1f))
-                    }
-                }
-            }
-        }
 
         SectionHeader("My themes")
         MyThemesRow(
@@ -201,6 +156,34 @@ fun ThemesScreen(
             onPick = onPickCustomBackground,
             onClear = onClearCustomBackground
         )
+
+        // "Default": Cream Light / Night / Follow System — same three
+        // ThemeMode options as before, restyled to match Desh's compact
+        // "Default" row (a checkmark on the selected card's split light/
+        // dark preview, rather than the old big single-color hero + emoji
+        // + two-line label layout). Moved to right after "My themes" (Desh
+        // has no separate hero section above it — Default comes first).
+        SectionHeader("Default")
+        Row(
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
+            modifier = Modifier.padding(horizontal = 16.dp).fillMaxWidth()
+        ) {
+            themeOptions.forEach { option ->
+                val selected = option.mode == currentMode
+                DefaultThemeCard(
+                    option = option,
+                    selected = selected,
+                    onClick = { option.mode?.let(onSelect) },
+                    modifier = Modifier.weight(1f)
+                )
+            }
+        }
+
+        SectionHeader("Colors")
+        ColorsGrid(selected = keyColorPalette, onSelect = onKeyColorPaletteChange)
+
+        SectionHeader("Effects")
+        EffectsGrid(selected = keyEffect, palette = keyColorPalette, onSelect = onKeyEffectChange)
 
         SectionHeader("Backgrounds")
         Text(
@@ -217,12 +200,6 @@ fun ThemesScreen(
             available = materialYouAvailable,
             onToggle = onMaterialYouEnabledChange
         )
-
-        SectionHeader("Colors")
-        ColorsGrid(selected = keyColorPalette, onSelect = onKeyColorPaletteChange)
-
-        SectionHeader("Effects")
-        EffectsGrid(selected = keyEffect, palette = keyColorPalette, onSelect = onKeyEffectChange)
 
         SectionHeader("Typing Animation")
         Text(
@@ -268,6 +245,94 @@ private fun SectionHeader(title: String) {
         fontWeight = FontWeight.Bold,
         modifier = Modifier.padding(start = 22.dp, top = 22.dp, bottom = 10.dp)
     )
+}
+
+/**
+ * "Default" section card matching Desh's exact style: a light/dark split
+ * preview swatch (using [option]'s own bg color as one half and a fixed
+ * complementary shade as the other, standing in for "this mode next to its
+ * opposite"), a bold "Aa", a checkmark overlay when selected, a bottom bar,
+ * and a small accent dot — same visual language as ColorSwatchCard below,
+ * since Desh's Default and Colors cards share one style.
+ */
+@Composable
+private fun DefaultThemeCard(
+    option: ThemeOption,
+    selected: Boolean,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    Box(
+        modifier = modifier
+            .aspectRatio(1.35f)
+            .clip(RoundedCornerShape(14.dp))
+            .border(
+                width = if (selected) 2.dp else 1.dp,
+                color = if (selected) MaterialTheme.colorScheme.secondary else MaterialTheme.colorScheme.outlineVariant,
+                shape = RoundedCornerShape(14.dp)
+            )
+            .background(option.bg)
+    ) {
+        // System mode has no single "photo" of its own — Desh represents
+        // it as half light / half dark, so this card gets that same split
+        // treatment; Light/Dark modes stay a single flat fill (their .bg).
+        if (option.mode == ThemeMode.SYSTEM) {
+            Box(
+                modifier = Modifier
+                    .align(Alignment.CenterEnd)
+                    .fillMaxHeight()
+                    .fillMaxWidth(0.5f)
+                    .background(Color(0xFF15130F))
+            )
+        }
+        Box(
+            modifier = Modifier
+                .matchParentSize()
+                .clip(RoundedCornerShape(14.dp))
+                .clickable(onClick = onClick)
+        )
+        Text(
+            "Aa",
+            fontSize = 20.sp,
+            fontWeight = FontWeight.Bold,
+            color = option.fg,
+            modifier = Modifier.align(Alignment.Center)
+        )
+        if (selected) {
+            Box(
+                modifier = Modifier
+                    .align(Alignment.Center)
+                    .size(28.dp)
+                    .clip(CircleShape)
+                    .background(option.bg.copy(alpha = 0.85f)),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    Icons.Filled.Check,
+                    contentDescription = null,
+                    tint = option.fg,
+                    modifier = Modifier.size(18.dp)
+                )
+            }
+        }
+        Box(
+            modifier = Modifier
+                .align(Alignment.BottomStart)
+                .padding(10.dp)
+                .fillMaxWidth(0.55f)
+                .height(6.dp)
+                .clip(RoundedCornerShape(3.dp))
+                .background(option.fg.copy(alpha = 0.25f))
+        )
+        Box(
+            modifier = Modifier
+                .align(Alignment.BottomEnd)
+                .padding(8.dp)
+                .size(9.dp)
+                .clip(CircleShape)
+                .background(MaterialTheme.colorScheme.secondary)
+        )
+    }
 }
 
 /**
@@ -368,39 +433,12 @@ private fun ColorsGrid(selected: KeyColorPalette, onSelect: (KeyColorPalette) ->
             ) {
                 rowPalettes.forEach { palette ->
                     val isSelected = palette == selected
-                    Column(
-                        modifier = Modifier
-                            .weight(1f)
-                            .aspectRatio(1f)
-                            .clip(RoundedCornerShape(14.dp))
-                            .border(
-                                width = if (isSelected) 2.dp else 1.dp,
-                                color = if (isSelected) palette.accent else MaterialTheme.colorScheme.outlineVariant,
-                                shape = RoundedCornerShape(14.dp)
-                            )
-                            .background(MaterialTheme.colorScheme.surface)
-                            .clickable { onSelect(palette) },
-                        horizontalAlignment = Alignment.CenterHorizontally,
-                        verticalArrangement = Arrangement.Center
-                    ) {
-                        Box(
-                            modifier = Modifier
-                                .size(30.dp)
-                                .clip(CircleShape)
-                                .background(palette.accent),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            if (isSelected) {
-                                Icon(Icons.Filled.Check, contentDescription = null, tint = Color.White, modifier = Modifier.size(16.dp))
-                            }
-                        }
-                        Text(
-                            palette.label,
-                            fontSize = 11.sp,
-                            fontWeight = FontWeight.Medium,
-                            modifier = Modifier.padding(top = 6.dp)
-                        )
-                    }
+                    ColorSwatchCard(
+                        accent = palette.accent,
+                        selected = isSelected,
+                        onClick = { onSelect(palette) },
+                        modifier = Modifier.weight(1f)
+                    )
                 }
                 // Pad out a short last row so tiles keep their 1/3-width
                 // size instead of stretching to fill the row.
@@ -413,57 +451,94 @@ private fun ColorsGrid(selected: KeyColorPalette, onSelect: (KeyColorPalette) ->
 }
 
 /**
- * Mini "q w e" key-row previews, matching the reference screenshots' Effects
- * cards, rendered with real Compose drawing (no bitmap assets) so each
- * option shows exactly what it'll look like on the real keyboard.
+ * "Aa" preview card matching Desh's Colors section: a card-colored surface,
+ * bold "Aa" centered, a thin rounded bar standing in for the space bar
+ * along the bottom, and a small accent-colored dot in the top-right corner
+ * — that dot is the only cue for which accent this card represents (Desh
+ * doesn't tint the "Aa" text itself), plus a colored ring when selected.
+ */
+@Composable
+private fun ColorSwatchCard(
+    accent: Color,
+    selected: Boolean,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    Box(
+        modifier = modifier
+            .aspectRatio(1.35f)
+            .clip(RoundedCornerShape(14.dp))
+            .border(
+                width = if (selected) 2.dp else 1.dp,
+                color = if (selected) accent else MaterialTheme.colorScheme.outlineVariant,
+                shape = RoundedCornerShape(14.dp)
+            )
+            .background(MaterialTheme.colorScheme.surface)
+            .clickable(onClick = onClick)
+    ) {
+        Box(
+            modifier = Modifier
+                .align(Alignment.TopEnd)
+                .padding(8.dp)
+                .size(9.dp)
+                .clip(CircleShape)
+                .background(accent)
+        )
+        Text(
+            "Aa",
+            fontSize = 20.sp,
+            fontWeight = FontWeight.Bold,
+            modifier = Modifier.align(Alignment.Center)
+        )
+        Box(
+            modifier = Modifier
+                .align(Alignment.BottomStart)
+                .padding(10.dp)
+                .fillMaxWidth(0.55f)
+                .height(6.dp)
+                .clip(RoundedCornerShape(3.dp))
+                .background(MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
+        )
+    }
+}
+
+/**
+ * Mini "q w e" key-row previews, matching Desh's Effects cards exactly: a
+ * 3-column row (None/Ripple/Glow), no caption text — the mini keyboard
+ * preview alone communicates each option, filling almost the entire card.
+ * Rendered with real Compose drawing (no bitmap assets) so each option
+ * shows exactly what it'll look like on the real keyboard.
  */
 @Composable
 private fun EffectsGrid(selected: KeyEffect, palette: KeyColorPalette, onSelect: (KeyEffect) -> Unit) {
-    Column(
-        modifier = Modifier.padding(horizontal = 16.dp),
-        verticalArrangement = Arrangement.spacedBy(12.dp)
+    Row(
+        horizontalArrangement = Arrangement.spacedBy(10.dp),
+        modifier = Modifier.padding(horizontal = 16.dp).fillMaxWidth()
     ) {
-        KeyEffect.entries.chunked(2).forEach { rowEffects ->
-            Row(
-                horizontalArrangement = Arrangement.spacedBy(12.dp),
-                modifier = Modifier.fillMaxWidth()
+        KeyEffect.entries.forEach { effect ->
+            val isSelected = effect == selected
+            Box(
+                modifier = Modifier
+                    .weight(1f)
+                    .aspectRatio(1.35f)
+                    .clip(RoundedCornerShape(14.dp))
+                    .border(
+                        width = if (isSelected) 2.dp else 1.dp,
+                        color = if (isSelected) palette.accent else MaterialTheme.colorScheme.outlineVariant,
+                        shape = RoundedCornerShape(14.dp)
+                    )
+                    .background(Color(0xFF1E1E1E))
+                    .clickable { onSelect(effect) }
+                    .padding(8.dp),
+                contentAlignment = Alignment.Center
             ) {
-                rowEffects.forEach { effect ->
-                    val isSelected = effect == selected
-                    Column(
-                        modifier = Modifier
-                            .weight(1f)
-                            .clip(RoundedCornerShape(14.dp))
-                            .border(
-                                width = if (isSelected) 2.dp else 1.dp,
-                                color = if (isSelected) palette.accent else MaterialTheme.colorScheme.outlineVariant,
-                                shape = RoundedCornerShape(14.dp)
-                            )
-                            .background(Color(0xFF1E1E1E))
-                            .clickable { onSelect(effect) }
-                    ) {
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .height(64.dp)
-                                .padding(10.dp),
-                            horizontalArrangement = Arrangement.spacedBy(6.dp)
-                        ) {
-                            listOf("q", "w", "e").forEach { letter ->
-                                EffectPreviewKey(letter, effect, palette.accent, Modifier.weight(1f))
-                            }
-                        }
-                        Text(
-                            effect.label,
-                            fontSize = 12.5.sp,
-                            fontWeight = FontWeight.SemiBold,
-                            color = Color.White,
-                            modifier = Modifier.padding(10.dp, 0.dp, 10.dp, 10.dp)
-                        )
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(5.dp),
+                    modifier = Modifier.fillMaxSize()
+                ) {
+                    listOf("q", "w", "e").forEach { letter ->
+                        EffectPreviewKey(letter, effect, palette.accent, Modifier.weight(1f).fillMaxHeight())
                     }
-                }
-                if (rowEffects.size == 1) {
-                    Box(modifier = Modifier.weight(1f))
                 }
             }
         }
@@ -494,7 +569,7 @@ private fun EffectPreviewKey(letter: String, effect: KeyEffect, accent: Color, m
             .background(Color(0xFF3A3A3A)),
         contentAlignment = Alignment.Center
     ) {
-        Text(letter, color = Color.White, fontSize = 15.sp)
+        Text(letter, color = Color.White, fontSize = 14.sp)
     }
 }
 
