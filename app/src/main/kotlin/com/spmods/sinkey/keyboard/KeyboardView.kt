@@ -217,7 +217,8 @@ private fun Modifier.keyEffectDecoration(colors: KeyboardColors, keyShape: Round
  */
 private fun Modifier.keyGlowPulse(
     colors: KeyboardColors,
-    pressed: Boolean
+    pressed: Boolean,
+    keyShape: RoundedCornerShape
 ): Modifier = composed {
     if (colors.keyEffect != com.spmods.sinkey.data.KeyEffect.GLOW) return@composed this
 
@@ -2703,7 +2704,7 @@ private fun RowScope.NumberedLetterKey(
             .clip(keyShape)
             .background(if (pressed) colors.keyBg.copy(alpha = 0.6f) else colors.keyBg)
             .keyEffectDecoration(colors, keyShape)
-            .keyGlowPulse(colors, pressed)
+            .keyGlowPulse(colors, pressed, keyShape)
             .let { m -> if (onPositioned != null) m.onGloballyPositioned(onPositioned) else m }
             .onSizeChanged { keyWidthPx = it.width }
             .pointerInput(alternates) {
@@ -2906,7 +2907,7 @@ private fun RowScope.LetterKey(
             .clip(keyShape)
             .background(if (pressed) colors.keyBg.copy(alpha = 0.6f) else colors.keyBg)
             .keyEffectDecoration(colors, keyShape)
-            .keyGlowPulse(colors, pressed)
+            .keyGlowPulse(colors, pressed, keyShape)
             .let { m -> if (onPositioned != null) m.onGloballyPositioned(onPositioned) else m }
             .onSizeChanged { keyWidthPx = it.width }
             .pointerInput(alternates) {
