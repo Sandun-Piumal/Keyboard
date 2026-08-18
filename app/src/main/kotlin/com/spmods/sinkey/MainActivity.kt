@@ -56,6 +56,8 @@ import com.spmods.sinkey.data.ThemeMode
 import com.spmods.sinkey.keyboard.KeyboardView
 import com.spmods.sinkey.ui.screens.HomeScreen
 import com.spmods.sinkey.ui.screens.KeyboardHeightScreen
+import com.spmods.sinkey.ui.screens.PhotoCropScreen
+import com.spmods.sinkey.ui.screens.PhotoEditThemeScreen
 import com.spmods.sinkey.ui.screens.SettingsScreen
 import com.spmods.sinkey.ui.screens.ThemesScreen
 import com.spmods.sinkey.ui.theme.SinKeyTheme
@@ -68,6 +70,18 @@ private val DeshGreen = Color(0xFF1B5E37)
 private enum class Tab { HOME, THEMES, SETTINGS }
 
 private enum class SettingsSubScreen { MAIN, KEYBOARD_HEIGHT }
+
+/**
+ * "My themes" custom-photo flow steps, layered the same way as
+ * SettingsSubScreen above: NONE = normal Themes tab; CROP = the "Adjust the
+ * frame" screen right after the system photo picker returns a raw Uri;
+ * EDIT = the "Edit theme" (blur/brightness) screen after Next is tapped on
+ * the crop screen. Held as a separate enum from SettingsSubScreen since
+ * this flow can only ever be entered from the Themes tab, and keeping it
+ * separate avoids a combinatorial MAIN/KEYBOARD_HEIGHT × NONE/CROP/EDIT
+ * cross-product to reason about.
+ */
+private enum class PhotoEditStep { NONE, CROP, EDIT }
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -104,6 +118,14 @@ class MainActivity : ComponentActivity() {
 private fun SinKeyApp(prefs: PreferencesManager) {
     var tab by remember { mutableStateOf(Tab.HOME) }
     var settingsSubScreen by remember { mutableStateOf(SettingsSubScreen.MAIN) }
+    var photoEditStep by remember { mutableStateOf(PhotoEditStep.NONE) }
+    // Raw picker Uri decoded to a Bitmap (CROP step's source), then the
+    // user-cropped result (EDIT step's source) — both held only for the
+    // duration of this in-progress flow, never persisted directly; only
+    // Done's final blur/brightness + cropped-and-saved photo get written
+    // to PreferencesManager.
+    var rawPickedBitmap by remember { mutableStateOf<Bitmap?>(null) }
+    var croppedBitmap by remember { mutableStateOf<Bitmap?>(null) }
     var showKeyboardPreview by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
 
@@ -126,6 +148,8 @@ private fun SinKeyApp(prefs: PreferencesManager) {
     val keyColorPalette by prefs.keyColorPalette.collectAsState(initial = KeyColorPalette.DEFAULT)
     val keyEffect by prefs.keyEffect.collectAsState(initial = KeyEffect.NONE)
     val customBackgroundUri by prefs.customBackgroundUri.collectAsState(initial = null)
+    val customBackgroundBlur by prefs.customBackgroundBlur.collectAsState(initial = 0f)
+    val customBackgroundBrightness by prefs.customBackgroundBrightness.collectAsState(initial = 0.5f)
     val backgroundStyle by prefs.backgroundStyle.collectAsState(initial = com.spmods.sinkey.data.BackgroundStyle.NONE)
     val materialYouEnabled by prefs.materialYouEnabled.collectAsState(initial = false)
     val typingAnimation by prefs.typingAnimation.collectAsState(initial = com.spmods.sinkey.data.TypingAnimation.NONE)
@@ -172,18 +196,23 @@ private fun SinKeyApp(prefs: PreferencesManager) {
         contract = ActivityResultContracts.PickVisualMedia()
     ) { uri: Uri? ->
         if (uri == null) return@rememberLauncherForActivityResult
-        // Persist read access across app/device restarts — without this,
-        // the Uri stored in DataStore would throw SecurityException the
-        // next time anything (this screen's preview decode, or the
-        // keyboard's KeyboardCustomBackground) tries to open it after the
-        // process that received it from the picker has died.
-        runCatching {
-            context.contentResolver.takePersistableUriPermission(
-                uri,
-                android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION
-            )
+        // No takePersistableUriPermission needed here anymore — the crop
+        // flow below decodes this Uri once, crops it, and saves the result
+        // as our own app-internal file (see saveCroppedBackground), so
+        // customBackgroundUri ends up pointing at a file:// path we own
+        // rather than this picker Uri, which only needs to survive long
+        // enough for the CROP/EDIT steps in this same session.
+        scope.launch {
+            val bitmap = withContext(Dispatchers.IO) {
+                runCatching {
+                    context.contentResolver.openInputStream(uri)?.use { BitmapFactory.decodeStream(it) }
+                }.getOrNull()
+            }
+            if (bitmap != null) {
+                rawPickedBitmap = bitmap
+                photoEditStep = PhotoEditStep.CROP
+            }
         }
-        scope.launch { prefs.setCustomBackgroundUri(uri.toString()) }
     }
 
     // ── "Typing Animation" DIY custom image: same picker/preview pattern
@@ -229,6 +258,17 @@ private fun SinKeyApp(prefs: PreferencesManager) {
         BackHandler { showKeyboardPreview = false }
     }
 
+    if (photoEditStep == PhotoEditStep.EDIT) {
+        BackHandler { photoEditStep = PhotoEditStep.CROP }
+    }
+
+    if (photoEditStep == PhotoEditStep.CROP) {
+        BackHandler {
+            photoEditStep = PhotoEditStep.NONE
+            rawPickedBitmap = null
+        }
+    }
+
     if (settingsSubScreen == SettingsSubScreen.KEYBOARD_HEIGHT) {
         BackHandler { settingsSubScreen = SettingsSubScreen.MAIN }
     }
@@ -241,9 +281,11 @@ private fun SinKeyApp(prefs: PreferencesManager) {
 
     Scaffold(
         floatingActionButton = {
-            // FAB only visible when keyboard preview is NOT shown
-            // (inside the preview itself there is no need for it)
-            if (!showKeyboardPreview) {
+            // FAB only visible when keyboard preview is NOT shown (inside
+            // the preview itself there is no need for it), and not during
+            // the Add Photo crop/edit flow (full-screen editors, same
+            // reasoning as bottomBar's condition above).
+            if (!showKeyboardPreview && photoEditStep == PhotoEditStep.NONE) {
                 FloatingActionButton(
                     onClick = { showKeyboardPreview = true },
                     containerColor = DeshGreen,
@@ -255,7 +297,7 @@ private fun SinKeyApp(prefs: PreferencesManager) {
             }
         },
         bottomBar = {
-            if (settingsSubScreen == SettingsSubScreen.MAIN && !showKeyboardPreview) {
+            if (settingsSubScreen == SettingsSubScreen.MAIN && photoEditStep == PhotoEditStep.NONE && !showKeyboardPreview) {
                 NavigationBar {
                     NavigationBarItem(
                         selected = tab == Tab.HOME,
@@ -289,6 +331,41 @@ private fun SinKeyApp(prefs: PreferencesManager) {
                 color = MaterialTheme.colorScheme.background
             ) {
                 when {
+                    photoEditStep == PhotoEditStep.CROP && rawPickedBitmap != null -> {
+                        PhotoCropScreen(
+                            sourceBitmap = rawPickedBitmap!!,
+                            onBack = {
+                                photoEditStep = PhotoEditStep.NONE
+                                rawPickedBitmap = null
+                            },
+                            onNext = { cropped ->
+                                croppedBitmap = cropped
+                                photoEditStep = PhotoEditStep.EDIT
+                            }
+                        )
+                    }
+                    photoEditStep == PhotoEditStep.EDIT && croppedBitmap != null -> {
+                        PhotoEditThemeScreen(
+                            croppedBitmap = croppedBitmap!!,
+                            initialShowKeyBorders = showKeyBorders,
+                            initialBlur = customBackgroundBlur,
+                            initialBrightness = customBackgroundBrightness,
+                            onBack = { photoEditStep = PhotoEditStep.CROP },
+                            onDone = { newShowKeyBorders, blur, brightness ->
+                                val finalBitmap = croppedBitmap!!
+                                scope.launch {
+                                    prefs.setShowKeyBorders(newShowKeyBorders)
+                                    prefs.setCustomBackgroundBlur(blur)
+                                    prefs.setCustomBackgroundBrightness(brightness)
+                                    val savedUri = saveCroppedBackground(context, finalBitmap)
+                                    prefs.setCustomBackgroundUri(savedUri)
+                                }
+                                photoEditStep = PhotoEditStep.NONE
+                                rawPickedBitmap = null
+                                croppedBitmap = null
+                            }
+                        )
+                    }
                     settingsSubScreen == SettingsSubScreen.KEYBOARD_HEIGHT -> {
                         KeyboardHeightScreen(
                             keyboardHeight = keyboardHeight,
@@ -396,3 +473,19 @@ private fun SinKeyApp(prefs: PreferencesManager) {
         }
     }
 }
+
+/**
+ * Saves the final cropped "My themes" photo to this app's internal files
+ * dir as a JPEG and returns a file:// Uri string suitable for
+ * PreferencesManager.setCustomBackgroundUri — self-owned storage means no
+ * persistable-permission dance is needed (unlike the raw picker Uri), and
+ * it survives exactly as long as the app's own data does.
+ */
+private suspend fun saveCroppedBackground(context: android.content.Context, bitmap: Bitmap): String =
+    withContext(Dispatchers.IO) {
+        val file = java.io.File(context.filesDir, "custom_background.jpg")
+        file.outputStream().use { out ->
+            bitmap.compress(Bitmap.CompressFormat.JPEG, 92, out)
+        }
+        Uri.fromFile(file).toString()
+    }
