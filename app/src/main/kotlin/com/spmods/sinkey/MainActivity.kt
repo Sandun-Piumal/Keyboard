@@ -395,7 +395,12 @@ private fun SinKeyApp(prefs: PreferencesManager) {
                                 )
                             )
                         },
-                        onClearCustomBackground = { scope.launch { prefs.setCustomBackgroundUri(null) } },
+                        onClearCustomBackground = {
+                            scope.launch {
+                                prefs.setCustomBackgroundUri(null)
+                                withContext(Dispatchers.IO) { cleanupOldBackgroundFiles(context) }
+                            }
+                        },
                         backgroundStyle = backgroundStyle,
                         onBackgroundStyleChange = { style -> scope.launch { prefs.setBackgroundStyle(style) } },
                         materialYouEnabled = materialYouEnabled,
@@ -480,12 +485,34 @@ private fun SinKeyApp(prefs: PreferencesManager) {
  * PreferencesManager.setCustomBackgroundUri — self-owned storage means no
  * persistable-permission dance is needed (unlike the raw picker Uri), and
  * it survives exactly as long as the app's own data does.
+ *
+ * IMPORTANT: the filename includes a timestamp rather than being fixed
+ * (e.g. always "custom_background.jpg"). Every place that reads this Uri
+ * (KeyboardCustomBackground's bitmap cache, MainActivity's "My themes" tile
+ * preview) keys its decode/cache off the Uri *string itself* via
+ * remember(uriString)/LaunchedEffect(uriString) — if re-applying a new
+ * photo always produced the exact same string, none of those would ever
+ * see a change and re-decode, so the old image would keep showing forever
+ * even though the file's bytes on disk did change. A unique filename per
+ * save makes the string itself the change signal. Old files are cleaned up
+ * best-effort (see cleanupOldBackgroundFiles) so this doesn't grow
+ * unbounded.
  */
 private suspend fun saveCroppedBackground(context: android.content.Context, bitmap: Bitmap): String =
     withContext(Dispatchers.IO) {
-        val file = java.io.File(context.filesDir, "custom_background.jpg")
+        cleanupOldBackgroundFiles(context)
+        val file = java.io.File(context.filesDir, "custom_background_${System.currentTimeMillis()}.jpg")
         file.outputStream().use { out ->
             bitmap.compress(Bitmap.CompressFormat.JPEG, 92, out)
         }
         Uri.fromFile(file).toString()
     }
+
+/** Deletes any previously-saved custom_background_*.jpg files, so re-applying a new photo doesn't leak the old ones forever. */
+private fun cleanupOldBackgroundFiles(context: android.content.Context) {
+    runCatching {
+        context.filesDir
+            .listFiles { f -> f.name.startsWith("custom_background_") && f.name.endsWith(".jpg") }
+            ?.forEach { it.delete() }
+    }
+}
