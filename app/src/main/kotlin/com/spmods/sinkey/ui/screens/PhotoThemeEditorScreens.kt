@@ -232,7 +232,15 @@ fun PhotoEditThemeScreen(
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(horizontal = 20.dp)
-                .aspectRatio(0.95f)
+                // Real keyboard aspect ratio: toolbar (48dp) + 3 letter
+                // rows + bottom row (48dp each, default height step) + row
+                // spacing + outer padding ≈ 278dp tall on a ~392dp-wide
+                // screen ≈ 1.41 width:height (see stepToKeyHeight/
+                // AppsMicBar's fixed 48dp in KeyboardView.kt) — this
+                // preview box was previously ~0.95 (near-square), which
+                // stretched every key into a tall rectangle instead of the
+                // real short, wide keyboard shape.
+                .aspectRatio(1.41f)
                 .clip(RoundedCornerShape(16.dp))
         ) {
             Image(
