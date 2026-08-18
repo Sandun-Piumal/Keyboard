@@ -549,6 +549,8 @@ internal fun KeyboardView(
         initial = com.spmods.sinkey.data.KeyEffect.NONE
     )
     val customBackgroundUri by prefsManager.customBackgroundUri.collectAsState(initial = null)
+    val customBackgroundBlur by prefsManager.customBackgroundBlur.collectAsState(initial = 0f)
+    val customBackgroundBrightness by prefsManager.customBackgroundBrightness.collectAsState(initial = 0.5f)
     val backgroundStyle by prefsManager.backgroundStyle.collectAsState(
         initial = com.spmods.sinkey.data.BackgroundStyle.NONE
     )
@@ -710,6 +712,8 @@ internal fun KeyboardView(
         customBackgroundUri?.let { uriString ->
             KeyboardCustomBackground(
                 uriString = uriString,
+                blur = customBackgroundBlur,
+                brightness = customBackgroundBrightness,
                 modifier = Modifier.matchParentSize()
             )
         }
