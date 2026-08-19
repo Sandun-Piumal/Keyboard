@@ -74,7 +74,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalContext
@@ -179,28 +178,17 @@ internal fun keyboardColors(
         accent = palette.accent,
         keyEffect = keyEffect,
         // "Colors" selection was previously a no-op on the real keyboard —
-        // keyboardColorsBase's spaceKeyBg is a fixed neutral gray/white
-        // regardless of palette, so accent only ever reached the one
-        // effect-overlay usage (colors.accent at KeyboardView's line
-        // ~1338) and never anything the user could actually see just by
-        // picking a card. Tinting the space bar pill is the same thing
-        // DeshKeyboard itself does (see the reference screenshots' Colors
-        // cards, where the accent shows as the space-bar-shaped bar under
-        // "Aa", not a tint on every letter key) — letter/number keys stay
-        // neutral so the keyboard doesn't turn into a wall of one color.
-        spaceKeyBg = if (palette == com.spmods.sinkey.data.KeyColorPalette.DEFAULT) {
-            base.spaceKeyBg
+        // keyboardColorsBase's keyText is a fixed neutral color regardless
+        // of palette, so accent only ever reached the one effect-overlay
+        // usage (colors.accent at KeyboardView's line ~1338) and never
+        // anything the user could actually see just by picking a card.
+        // Tinting the letter/number key *text* (not the key background —
+        // that stays neutral so the keyboard doesn't turn into a wall of
+        // one color) is what makes the choice visible on real keys.
+        keyText = if (palette == com.spmods.sinkey.data.KeyColorPalette.DEFAULT) {
+            base.keyText
         } else {
             palette.accent
-        },
-        spaceKeyText = if (palette == com.spmods.sinkey.data.KeyColorPalette.DEFAULT) {
-            base.spaceKeyText
-        } else {
-            // Space bar text needs to stay legible against whatever accent
-            // color got chosen — pick black or white by the accent's own
-            // luminance rather than hardcoding one, since accents span
-            // both light (amber) and dark (royal purple) colors.
-            if (palette.accent.luminance() > 0.5f) Color.Black else Color.White
         },
     )
 }
