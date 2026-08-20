@@ -1,6 +1,8 @@
 package com.spmods.sinkey.ui.screens
 
 import androidx.compose.foundation.Image
+import androidx.compose.foundation.isSystemInDarkTheme
+import com.spmods.sinkey.R
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -40,6 +42,7 @@ import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -183,7 +186,12 @@ fun ThemesScreen(
         ColorsGrid(selected = keyColorPalette, onSelect = onKeyColorPaletteChange)
 
         SectionHeader("Effects")
-        EffectsGrid(selected = keyEffect, palette = keyColorPalette, onSelect = onKeyEffectChange)
+        val effectsIsDark = when (currentMode) {
+            ThemeMode.LIGHT -> false
+            ThemeMode.DARK -> true
+            ThemeMode.SYSTEM -> isSystemInDarkTheme()
+        }
+        EffectsGrid(selected = keyEffect, palette = keyColorPalette, onSelect = onKeyEffectChange, isDark = effectsIsDark)
 
         SectionHeader("Backgrounds")
         Text(
@@ -519,13 +527,33 @@ private fun ColorSwatchCard(
  * shows exactly what it'll look like on the real keyboard.
  */
 @Composable
-private fun EffectsGrid(selected: KeyEffect, palette: KeyColorPalette, onSelect: (KeyEffect) -> Unit) {
+/**
+ * Effects section: shows Desh's own static preview images (extracted from
+ * its APK — res/drawable/{mech_glow,ripple_theme_preview}_theme_{dark,
+ * light}.webp) rather than a live Compose re-render. Desh itself uses
+ * fixed screenshot-like images for these cards, not a live animation
+ * preview, so matching that means matching the actual images, picked by
+ * whichever of the two variants suits the currently-selected app theme
+ * (light/dark/system).
+ */
+@Composable
+private fun EffectsGrid(
+    selected: KeyEffect,
+    palette: KeyColorPalette,
+    onSelect: (KeyEffect) -> Unit,
+    isDark: Boolean
+) {
     Row(
         horizontalArrangement = Arrangement.spacedBy(10.dp),
         modifier = Modifier.padding(horizontal = 16.dp).fillMaxWidth()
     ) {
         KeyEffect.entries.forEach { effect ->
             val isSelected = effect == selected
+            val previewRes = when (effect) {
+                KeyEffect.NONE -> null
+                KeyEffect.GLOW -> if (isDark) R.drawable.mech_glow_theme_dark else R.drawable.mech_glow_theme_light
+                KeyEffect.RIPPLE -> if (isDark) R.drawable.ripple_theme_preview_dark else R.drawable.ripple_theme_preview_light
+            }
             Box(
                 modifier = Modifier
                     .weight(1f)
@@ -537,48 +565,54 @@ private fun EffectsGrid(selected: KeyEffect, palette: KeyColorPalette, onSelect:
                         shape = RoundedCornerShape(14.dp)
                     )
                     .background(Color(0xFF1E1E1E))
-                    .clickable { onSelect(effect) }
-                    .padding(8.dp),
+                    .clickable { onSelect(effect) },
                 contentAlignment = Alignment.Center
             ) {
-                Row(
-                    horizontalArrangement = Arrangement.spacedBy(5.dp),
-                    modifier = Modifier.fillMaxSize()
-                ) {
-                    listOf("q", "w", "e").forEach { letter ->
-                        EffectPreviewKey(letter, effect, palette.accent, Modifier.weight(1f).fillMaxHeight())
+                if (previewRes != null) {
+                    // Desh's mech_glow/ripple_theme_preview .webp assets are
+                    // genuinely animated (looping glow/ripple), not static
+                    // screenshots — AnimatedDrawableResource plays them via
+                    // AnimatedImageDrawable; plain Image()/painterResource()
+                    // would silently freeze on frame 1.
+                    if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.P) {
+                        com.spmods.sinkey.keyboard.AnimatedDrawableResource(
+                            resId = previewRes,
+                            contentDescription = effect.label,
+                            modifier = Modifier.fillMaxSize().clip(RoundedCornerShape(14.dp))
+                        )
+                    } else {
+                        Image(
+                            painter = painterResource(previewRes),
+                            contentDescription = effect.label,
+                            contentScale = ContentScale.Crop,
+                            modifier = Modifier.fillMaxSize().clip(RoundedCornerShape(14.dp))
+                        )
+                    }
+                } else {
+                    // NONE has no corresponding Desh asset (it's not one of
+                    // its four exported theme-preview images) — a flat q/w/e
+                    // row stands in, same visual language as the images'
+                    // own key style, just without any glow/ripple styling.
+                    Row(
+                        horizontalArrangement = Arrangement.spacedBy(5.dp),
+                        modifier = Modifier.fillMaxSize().padding(8.dp)
+                    ) {
+                        listOf("q", "w", "e").forEach { letter ->
+                            Box(
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .fillMaxHeight()
+                                    .clip(RoundedCornerShape(6.dp))
+                                    .background(Color(0xFF3A3A3A)),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Text(letter, color = Color.White, fontSize = 14.sp)
+                            }
+                        }
                     }
                 }
             }
         }
-    }
-}
-
-@Composable
-private fun EffectPreviewKey(letter: String, effect: KeyEffect, accent: Color, modifier: Modifier = Modifier) {
-    val shape = RoundedCornerShape(6.dp)
-    val decorated = when (effect) {
-        KeyEffect.NONE -> modifier
-        KeyEffect.GLOW -> modifier.shadow(elevation = 6.dp, shape = shape, ambientColor = accent, spotColor = accent)
-        // Static preview for Ripple — the real animated expanding-circle
-        // version runs on the actual keyboard; this card just needs to
-        // communicate the *idea* of the style at a glance.
-        KeyEffect.RIPPLE -> modifier.drawBehind {
-            drawCircle(
-                color = accent.copy(alpha = 0.35f),
-                radius = size.minDimension * 0.55f,
-                center = androidx.compose.ui.geometry.Offset(size.width / 2f, size.height / 2f)
-            )
-        }
-    }
-    Box(
-        modifier = decorated
-            .fillMaxSize()
-            .clip(shape)
-            .background(Color(0xFF3A3A3A)),
-        contentAlignment = Alignment.Center
-    ) {
-        Text(letter, color = Color.White, fontSize = 14.sp)
     }
 }
 
