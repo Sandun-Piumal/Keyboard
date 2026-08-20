@@ -226,3 +226,45 @@ private fun AnimatedGifBackground(uriString: String, modifier: Modifier = Modifi
         }
     )
 }
+
+/**
+ * Plays an animated drawable resource (animated WebP or GIF) full-bleed,
+ * looping forever — same AnimatedImageDrawable mechanism as
+ * AnimatedGifBackground above, just decoding from a raw drawable resource
+ * ID instead of a picked-photo Uri. Used for the Effects section's preview
+ * cards: Desh's own mech_glow/ripple_theme_preview .webp assets are
+ * genuinely animated (87-108 frames each), not static screenshots as
+ * originally assumed — a plain Compose Image()/painterResource() only ever
+ * decodes and shows their first frame, silently dropping the animation.
+ * API 28+ only; callers should fall back to a static painterResource below
+ * that.
+ */
+@androidx.annotation.RequiresApi(android.os.Build.VERSION_CODES.P)
+@Composable
+internal fun AnimatedDrawableResource(
+    @androidx.annotation.DrawableRes resId: Int,
+    modifier: Modifier = Modifier,
+    contentDescription: String? = null
+) {
+    val context = LocalContext.current
+    androidx.compose.ui.viewinterop.AndroidView(
+        modifier = modifier,
+        factory = { ctx ->
+            android.widget.ImageView(ctx).apply {
+                scaleType = android.widget.ImageView.ScaleType.CENTER_CROP
+                this.contentDescription = contentDescription
+            }
+        },
+        update = { imageView ->
+            runCatching {
+                val source = android.graphics.ImageDecoder.createSource(context.resources, resId)
+                val drawable = android.graphics.ImageDecoder.decodeDrawable(source)
+                imageView.setImageDrawable(drawable)
+                (drawable as? android.graphics.drawable.AnimatedImageDrawable)?.apply {
+                    repeatCount = android.graphics.drawable.AnimatedImageDrawable.REPEAT_INFINITE
+                    start()
+                }
+            }
+        }
+    )
+}
