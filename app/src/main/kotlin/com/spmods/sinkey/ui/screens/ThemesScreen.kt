@@ -520,14 +520,6 @@ private fun ColorSwatchCard(
 }
 
 /**
- * Mini "q w e" key-row previews, matching Desh's Effects cards exactly: a
- * 3-column row (None/Ripple/Glow), no caption text — the mini keyboard
- * preview alone communicates each option, filling almost the entire card.
- * Rendered with real Compose drawing (no bitmap assets) so each option
- * shows exactly what it'll look like on the real keyboard.
- */
-@Composable
-/**
  * Effects section: shows Desh's own static preview images (extracted from
  * its APK — res/drawable/{mech_glow,ripple_theme_preview}_theme_{dark,
  * light}.webp) rather than a live Compose re-render. Desh itself uses
