@@ -556,7 +556,13 @@ private fun EffectsGrid(
                         color = if (isSelected) palette.accent else MaterialTheme.colorScheme.outlineVariant,
                         shape = RoundedCornerShape(14.dp)
                     )
-                    .background(Color(0xFF1E1E1E))
+                    // Matches whichever base look the Ripple/Glow images
+                    // themselves show at rest (near-black in dark mode,
+                    // light gray in light mode) — previously a fixed dark
+                    // color regardless of isDark, so the None card looked
+                    // inconsistent with the theme the other two cards were
+                    // actually showing.
+                    .background(if (isDark) Color(0xFF1E1E1E) else Color(0xFFE3E3E6))
                     .clickable { onSelect(effect) },
                 contentAlignment = Alignment.Center
             ) {
@@ -583,8 +589,9 @@ private fun EffectsGrid(
                 } else {
                     // NONE has no corresponding Desh asset (it's not one of
                     // its four exported theme-preview images) — a flat q/w/e
-                    // row stands in, same visual language as the images'
-                    // own key style, just without any glow/ripple styling.
+                    // row stands in, matching the same light/dark key style
+                    // the Ripple/Glow images themselves show at rest, just
+                    // without any glow/ripple styling on top.
                     Row(
                         horizontalArrangement = Arrangement.spacedBy(5.dp),
                         modifier = Modifier.fillMaxSize().padding(8.dp)
@@ -595,10 +602,10 @@ private fun EffectsGrid(
                                     .weight(1f)
                                     .fillMaxHeight()
                                     .clip(RoundedCornerShape(6.dp))
-                                    .background(Color(0xFF3A3A3A)),
+                                    .background(if (isDark) Color(0xFF3A3A3A) else Color.White),
                                 contentAlignment = Alignment.Center
                             ) {
-                                Text(letter, color = Color.White, fontSize = 14.sp)
+                                Text(letter, color = if (isDark) Color.White else Color(0xFF2B2B2B), fontSize = 14.sp)
                             }
                         }
                     }
