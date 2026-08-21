@@ -227,42 +227,71 @@ private fun Modifier.keyEffectDecoration(colors: KeyboardColors, keyShape: Round
  * meant to bleed softly over the key faces themselves.
  */
 @Composable
+/**
+ * KeyEffect.GLOW, real Desh "Mech Glow" behavior — re-derived by inspecting
+ * mech_glow_theme_dark.webp frame-by-frame (the original implementation
+ * here was a guess based on the word "glow" and turned out wrong): it is
+ * NOT a soft blurred blob. It's a colored *border outline* that traces
+ * around the touched key, then visibly spreads outward to neighboring
+ * keys' borders (both the row it's in and the row above/below) like a
+ * wipe/wave, fading out — and the wave's own color hue-shifts over time
+ * (red → yellow → green in the reference, i.e. a slow hue rotation), not a
+ * per-key independent color.
+ */
+@Composable
 private fun MechGlowOverlay(
     origin: Offset?,
     triggerId: Int,
+    keyPositions: List<KeyPoint>,
+    keySizes: Map<Char, androidx.compose.ui.geometry.Size>,
     modifier: Modifier = Modifier
 ) {
     if (origin == null) return
 
     var hue by remember { mutableStateOf(0f) }
-    val glowColor = remember(hue) { Color(android.graphics.Color.HSVToColor(floatArrayOf(hue, 1f, 1f))) }
     val progress = remember { Animatable(0f) }
 
     LaunchedEffect(triggerId) {
-        hue = (hue + 50f) % 360f
+        // Slow rotation per tap (not a full 360 sweep within one wave's
+        // lifetime — the reference shows maybe a 60-90° drift red→yellow
+        // across ~1.5s, so successive taps gradually cycle through hues).
+        hue = (hue + 45f) % 360f
         progress.snapTo(0f)
         progress.animateTo(1f, animationSpec = tween(1500, easing = androidx.compose.animation.core.LinearOutSlowInEasing))
     }
 
-    if (progress.value >= 1f) return
+    if (progress.value >= 1f || keySizes.isEmpty()) return
 
-    Canvas(modifier = modifier.blur(28.dp)) {
-        // Fixed-size soft blob (not travelling across the whole board like
-        // RIPPLE) — width is a few keys' worth, matching the "wash over
-        // neighboring keys" look from the reference recording, and it
-        // simply fades out over the 1500ms rather than expanding.
-        val blobRadiusPx = size.width * 0.22f
-        val alpha = (1f - progress.value).coerceIn(0f, 1f) * 0.85f
-        if (alpha > 0.01f) {
-            drawCircle(
-                brush = androidx.compose.ui.graphics.Brush.radialGradient(
-                    colors = listOf(glowColor.copy(alpha = alpha), glowColor.copy(alpha = 0f)),
-                    center = origin,
-                    radius = blobRadiusPx
-                ),
-                radius = blobRadiusPx,
-                center = origin
-            )
+    Canvas(modifier = modifier) {
+        val maxWaveRadiusPx = size.width * 0.35f
+        val waveFrontPx = progress.value * maxWaveRadiusPx
+        // Band width the outline stays visible within, in px — keys well
+        // outside this band (already passed, or not yet reached) stay
+        // undrawn, matching the reference's localized wipe rather than a
+        // board-wide effect.
+        val bandWidthPx = 0.5f * maxWaveRadiusPx
+        val waveColor = Color(android.graphics.Color.HSVToColor(floatArrayOf(hue, 0.9f, 1f)))
+
+        keyPositions.forEach { kp ->
+            val sz = keySizes[kp.char] ?: return@forEach
+            val dx = kp.x - origin.x
+            val dy = kp.y - origin.y
+            val dist = kotlin.math.sqrt(dx * dx + dy * dy)
+            val distFromFront = kotlin.math.abs(dist - waveFrontPx)
+            if (distFromFront < bandWidthPx) {
+                val bandStrength = 1f - (distFromFront / bandWidthPx)
+                val overallFade = 1f - progress.value
+                val alpha = (bandStrength * overallFade).coerceIn(0f, 1f)
+                if (alpha > 0.02f) {
+                    drawRoundRect(
+                        color = waveColor.copy(alpha = alpha),
+                        topLeft = Offset(kp.x - sz.width / 2f, kp.y - sz.height / 2f),
+                        size = Size(sz.width, sz.height),
+                        cornerRadius = androidx.compose.ui.geometry.CornerRadius(8.dp.toPx()),
+                        style = androidx.compose.ui.graphics.drawscope.Stroke(width = 2.dp.toPx())
+                    )
+                }
+            }
         }
     }
 }
@@ -278,6 +307,18 @@ private fun MechGlowOverlay(
  * branch above), not chained per-key like the old implementation.
  */
 @Composable
+/**
+ * KeyEffect.RIPPLE, real Desh "Colorful Ripple" behavior — re-derived by
+ * inspecting ripple_theme_preview_dark.webp frame-by-frame (the original
+ * implementation here guessed a full 5-hue rainbow palette and a huge
+ * board-wide radius; neither matches the real asset). The actual glow is:
+ * a single warm color (amber/orange, staying within a narrow hue band —
+ * not cycling through the full spectrum), fairly small and localized
+ * (roughly a couple of keys wide, not the whole board), that drifts/
+ * sweeps diagonally from its origin rather than expanding as a large
+ * uniform circle.
+ */
+@Composable
 private fun ColorfulRippleOverlay(
     origin: Offset?,
     triggerId: Int,
@@ -287,9 +328,10 @@ private fun ColorfulRippleOverlay(
 ) {
     if (origin == null) return
 
-    // Same 5-color palette Desh's ColorfulRippleIKeyboardVisualEffectRenderer
-    // ships (h:[F] hue array), one entry picked at random per tap.
-    val paletteHues = remember { floatArrayOf(0f, 72f, 144f, 216f, 288f) }
+    // Narrow warm hue band (amber/orange), not the full rainbow — matches
+    // the reference asset's consistent warm-glow look across its whole
+    // cycle.
+    val paletteHues = remember { floatArrayOf(28f, 34f, 40f, 46f) }
     var rippleColor by remember { mutableStateOf(Color.White) }
     val progress = remember { Animatable(0f) }
 
@@ -305,7 +347,10 @@ private fun ColorfulRippleOverlay(
     if (progress.value >= 1f) return
 
     Canvas(modifier = modifier) {
-        val maxRadiusPx = size.width * 1.2f
+        // Localized — roughly 2 keys wide, not board-wide (was 1.2x full
+        // canvas width before, which read as a huge rainbow burst instead
+        // of the small warm glow the reference shows).
+        val maxRadiusPx = size.width * 0.28f
         // Overshoot easing can push progress slightly above 1f mid-animation
         // before settling — coerce only the *radius* so the circle doesn't
         // draw outside a sane bound, while alpha still reads the raw value.
@@ -1326,13 +1371,17 @@ internal fun KeyboardView(
                         }
 
                         if (glowActive) {
-                            // Desh-style mech glow: a soft blurred blob
-                            // centered on the touched key, hue rotating per
-                            // tap. Same shared pressOrigin/pressTriggerId as
-                            // every other press-reactive overlay here.
+                            // Desh-style mech glow: a traveling colored
+                            // outline wave around key borders (re-derived
+                            // from the real animated preview asset — see
+                            // MechGlowOverlay's doc comment), hue rotating
+                            // per tap. Same shared pressOrigin/pressTriggerId
+                            // as every other press-reactive overlay here.
                             MechGlowOverlay(
                                 origin = pressOrigin,
                                 triggerId = pressTriggerId,
+                                keyPositions = keyPositions.values.toList(),
+                                keySizes = keySizes,
                                 modifier = Modifier.matchParentSize()
                             )
                         }
