@@ -222,12 +222,7 @@ private fun Modifier.keyEffectDecoration(colors: KeyboardColors, keyShape: Round
  * rotates +50° (mod 360°, full saturation/value) from the last press's hue,
  * over 1500ms, so consecutive taps visibly cycle through a rainbow rather
  * than glowing a single fixed accent color. Board-wide overlay (same
- * pressOrigin/pressTriggerId plumbing as ColorfulRippleOverlay/
- * KeyboardLedRipple), drawn UNCLIPPED — unlike RIPPLE, Desh's glow is
- * meant to bleed softly over the key faces themselves.
- */
-@Composable
-/**
+ /**
  * KeyEffect.GLOW, real Desh "Mech Glow" behavior — re-derived by inspecting
  * mech_glow_theme_dark.webp frame-by-frame (the original implementation
  * here was a guess based on the word "glow" and turned out wrong): it is
@@ -286,7 +281,7 @@ private fun MechGlowOverlay(
                     drawRoundRect(
                         color = waveColor.copy(alpha = alpha),
                         topLeft = Offset(kp.x - sz.width / 2f, kp.y - sz.height / 2f),
-                        size = Size(sz.width, sz.height),
+                        size = androidx.compose.ui.geometry.Size(sz.width, sz.height),
                         cornerRadius = androidx.compose.ui.geometry.CornerRadius(8.dp.toPx()),
                         style = androidx.compose.ui.graphics.drawscope.Stroke(width = 2.dp.toPx())
                     )
@@ -297,16 +292,6 @@ private fun MechGlowOverlay(
 }
 
 /**
- * KeyEffect.RIPPLE, Desh "Colorful Ripple" behavior: a single radial glow
- * — random color per tap, drawn from the same palette Desh ships — expands
- * from the touched key's position out across the *entire keyboard width*
- * (radius grows to 1.2x canvas width, not just one key), over 2000ms, using
- * an overshoot-then-settle interpolator so it slightly overshoots full size
- * before easing back, fading alpha to 0 as it goes. Board-wide overlay, so
- * it's drawn once at the KeyboardView level (see the colorfulRippleActive
- * branch above), not chained per-key like the old implementation.
- */
-@Composable
 /**
  * KeyEffect.RIPPLE, real Desh "Colorful Ripple" behavior — re-derived by
  * inspecting ripple_theme_preview_dark.webp frame-by-frame (the original
