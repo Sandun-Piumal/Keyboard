@@ -535,11 +535,16 @@ private fun EffectsGrid(
     onSelect: (KeyEffect) -> Unit,
     isDark: Boolean
 ) {
-    Row(
-        horizontalArrangement = Arrangement.spacedBy(10.dp),
-        modifier = Modifier.padding(horizontal = 16.dp).fillMaxWidth()
+    Column(
+        modifier = Modifier.padding(horizontal = 16.dp),
+        verticalArrangement = Arrangement.spacedBy(10.dp)
     ) {
-        KeyEffect.entries.forEach { effect ->
+      KeyEffect.entries.chunked(3).forEach { row ->
+        Row(
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
+            modifier = Modifier.fillMaxWidth()
+        ) {
+        row.forEach { effect ->
             val isSelected = effect == selected
             val previewRes = when (effect) {
                 // Desh has no dedicated "None" preview asset (there's
@@ -552,6 +557,18 @@ private fun EffectsGrid(
                 KeyEffect.NONE -> if (isDark) R.drawable.none_theme_preview_dark else R.drawable.none_theme_preview_light
                 KeyEffect.GLOW -> if (isDark) R.drawable.mech_glow_theme_dark else R.drawable.mech_glow_theme_light
                 KeyEffect.RIPPLE -> if (isDark) R.drawable.ripple_theme_preview_dark else R.drawable.ripple_theme_preview_light
+                // WAVE/CYCLE/STARS moved here from the old "LED / Neon
+                // Lighting" section — same underlying animation
+                // (KeyboardLedRipple), just now selected from this grid
+                // instead of a separate LedPattern preference. Their
+                // preview stills are custom-built (not extracted from
+                // Desh's APK, since Desh has no such effects) by rendering
+                // this same key-border-glow math over the None card's own
+                // base screenshot, so the still frame matches what the
+                // live effect actually draws rather than being a mock.
+                KeyEffect.WAVE -> if (isDark) R.drawable.wave_theme_preview_dark else R.drawable.wave_theme_preview_light
+                KeyEffect.CYCLE -> if (isDark) R.drawable.cycle_theme_preview_dark else R.drawable.cycle_theme_preview_light
+                KeyEffect.STARS -> if (isDark) R.drawable.stars_theme_preview_dark else R.drawable.stars_theme_preview_light
             }
             Box(
                 modifier = Modifier
@@ -575,11 +592,15 @@ private fun EffectsGrid(
             ) {
                 if (previewRes != null) {
                     // Only GLOW/RIPPLE are genuinely animated (looping
-                    // glow/ripple) — NONE's asset is a plain static frame
-                    // (see previewRes selection above), so it always uses
-                    // the non-animated Image() path regardless of API
-                    // level, same as the <API 28 fallback below.
-                    if (effect != KeyEffect.NONE && android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.P) {
+                    // glow/ripple) assets. NONE and the WAVE/CYCLE/STARS
+                    // previews (single-frame stills captured mid-animation
+                    // from the same border-glow math the live effect uses —
+                    // see previewRes selection above) all use the plain
+                    // non-animated Image() path, same as the <API 28
+                    // fallback below.
+                    if ((effect == KeyEffect.GLOW || effect == KeyEffect.RIPPLE) &&
+                        android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.P
+                    ) {
                         com.spmods.sinkey.keyboard.AnimatedDrawableResource(
                             resId = previewRes,
                             contentDescription = effect.label,
@@ -596,6 +617,8 @@ private fun EffectsGrid(
                 }
             }
         }
+        }
+      }
     }
 }
 
@@ -891,41 +914,6 @@ private fun LedPatternGrid(selected: LedPattern, palette: KeyColorPalette, onSel
                                                 .border(
                                                     1.5.dp,
                                                     palette.accent.copy(alpha = 1f - i * 0.28f),
-                                                    RoundedCornerShape(4.dp)
-                                                )
-                                        )
-                                    }
-                                }
-                                LedPattern.WAVE -> Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                                    repeat(3) { i ->
-                                        Box(
-                                            modifier = Modifier
-                                                .size(14.dp)
-                                                .border(
-                                                    1.5.dp,
-                                                    palette.accent.copy(alpha = if (i == 1) 1f else 0.35f),
-                                                    RoundedCornerShape(4.dp)
-                                                )
-                                        )
-                                    }
-                                }
-                                LedPattern.CYCLE -> Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                                    listOf(0f, 120f, 240f).forEach { hue ->
-                                        Box(
-                                            modifier = Modifier
-                                                .size(14.dp)
-                                                .border(1.5.dp, Color.hsv(hue, 0.85f, 1f), RoundedCornerShape(4.dp))
-                                        )
-                                    }
-                                }
-                                LedPattern.STARS -> Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                                    repeat(3) { i ->
-                                        Box(
-                                            modifier = Modifier
-                                                .size(14.dp)
-                                                .border(
-                                                    1.5.dp,
-                                                    palette.accent.copy(alpha = if (i == 0 || i == 2) 1f else 0.3f),
                                                     RoundedCornerShape(4.dp)
                                                 )
                                         )
