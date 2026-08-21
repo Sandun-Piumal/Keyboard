@@ -157,6 +157,14 @@ internal data class KeyboardColors(
     // separate params threaded through ~15 call sites. NONE = original
     // flat-background rendering, unchanged from before this feature existed.
     val keyEffect: com.spmods.sinkey.data.KeyEffect = com.spmods.sinkey.data.KeyEffect.NONE,
+    // Settings screen "Key opacity" (0f..1f, default 1f) — multiplies the
+    // alpha of keyBg/specialKeyBg/spaceKeyBg only. Deliberately NOT applied
+    // to keyText/specialKeyText/spaceKeyText/subText or to cardBg (sticker/
+    // clipboard tile surfaces stay fully readable regardless), and NOT
+    // applied to `bg` (already handled separately by transparentBg above).
+    // At the default 1f every .copy(alpha = keyOpacity) call below is a
+    // no-op, so existing themes render unchanged until the user lowers it.
+    val keyOpacity: Float = 1f,
 )
 
 @Composable
@@ -171,12 +179,29 @@ internal fun keyboardColors(
     // instead of being painted over by each row's own .background(colors.bg).
     // See KeyboardView's root Box/Column for where the image itself is drawn.
     transparentBg: Boolean = false,
+    // Settings screen "Key opacity" slider value, 0f..1f, default 1f (no
+    // change from original solid keys). See KeyboardColors.keyOpacity doc
+    // comment for exactly which fields this multiplies.
+    keyOpacity: Float = 1f,
 ): KeyboardColors {
     val base = keyboardColorsBase(showKeyBorders, isDark)
     return base.copy(
         bg = if (transparentBg) Color.Transparent else base.bg,
         accent = palette.accent,
         keyEffect = keyEffect,
+        keyOpacity = keyOpacity,
+        // Baked into the color itself (rather than left for each of the
+        // ~24 .background(colors.keyBg)-style call sites to apply
+        // individually) so every one of them respects the slider for free,
+        // with no risk of a call site being missed. The existing pressed-
+        // state `.copy(alpha = 0.6f)` calls scattered through this file
+        // still work correctly on top of this — Color.copy(alpha=) sets an
+        // absolute alpha, so 0.6f there means "60% of keyOpacity", i.e. it
+        // still darkens/lightens relative to the already-reduced resting
+        // alpha instead of jumping back up to 60% of fully opaque.
+        keyBg = base.keyBg.copy(alpha = base.keyBg.alpha * keyOpacity),
+        specialKeyBg = base.specialKeyBg.copy(alpha = base.specialKeyBg.alpha * keyOpacity),
+        spaceKeyBg = base.spaceKeyBg.copy(alpha = base.spaceKeyBg.alpha * keyOpacity),
         // "Colors" selection was previously a no-op on the real keyboard —
         // keyboardColorsBase's keyText is a fixed neutral color regardless
         // of palette, so accent only ever reached the one effect-overlay
@@ -604,6 +629,7 @@ internal fun KeyboardView(
         initial = com.spmods.sinkey.data.LedPattern.NONE
     )
     val ledIdleDimming by prefsManager.ledIdleDimming.collectAsState(initial = true)
+    val keyOpacity by prefsManager.keyOpacity.collectAsState(initial = 1f)
 
     val colors = keyboardColors(
         showKeyBorders = showKeyBorders,
@@ -611,6 +637,7 @@ internal fun KeyboardView(
         palette = keyColorPalette,
         keyEffect = keyEffect,
         transparentBg = customBackgroundUri != null || backgroundStyle != com.spmods.sinkey.data.BackgroundStyle.NONE,
+        keyOpacity = keyOpacity,
     ).let { base ->
         // Material You: when enabled, override the accent with the
         // dynamic system-wallpaper color instead of the picked
