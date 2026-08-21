@@ -33,7 +33,9 @@ import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.filled.EmojiEmotions
 import androidx.compose.material.icons.filled.Menu
+import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Palette
+import androidx.compose.material.icons.filled.RestartAlt
 import androidx.compose.material.icons.filled.Shield
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.filled.TextFields
@@ -42,6 +44,8 @@ import androidx.compose.material.icons.filled.VerifiedUser
 import androidx.compose.material.icons.filled.WorkspacePremium
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -71,6 +75,116 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import com.spmods.sinkey.R
 
+/**
+ * Which action the header's trailing icon performs, driven by which tab is
+ * currently showing (see SinKeyApp in MainActivity): a plain Premium badge
+ * on Home (no menu — nothing on that screen to reset), or a 3-dot overflow
+ * menu with a single "Reset …" action on Themes/Settings.
+ */
+enum class HeaderMenuMode { PREMIUM, THEME_RESET, SETTINGS_RESET }
+
+/**
+ * Shared top bar for all three tabs (Home/Themes/Settings) — kept in this
+ * file since Home originally owned this exact look (SinKey/Board title,
+ * tagline, trailing action box). MainActivity now hosts a single instance
+ * of this above the Scaffold's tab content instead of each screen drawing
+ * its own, so it stays visually fixed (non-scrolling) while the tab content
+ * scrolls underneath it — see SinKeyApp's Column(header, then Box(content)).
+ *
+ * The trailing box's icon/behavior swaps with [menuMode]:
+ *  - PREMIUM: static WorkspacePremium glyph, no click action (Home tab).
+ *  - THEME_RESET / SETTINGS_RESET: a MoreVert (⋮) icon that opens a small
+ *    dropdown with one destructive-ish "Reset theme"/"Reset settings" item;
+ *    tapping it calls [onResetClick] and closes the menu.
+ */
+@Composable
+fun AppHeader(
+    menuMode: HeaderMenuMode = HeaderMenuMode.PREMIUM,
+    onResetClick: () -> Unit = {}
+) {
+    var menuExpanded by remember { mutableStateOf(false) }
+
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(MaterialTheme.colorScheme.background)
+            .padding(20.dp, 18.dp, 20.dp, 6.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Icon(
+            Icons.Filled.Menu,
+            contentDescription = "Menu",
+            tint = MaterialTheme.colorScheme.onBackground,
+            modifier = Modifier.size(26.dp)
+        )
+
+        Column(
+            modifier = Modifier.weight(1f),
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            Row {
+                Text(
+                    "SinKey ",
+                    fontSize = 24.sp,
+                    fontWeight = FontWeight.ExtraBold,
+                    color = TitleIndigo
+                )
+                Text(
+                    "Board",
+                    fontSize = 24.sp,
+                    fontWeight = FontWeight.ExtraBold,
+                    color = PinkAccent
+                )
+            }
+            Text(
+                "Type Smart. Type Easy. Type SinKey.",
+                fontSize = 12.sp,
+                color = BodyGrey,
+                modifier = Modifier.padding(top = 2.dp)
+            )
+        }
+
+        Box {
+            Box(
+                modifier = Modifier
+                    .size(40.dp)
+                    .clip(RoundedCornerShape(12.dp))
+                    .background(MaterialTheme.colorScheme.surfaceVariant)
+                    .border(1.dp, Color(0xFFE1D8F7), RoundedCornerShape(12.dp))
+                    .then(
+                        if (menuMode != HeaderMenuMode.PREMIUM)
+                            Modifier.clickable { menuExpanded = true }
+                        else Modifier
+                    ),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    if (menuMode == HeaderMenuMode.PREMIUM) Icons.Filled.WorkspacePremium
+                    else Icons.Filled.MoreVert,
+                    contentDescription = if (menuMode == HeaderMenuMode.PREMIUM) "Premium" else "More options",
+                    tint = IndigoDeep,
+                    modifier = Modifier.size(20.dp)
+                )
+            }
+
+            DropdownMenu(
+                expanded = menuExpanded,
+                onDismissRequest = { menuExpanded = false }
+            ) {
+                val label = if (menuMode == HeaderMenuMode.THEME_RESET) "Reset theme" else "Reset settings"
+                DropdownMenuItem(
+                    text = { Text(label) },
+                    leadingIcon = { Icon(Icons.Filled.RestartAlt, contentDescription = null) },
+                    onClick = {
+                        menuExpanded = false
+                        onResetClick()
+                    }
+                )
+            }
+        }
+    }
+}
+
 // ── Palette ──────────────────────────────────────────────────────────────────
 private val IndigoDeep   = Color(0xFF6C4CE0)
 private val IndigoMid    = Color(0xFF7C5CF0)
@@ -94,7 +208,7 @@ private fun isImeDefault(context: Context): Boolean {
 }
 
 @Composable
-fun HomeScreen() {
+fun HomeScreen(isDark: Boolean = isSystemInDarkTheme()) {
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
 
@@ -138,65 +252,12 @@ fun HomeScreen() {
             .background(MaterialTheme.colorScheme.background)
             .padding(bottom = 24.dp)
     ) {
-        // ── Top bar ─────────────────────────────────────────────────────────
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(20.dp, 18.dp, 20.dp, 6.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Icon(
-                Icons.Filled.Menu,
-                contentDescription = "Menu",
-                tint = MaterialTheme.colorScheme.onBackground,
-                modifier = Modifier.size(26.dp)
-            )
-
-            Column(
-                modifier = Modifier.weight(1f),
-                horizontalAlignment = Alignment.CenterHorizontally
-            ) {
-                Row {
-                    Text(
-                        "SinKey ",
-                        fontSize = 24.sp,
-                        fontWeight = FontWeight.ExtraBold,
-                        color = TitleIndigo
-                    )
-                    Text(
-                        "Board",
-                        fontSize = 24.sp,
-                        fontWeight = FontWeight.ExtraBold,
-                        color = PinkAccent
-                    )
-                }
-                Text(
-                    "Type Smart. Type Easy. Type SinKey.",
-                    fontSize = 12.sp,
-                    color = BodyGrey,
-                    modifier = Modifier.padding(top = 2.dp)
-                )
-            }
-
-            Box(
-                modifier = Modifier
-                    .size(40.dp)
-                    .clip(RoundedCornerShape(12.dp))
-                    .background(MaterialTheme.colorScheme.surfaceVariant)
-                    .border(1.dp, Color(0xFFE1D8F7), RoundedCornerShape(12.dp)),
-                contentAlignment = Alignment.Center
-            ) {
-                Icon(
-                    Icons.Filled.WorkspacePremium,
-                    contentDescription = "Premium",
-                    tint = IndigoDeep,
-                    modifier = Modifier.size(20.dp)
-                )
-            }
-        }
-
         // ── Hero card ────────────────────────────────────────────────────────
-        val isDark = isSystemInDarkTheme()
+        // isDark now comes from the caller (MainActivity's real ThemeMode-
+        // aware value) instead of isSystemInDarkTheme() here directly — the
+        // old local val ignored the user's in-app Light/Dark/System choice
+        // and only ever reflected the OS-level setting, so picking "Always
+        // dark"/"Always light" in Settings never changed this gradient.
         val heroGradient = Brush.linearGradient(
             colors = if (isDark)
                 listOf(Color(0xFF1E1840), Color(0xFF1F1520), Color(0xFF20101A))
