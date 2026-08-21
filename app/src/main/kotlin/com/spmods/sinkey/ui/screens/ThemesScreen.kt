@@ -542,7 +542,14 @@ private fun EffectsGrid(
         KeyEffect.entries.forEach { effect ->
             val isSelected = effect == selected
             val previewRes = when (effect) {
-                KeyEffect.NONE -> null
+                // Desh has no dedicated "None" preview asset (there's
+                // nothing to animate for "no effect") — none_theme_preview_
+                // {dark,light} are a static frame captured from Ripple's
+                // own asset at a moment its glow has fully faded, giving a
+                // clean plain-keyboard shot in the exact same visual style
+                // (crop, key look, lighting) as Desh's real Ripple/Glow
+                // images, rather than a separately hand-built Compose mock.
+                KeyEffect.NONE -> if (isDark) R.drawable.none_theme_preview_dark else R.drawable.none_theme_preview_light
                 KeyEffect.GLOW -> if (isDark) R.drawable.mech_glow_theme_dark else R.drawable.mech_glow_theme_light
                 KeyEffect.RIPPLE -> if (isDark) R.drawable.ripple_theme_preview_dark else R.drawable.ripple_theme_preview_light
             }
@@ -567,12 +574,12 @@ private fun EffectsGrid(
                 contentAlignment = Alignment.Center
             ) {
                 if (previewRes != null) {
-                    // Desh's mech_glow/ripple_theme_preview .webp assets are
-                    // genuinely animated (looping glow/ripple), not static
-                    // screenshots — AnimatedDrawableResource plays them via
-                    // AnimatedImageDrawable; plain Image()/painterResource()
-                    // would silently freeze on frame 1.
-                    if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.P) {
+                    // Only GLOW/RIPPLE are genuinely animated (looping
+                    // glow/ripple) — NONE's asset is a plain static frame
+                    // (see previewRes selection above), so it always uses
+                    // the non-animated Image() path regardless of API
+                    // level, same as the <API 28 fallback below.
+                    if (effect != KeyEffect.NONE && android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.P) {
                         com.spmods.sinkey.keyboard.AnimatedDrawableResource(
                             resId = previewRes,
                             contentDescription = effect.label,
@@ -585,29 +592,6 @@ private fun EffectsGrid(
                             contentScale = ContentScale.Crop,
                             modifier = Modifier.fillMaxSize().clip(RoundedCornerShape(14.dp))
                         )
-                    }
-                } else {
-                    // NONE has no corresponding Desh asset (it's not one of
-                    // its four exported theme-preview images) — a flat q/w/e
-                    // row stands in, matching the same light/dark key style
-                    // the Ripple/Glow images themselves show at rest, just
-                    // without any glow/ripple styling on top.
-                    Row(
-                        horizontalArrangement = Arrangement.spacedBy(5.dp),
-                        modifier = Modifier.fillMaxSize().padding(8.dp)
-                    ) {
-                        listOf("q", "w", "e").forEach { letter ->
-                            Box(
-                                modifier = Modifier
-                                    .weight(1f)
-                                    .fillMaxHeight()
-                                    .clip(RoundedCornerShape(6.dp))
-                                    .background(if (isDark) Color(0xFF3A3A3A) else Color.White),
-                                contentAlignment = Alignment.Center
-                            ) {
-                                Text(letter, color = if (isDark) Color.White else Color(0xFF2B2B2B), fontSize = 14.sp)
-                            }
-                        }
                     }
                 }
             }
