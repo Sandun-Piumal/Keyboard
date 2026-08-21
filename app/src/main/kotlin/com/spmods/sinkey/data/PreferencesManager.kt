@@ -30,6 +30,14 @@ class PreferencesManager(private val context: Context) {
         val BOTTOM_SPACE_ENABLED = booleanPreferencesKey("bottom_space_enabled")
         val BOTTOM_SPACE_SIZE = floatPreferencesKey("bottom_space_size") // 0f=S, 1f=M, 2f=L, 3f=XL
         val SHOW_KEY_BORDERS = booleanPreferencesKey("show_key_borders")
+        // Opacity of individual key surfaces (letter keys, special keys,
+        // space bar) — 0f=fully transparent, 1f=fully opaque. Default 1f so
+        // existing users/themes render byte-for-byte the same until they
+        // deliberately lower it. Meant to be lowered when a custom "My
+        // themes" background photo is active, so the photo shows through
+        // each key instead of only the gaps between them — see KEY_OPACITY's
+        // Flow doc comment below.
+        val KEY_OPACITY = floatPreferencesKey("key_opacity")
         // Fancy-text style applied to committed English text — one of
         // FancyTextStyle.entries' .key values. Reusing the old preference
         // key name (keyboard_font) so existing users' stored default isn't
@@ -148,6 +156,18 @@ class PreferencesManager(private val context: Context) {
 
     val showKeyBorders: Flow<Boolean> = context.dataStore.data.map { prefs ->
         prefs[Keys.SHOW_KEY_BORDERS] ?: true
+    }
+
+    /**
+     * Key-surface opacity, 0f (fully transparent — only the outline/shadow/
+     * text remain) to 1f (fully opaque, original solid-color look). Default
+     * 1f. Applied on top of keyBg/specialKeyBg/spaceKeyBg in
+     * KeyboardColors regardless of whether a custom background photo is
+     * active — it's most useful with one, but nothing stops a user from
+     * lowering it against a plain color background too.
+     */
+    val keyOpacity: Flow<Float> = context.dataStore.data.map { prefs ->
+        prefs[Keys.KEY_OPACITY] ?: 1f
     }
 
     /** Currently selected fancy-text style for English typing, defaulting to off (plain text). */
@@ -276,6 +296,10 @@ class PreferencesManager(private val context: Context) {
 
     suspend fun setShowKeyBorders(enabled: Boolean) {
         context.dataStore.edit { it[Keys.SHOW_KEY_BORDERS] = enabled }
+    }
+
+    suspend fun setKeyOpacity(value: Float) {
+        context.dataStore.edit { it[Keys.KEY_OPACITY] = value.coerceIn(0f, 1f) }
     }
 
     suspend fun setKeyboardFont(fontKey: String) {
@@ -421,6 +445,7 @@ class PreferencesManager(private val context: Context) {
             prefs[Keys.BOTTOM_SPACE_ENABLED] = true
             prefs[Keys.BOTTOM_SPACE_SIZE] = 0f
             prefs[Keys.SHOW_KEY_BORDERS] = true
+            prefs[Keys.KEY_OPACITY] = 1f
         }
     }
 
