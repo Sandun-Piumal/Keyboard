@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxHeight
@@ -129,22 +130,12 @@ fun ThemesScreen(
             .verticalScroll(rememberScrollState())
             .padding(bottom = 24.dp)
     ) {
-        Column(modifier = Modifier.padding(22.dp, 18.dp, 22.dp, 4.dp)) {
-            Text(
-                "APPEARANCE",
-                fontSize = 11.sp,
-                fontWeight = FontWeight.Bold,
-                letterSpacing = 1.5.sp,
-                color = MaterialTheme.colorScheme.secondary
-            )
-            Text("Choose a theme", fontSize = 22.sp, fontWeight = FontWeight.ExtraBold)
-            Text(
-                "The keyboard follows your pick everywhere you type.",
-                fontSize = 13.sp,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.padding(top = 6.dp)
-            )
-        }
+        // The old in-page "APPEARANCE / Choose a theme / ..." header text
+        // block used to live here — it's now redundant since AppHeader
+        // (added in MainActivity, fixed above this scrolling content) shows
+        // the page title/branding instead. Left with just a small gap so
+        // the first section isn't flush against the header.
+        Spacer(modifier = Modifier.height(10.dp))
 
         // Manual 2-column chunking instead of LazyVerticalGrid — this Column
         // is now inside the page's own verticalScroll, and nesting a lazy
