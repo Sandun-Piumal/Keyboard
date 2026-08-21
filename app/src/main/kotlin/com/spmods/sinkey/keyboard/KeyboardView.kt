@@ -1018,23 +1018,15 @@ internal fun KeyboardView(
                     // board's keys currently report their positions.
                     // WAVE/CYCLE/STARS now live in the Themes "Effects"
                     // grid (KeyEffect) rather than the old separate LED
-                    // pattern picker, but they're still drawn by the same
-                    // KeyboardLedRipple renderer/math below — so map the
-                    // selected KeyEffect onto the matching LedPattern here.
-                    // ledPattern itself still supplies BREATHING (the one
-                    // pattern that remains its own picker).
-                    val keyEffectLedPattern = when (colors.keyEffect) {
-                        com.spmods.sinkey.data.KeyEffect.WAVE -> com.spmods.sinkey.data.LedPattern.WAVE
-                        com.spmods.sinkey.data.KeyEffect.CYCLE -> com.spmods.sinkey.data.LedPattern.CYCLE
-                        com.spmods.sinkey.data.KeyEffect.STARS -> com.spmods.sinkey.data.LedPattern.STARS
-                        else -> com.spmods.sinkey.data.LedPattern.NONE
-                    }
-                    val effectiveLedPattern = if (keyEffectLedPattern != com.spmods.sinkey.data.LedPattern.NONE) {
-                        keyEffectLedPattern
-                    } else {
-                        ledPattern
-                    }
-                    val ledActive = effectiveLedPattern != com.spmods.sinkey.data.LedPattern.NONE
+                    // pattern picker, drawn by KeyboardKeyEffectRipple
+                    // (same border-glow math, just keyed off KeyEffect
+                    // instead of LedPattern). ledPattern itself still
+                    // supplies NONE/BREATHING as its own separate picker,
+                    // so both can be independently active.
+                    val keyEffectRippleActive = colors.keyEffect == com.spmods.sinkey.data.KeyEffect.WAVE ||
+                        colors.keyEffect == com.spmods.sinkey.data.KeyEffect.CYCLE ||
+                        colors.keyEffect == com.spmods.sinkey.data.KeyEffect.STARS
+                    val ledActive = ledPattern != com.spmods.sinkey.data.LedPattern.NONE || keyEffectRippleActive
                     val typingAnimActive = typingAnimation != com.spmods.sinkey.data.TypingAnimation.NONE
                     // Desh-style RIPPLE is a board-wide overlay (not a
                     // per-key decoration), so it needs the same shared
@@ -1392,7 +1384,22 @@ internal fun KeyboardView(
                             // each consumer draws its own distinct visual off
                             // of it.
                             KeyboardLedRipple(
-                                pattern = effectiveLedPattern,
+                                pattern = ledPattern,
+                                origin = pressOrigin,
+                                triggerId = pressTriggerId,
+                                keyPositions = keyPositions.values.toList(),
+                                keySizes = keySizes,
+                                accent = colors.accent,
+                                isIdle = isLedIdle,
+                                modifier = Modifier.matchParentSize()
+                            )
+                            // WAVE/CYCLE/STARS selected from the Themes
+                            // "Effects" grid — same underlying animation as
+                            // KeyboardLedRipple above, drawn independently
+                            // so it can be combined with ledPattern's own
+                            // BREATHING at the same time if both are set.
+                            KeyboardKeyEffectRipple(
+                                effect = colors.keyEffect,
                                 origin = pressOrigin,
                                 triggerId = pressTriggerId,
                                 keyPositions = keyPositions.values.toList(),
