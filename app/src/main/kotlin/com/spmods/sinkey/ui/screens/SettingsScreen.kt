@@ -7,11 +7,15 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Switch
 import androidx.compose.material3.SwitchDefaults
@@ -43,8 +47,22 @@ fun SettingsScreen(
     onSmoothImeTransitionChange: (Boolean) -> Unit = {},
     onOpenKeyboardHeight: () -> Unit = {}
 ) {
-    Column(modifier = Modifier.fillMaxWidth().padding(bottom = 18.dp)) {
-        SectionHeader(" ", " ")
+    // Bug fix: this Column had no verticalScroll at all, so once the
+    // switches list + Theme Mode section together exceeded one screen's
+    // height, everything past the fold was simply clipped — there was no
+    // way to reach it, not even by dragging; the page just didn't scroll.
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .verticalScroll(rememberScrollState())
+            .padding(bottom = 24.dp)
+    ) {
+        // The old "PREFERENCES / Settings" section header text used to open
+        // this screen — removed since AppHeader (fixed above this scrolling
+        // content, added in MainActivity) already shows the page title now.
+        // Left with just a small gap so the first group isn't flush against
+        // the header.
+        Spacer(modifier = Modifier.height(10.dp))
 
         SettingsGroup {
             SettingRow(
