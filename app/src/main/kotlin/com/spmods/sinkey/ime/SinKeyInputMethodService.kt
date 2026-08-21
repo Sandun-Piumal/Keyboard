@@ -1890,6 +1890,19 @@ class SinKeyInputMethodService : InputMethodService() {
                 // Word boundary — same reset normal typing does at SPACE.
                 wordBuffer.clear()
                 englishBuffer.clear()
+                // BUG FIX: previously fell through to requestTranslateBufferSync()
+                // below like the letter branch does. That meant every SPACE
+                // scheduled a re-translation of the *entire* translateBuffer
+                // (all the already-translated source text, now with a
+                // trailing space) 350ms later — which then deleted and
+                // re-inserted a fresh translation into the field, silently
+                // overwriting whatever the user typed after the space in
+                // the meantime. SPACE already commits itself straight to
+                // the field above (nothing to translate about whitespace),
+                // so — like SHIFT/LANG_TOGGLE above — it must return here
+                // instead of re-arming the debounce.
+                updateSuggestions()
+                return
             }
             key == "ENTER" -> {
                 // BUG FIX: this used to unconditionally send a raw
@@ -1923,12 +1936,24 @@ class SinKeyInputMethodService : InputMethodService() {
                     lastFieldSync = null // see BACKSPACE's comment above
                     wordBuffer.clear()
                     englishBuffer.clear()
+                    // BUG FIX: same reasoning as SPACE above — the newline
+                    // was already committed to the field directly, so this
+                    // must not fall through to requestTranslateBufferSync()
+                    // or the next debounce tick re-translates the whole
+                    // buffer and overwrites what's typed after it.
+                    updateSuggestions()
+                    return
                 }
                 // When handled as an action (Send/Search/Done/...), the
                 // field's contents are the app's concern now, not ours —
                 // leaving translateBuffer/translateCursorPos untouched
                 // matches how a real Enter-as-submit never edits the text
-                // that was just submitted.
+                // that was just submitted. Must also return here (not fall
+                // through to requestTranslateBufferSync() below) — the field
+                // was just submitted, so re-syncing the translated text into
+                // it afterward would incorrectly re-populate a field the
+                // user just cleared by submitting it.
+                if (handledAsAction) return
             }
             key == "SHIFT" || key == "SHIFT_LOCK" -> {
                 shiftState.value = when (shiftState.value) {
