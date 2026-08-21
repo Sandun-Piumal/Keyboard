@@ -183,12 +183,18 @@ fun PhotoEditThemeScreen(
     initialShowKeyBorders: Boolean,
     initialBlur: Float,
     initialBrightness: Float,
+    // Key opacity, 0f..1f, default 1f — how solid each key's own background
+    // is drawn on top of the photo. Lower values let more of the photo show
+    // through each key (not just the gaps between them, which the photo
+    // already shows through regardless of this value).
+    initialKeyOpacity: Float = 1f,
     onBack: () -> Unit,
-    onDone: (showKeyBorders: Boolean, blur: Float, brightness: Float) -> Unit
+    onDone: (showKeyBorders: Boolean, blur: Float, brightness: Float, keyOpacity: Float) -> Unit
 ) {
     var showKeyBorders by remember { mutableStateOf(initialShowKeyBorders) }
     var blur by remember { mutableStateOf(initialBlur) }
     var brightness by remember { mutableStateOf(initialBrightness) }
+    var keyOpacity by remember { mutableStateOf(initialKeyOpacity) }
 
     val brightnessDelta = (brightness - 0.5f) * 2f * 255f
     val brightnessFilter = remember(brightnessDelta) {
@@ -253,7 +259,7 @@ fun PhotoEditThemeScreen(
                     .let { if (blur > 0.01f) it.blur(20.dp * blur) else it }
             )
             Column(modifier = Modifier.fillMaxSize()) {
-                MockKeyboardRows(showKeyBorders = showKeyBorders, modifier = Modifier.weight(1f))
+                MockKeyboardRows(showKeyBorders = showKeyBorders, keyOpacity = keyOpacity, modifier = Modifier.weight(1f))
             }
         }
 
@@ -302,10 +308,30 @@ fun PhotoEditThemeScreen(
                     activeTrackColor = MaterialTheme.colorScheme.primary
                 )
             )
+
+            Text(
+                "Key opacity",
+                fontSize = 15.sp,
+                fontWeight = FontWeight.Medium,
+                modifier = Modifier.padding(top = 12.dp, bottom = 4.dp)
+            )
+            Text(
+                "Lower this so the photo shows through each key, not just the gaps between them",
+                fontSize = 13.sp,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+            Slider(
+                value = keyOpacity,
+                onValueChange = { keyOpacity = it },
+                colors = SliderDefaults.colors(
+                    activeTrackColor = MaterialTheme.colorScheme.primary
+                ),
+                modifier = Modifier.padding(top = 4.dp)
+            )
         }
 
         Button(
-            onClick = { onDone(showKeyBorders, blur, brightness) },
+            onClick = { onDone(showKeyBorders, blur, brightness, keyOpacity) },
             colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary),
             modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp).height(52.dp)
         ) {
@@ -316,7 +342,7 @@ fun PhotoEditThemeScreen(
 
 /** A plain, non-interactive QWERTY row mock for the Edit theme preview — visual only. */
 @Composable
-private fun MockKeyboardRows(showKeyBorders: Boolean, modifier: Modifier = Modifier) {
+private fun MockKeyboardRows(showKeyBorders: Boolean, keyOpacity: Float = 1f, modifier: Modifier = Modifier) {
     val rows = listOf("QWERTYUIOP", "ASDFGHJKL", "ZXCVBNM")
     val keyShape = RoundedCornerShape(6.dp)
     val keyBorderModifier = if (showKeyBorders) {
@@ -353,7 +379,7 @@ private fun MockKeyboardRows(showKeyBorders: Boolean, modifier: Modifier = Modif
                             .fillMaxHeight()
                             .clip(keyShape)
                             .then(keyBorderModifier)
-                            .background(Color.White.copy(alpha = 0.12f)),
+                            .background(Color.White.copy(alpha = 0.12f * keyOpacity)),
                         contentAlignment = Alignment.Center
                     ) {
                         Text(ch.toString(), color = Color.White, fontSize = 13.sp)
@@ -368,16 +394,16 @@ private fun MockKeyboardRows(showKeyBorders: Boolean, modifier: Modifier = Modif
             modifier = Modifier.fillMaxWidth().weight(1f),
             horizontalArrangement = Arrangement.spacedBy(4.dp)
         ) {
-            MockSpecialKey("?123", weight = 1.3f, showKeyBorders = showKeyBorders)
-            MockSpecialKey("☺", weight = 1f, showKeyBorders = showKeyBorders)
-            MockSpecialKey("", weight = 4f, showKeyBorders = showKeyBorders)
-            MockSpecialKey("⌫", weight = 1.3f, showKeyBorders = showKeyBorders)
+            MockSpecialKey("?123", weight = 1.3f, showKeyBorders = showKeyBorders, keyOpacity = keyOpacity)
+            MockSpecialKey("☺", weight = 1f, showKeyBorders = showKeyBorders, keyOpacity = keyOpacity)
+            MockSpecialKey("", weight = 4f, showKeyBorders = showKeyBorders, keyOpacity = keyOpacity)
+            MockSpecialKey("⌫", weight = 1.3f, showKeyBorders = showKeyBorders, keyOpacity = keyOpacity)
         }
     }
 }
 
 @Composable
-private fun RowScope.MockSpecialKey(label: String, weight: Float, showKeyBorders: Boolean) {
+private fun RowScope.MockSpecialKey(label: String, weight: Float, showKeyBorders: Boolean, keyOpacity: Float = 1f) {
     val keyShape = RoundedCornerShape(6.dp)
     val keyBorderModifier = if (showKeyBorders) {
         Modifier.border(1.dp, Color.White.copy(alpha = 0.4f), keyShape)
@@ -390,7 +416,7 @@ private fun RowScope.MockSpecialKey(label: String, weight: Float, showKeyBorders
             .fillMaxHeight()
             .clip(keyShape)
             .then(keyBorderModifier)
-            .background(Color.White.copy(alpha = 0.12f)),
+            .background(Color.White.copy(alpha = 0.12f * keyOpacity)),
         contentAlignment = Alignment.Center
     ) {
         Text(label, color = Color.White, fontSize = 13.sp)
