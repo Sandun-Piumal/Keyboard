@@ -137,9 +137,8 @@ fun ThemesScreen(
                 letterSpacing = 1.5.sp,
                 color = MaterialTheme.colorScheme.secondary
             )
-            Text("Choose a theme", fontSize = 22.sp, fontWeight = FontWeight.ExtraBold)
-            Text(
-                "The keyboard follows your pick everywhere you type.",
+            Text(" ", fontSize = 22.sp, fontWeight = FontWeight.ExtraBold)
+            Text" ",
                 fontSize = 13.sp,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.padding(top = 6.dp)
