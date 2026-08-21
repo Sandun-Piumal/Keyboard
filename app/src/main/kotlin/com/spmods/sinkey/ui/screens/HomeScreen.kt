@@ -157,16 +157,10 @@ fun AppHeader(
             Box(
                 modifier = Modifier
                     .size(40.dp)
-                    .clip(RoundedCornerShape(12.dp))
-                    .background(MaterialTheme.colorScheme.surfaceVariant)
-                    // Bug fix: this border used a hardcoded light-lilac
-                    // Color(0xFFE1D8F7) regardless of theme — barely visible
-                    // on the light background it was designed for, but a
-                    // jarring pale-purple ring against the dark surface in
-                    // Dark mode (see NightSurface in Theme.kt). outline is
-                    // MaterialTheme-driven so it adapts with the rest of the
-                    // header — subtle in both Light and Dark automatically.
-                    .border(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.3f), RoundedCornerShape(12.dp))
+                    // The background/border/rounded-corner "chip" that used
+                    // to wrap this icon is removed — now just a plain icon
+                    // with an invisible touch target the same size, so tap
+                    // area is unchanged but nothing draws around it.
                     .then(
                         if (menuMode != HeaderMenuMode.PREMIUM)
                             Modifier.clickable { menuExpanded = true }
@@ -178,7 +172,13 @@ fun AppHeader(
                     if (menuMode == HeaderMenuMode.PREMIUM) Icons.Filled.WorkspacePremium
                     else Icons.Filled.MoreVert,
                     contentDescription = if (menuMode == HeaderMenuMode.PREMIUM) "Premium" else "More options",
-                    tint = IndigoDeep,
+                    // Premium keeps its brand indigo. The 3-dot menu (Themes/
+                    // Settings) instead uses onBackground so it auto-flips:
+                    // black in Light theme, white in Dark theme — matching
+                    // the Menu icon on the left rather than a fixed color
+                    // that could vanish against either theme's background.
+                    tint = if (menuMode == HeaderMenuMode.PREMIUM) IndigoDeep
+                        else MaterialTheme.colorScheme.onBackground,
                     modifier = Modifier.size(20.dp)
                 )
             }
