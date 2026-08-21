@@ -215,9 +215,62 @@ internal fun KeyboardLedRipple(
         when (pattern) {
             LedPattern.NONE -> Unit
             LedPattern.BREATHING -> drawBreathingBorders(origin, keyPositions, keySizes, fallbackSize, accent, progress.value, idleAlpha)
-            LedPattern.WAVE -> drawWaveBorders(origin, keyPositions, keySizes, fallbackSize, accent, progress.value, idleAlpha)
-            LedPattern.CYCLE -> drawCycleBorders(origin, keyPositions, keySizes, fallbackSize, progress.value, idleAlpha)
-            LedPattern.STARS -> drawStarsBorders(origin, keyPositions, keySizes, fallbackSize, accent, progress.value, idleAlpha)
+        }
+    }
+}
+
+/**
+ * Same wave/cycle/stars glow drawing as above, but selected via the
+ * Themes-screen "Effects" grid (KeyEffect.WAVE/CYCLE/STARS) rather than the
+ * separate LedPattern picker — see KeyboardLedRipple's doc comment for why
+ * these live in KeyboardLighting.kt rather than as LedPattern cases: the
+ * actual border-glow math (drawWaveBorders/drawCycleBorders/
+ * drawStarsBorders) is identical, only which preference selects it differs.
+ */
+@Composable
+internal fun KeyboardKeyEffectRipple(
+    effect: com.spmods.sinkey.data.KeyEffect,
+    origin: Offset?,
+    triggerId: Int,
+    keyPositions: List<KeyPoint>,
+    keySizes: Map<Char, androidx.compose.ui.geometry.Size>,
+    accent: Color,
+    isIdle: Boolean,
+    modifier: Modifier = Modifier
+) {
+    val isRippleEffect = effect == com.spmods.sinkey.data.KeyEffect.WAVE ||
+        effect == com.spmods.sinkey.data.KeyEffect.CYCLE ||
+        effect == com.spmods.sinkey.data.KeyEffect.STARS
+    if (!isRippleEffect || origin == null || keyPositions.isEmpty()) return
+
+    val progress = remember { Animatable(0f) }
+    LaunchedEffect(triggerId, effect) {
+        progress.snapTo(0f)
+        progress.animateTo(1f, animationSpec = tween(durationMillis = 650, easing = androidx.compose.animation.core.LinearOutSlowInEasing))
+    }
+
+    if (progress.value >= 1f) return
+
+    val idleAlpha by androidx.compose.animation.core.animateFloatAsState(
+        targetValue = if (isIdle) 0.4f else 1f,
+        animationSpec = tween(900),
+        label = "keyEffectLedIdleAlpha"
+    )
+
+    Canvas(modifier = modifier) {
+        val fallbackSize = if (keySizes.isNotEmpty()) {
+            androidx.compose.ui.geometry.Size(
+                keySizes.values.map { it.width }.average().toFloat(),
+                keySizes.values.map { it.height }.average().toFloat()
+            )
+        } else {
+            androidx.compose.ui.geometry.Size(size.width / 10f, size.height / 4f)
+        }
+        when (effect) {
+            com.spmods.sinkey.data.KeyEffect.WAVE -> drawWaveBorders(origin, keyPositions, keySizes, fallbackSize, accent, progress.value, idleAlpha)
+            com.spmods.sinkey.data.KeyEffect.CYCLE -> drawCycleBorders(origin, keyPositions, keySizes, fallbackSize, progress.value, idleAlpha)
+            com.spmods.sinkey.data.KeyEffect.STARS -> drawStarsBorders(origin, keyPositions, keySizes, fallbackSize, accent, progress.value, idleAlpha)
+            else -> Unit
         }
     }
 }
