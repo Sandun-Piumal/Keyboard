@@ -104,6 +104,15 @@ fun AppHeader(
 ) {
     var menuExpanded by remember { mutableStateOf(false) }
 
+    // Second word of the title swaps with the tab so the header reads
+    // "SinKey Board" on Home, "SinKey Theme" on Themes, "SinKey Settings"
+    // on Settings — same first word/color, only the accent word changes.
+    val titleSecondWord = when (menuMode) {
+        HeaderMenuMode.PREMIUM -> "Board"
+        HeaderMenuMode.THEME_RESET -> "Themes"
+        HeaderMenuMode.SETTINGS_RESET -> "Settings"
+    }
+
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -130,7 +139,7 @@ fun AppHeader(
                     color = TitleIndigo
                 )
                 Text(
-                    "Board",
+                    titleSecondWord,
                     fontSize = 24.sp,
                     fontWeight = FontWeight.ExtraBold,
                     color = PinkAccent
@@ -150,7 +159,14 @@ fun AppHeader(
                     .size(40.dp)
                     .clip(RoundedCornerShape(12.dp))
                     .background(MaterialTheme.colorScheme.surfaceVariant)
-                    .border(1.dp, Color(0xFFE1D8F7), RoundedCornerShape(12.dp))
+                    // Bug fix: this border used a hardcoded light-lilac
+                    // Color(0xFFE1D8F7) regardless of theme — barely visible
+                    // on the light background it was designed for, but a
+                    // jarring pale-purple ring against the dark surface in
+                    // Dark mode (see NightSurface in Theme.kt). outline is
+                    // MaterialTheme-driven so it adapts with the rest of the
+                    // header — subtle in both Light and Dark automatically.
+                    .border(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.3f), RoundedCornerShape(12.dp))
                     .then(
                         if (menuMode != HeaderMenuMode.PREMIUM)
                             Modifier.clickable { menuExpanded = true }
