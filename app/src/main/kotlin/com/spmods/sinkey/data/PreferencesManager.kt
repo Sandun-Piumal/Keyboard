@@ -462,7 +462,13 @@ enum class KeyEffect(val key: String, val label: String) {
     /** Expanding ripple circle from the touch point, on key press. */
     RIPPLE("ripple", "Ripple"),
     /** Soft colored glow (blurred shadow) behind every key in the accent color. */
-    GLOW("glow", "Mech Glow");
+    GLOW("glow", "Mech Glow"),
+    /** An expanding ring of light travels outward from the pressed key's border, then fades. */
+    WAVE("wave", "Wave"),
+    /** Same expanding ring as WAVE, but its hue rotates through the rainbow by distance from the pressed key. */
+    CYCLE("cycle", "Cycle"),
+    /** Nearby keys' borders twinkle briefly and independently around the pressed key. */
+    STARS("stars", "Stars");
 
     companion object {
         fun fromKey(key: String): KeyEffect = entries.find { it.key == key } ?: NONE
@@ -512,15 +518,14 @@ enum class LedPattern(val key: String, val label: String) {
     /** No ambient lighting strip — original look. */
     NONE("none", "Off"),
     /** Strip brightness smoothly rises and falls, like slow breathing. */
-    BREATHING("breathing", "Breathing"),
-    /** A band of light travels left-to-right, then loops. */
-    WAVE("wave", "Wave"),
-    /** Strip hue continuously cycles through the rainbow. */
-    CYCLE("cycle", "Cycle"),
-    /** Small twinkling points of light switch on/off at random positions. */
-    STARS("stars", "Stars");
+    BREATHING("breathing", "Breathing");
 
     companion object {
+        // WAVE, CYCLE, and STARS previously lived here and have moved to
+        // KeyEffect (Themes screen "Effects" section) — fromKey still falls
+        // back safely to NONE for any old stored preference value using
+        // those now-removed keys, so existing installs don't crash on
+        // upgrade, they just silently reset this particular preference.
         fun fromKey(key: String): LedPattern = entries.find { it.key == key } ?: NONE
     }
 }
