@@ -44,7 +44,7 @@ fun SettingsScreen(
     onOpenKeyboardHeight: () -> Unit = {}
 ) {
     Column(modifier = Modifier.fillMaxWidth().padding(bottom = 24.dp)) {
-        SectionHeader("PREFERENCES", "Settings")
+        SectionHeader(" ", " ")
 
         SettingsGroup {
             SettingRow(
