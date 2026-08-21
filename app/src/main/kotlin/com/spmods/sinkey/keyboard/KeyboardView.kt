@@ -216,13 +216,6 @@ private fun Modifier.keyEffectDecoration(colors: KeyboardColors, keyShape: Round
 }
 
 /**
- * KeyEffect.GLOW, Desh "Mech Glow" behavior: each key press blooms a large,
- * soft, blurred radial glow centered on the touched key — big enough to
- * wash over several neighboring keys, not just the one pressed — whose hue
- * rotates +50° (mod 360°, full saturation/value) from the last press's hue,
- * over 1500ms, so consecutive taps visibly cycle through a rainbow rather
- * than glowing a single fixed accent color. Board-wide overlay (same
- /**
  * KeyEffect.GLOW, real Desh "Mech Glow" behavior — re-derived by inspecting
  * mech_glow_theme_dark.webp frame-by-frame (the original implementation
  * here was a guess based on the word "glow" and turned out wrong): it is
@@ -291,7 +284,6 @@ private fun MechGlowOverlay(
     }
 }
 
-/**
 /**
  * KeyEffect.RIPPLE, real Desh "Colorful Ripple" behavior — re-derived by
  * inspecting ripple_theme_preview_dark.webp frame-by-frame (the original
