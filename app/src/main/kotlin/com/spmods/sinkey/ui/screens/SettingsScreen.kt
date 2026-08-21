@@ -43,7 +43,7 @@ fun SettingsScreen(
     onSmoothImeTransitionChange: (Boolean) -> Unit = {},
     onOpenKeyboardHeight: () -> Unit = {}
 ) {
-    Column(modifier = Modifier.fillMaxWidth().padding(bottom = 24.dp)) {
+    Column(modifier = Modifier.fillMaxWidth().padding(bottom = 18.dp)) {
         SectionHeader(" ", " ")
 
         SettingsGroup {
