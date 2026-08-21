@@ -24,10 +24,21 @@ interface WordDao {
     )
     suspend fun findByPrefix(prefix: String, language: String, limit: Int = 5): List<WordEntity>
 
+    /**
+     * Same intent as a "starts with [firstChar]" filter, but expressed as a
+     * LIKE-prefix range (`word LIKE firstChar || '%'`) instead of
+     * `substr(word, 1, 1) = firstChar`. The substr() form can't use
+     * idx_words_language_word — SQLite has no way to know what substr()
+     * will return for a row without reading it first, so every row for the
+     * language was being scanned. A LIKE 'x%' condition is a genuine
+     * prefix range the query planner can walk directly on the index, same
+     * as findByPrefix. Matches the exact same rows as before since a
+     * single-character firstChar makes the two conditions equivalent.
+     */
     @Query(
         """
         SELECT * FROM words
-        WHERE language = :language AND substr(word, 1, 1) = :firstChar
+        WHERE language = :language AND word LIKE :firstChar || '%'
         ORDER BY frequency DESC, lastUsed DESC
         LIMIT :limit
         """
