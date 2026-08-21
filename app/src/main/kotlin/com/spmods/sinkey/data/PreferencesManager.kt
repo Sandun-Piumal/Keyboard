@@ -512,7 +512,10 @@ enum class TypingAnimation(val key: String, val label: String, val emojiSet: Lis
  * key borders/glows, LedPattern drives a thin animated light strip along
  * the top edge of the keyboard (like an RGB keyboard's under-glow),
  * independent of which KeyEffect is also selected — the two can be
- * combined (e.g. RIPPLE key-effect + WAVE led-pattern).
+ * combined (e.g. RIPPLE key-effect + BREATHING led-pattern). WAVE, CYCLE,
+ * and STARS previously lived here too but have moved to KeyEffect (see
+ * that enum and KeyboardKeyEffectRipple) since Themes' "Effects" grid is
+ * where they're now selected from.
  */
 enum class LedPattern(val key: String, val label: String) {
     /** No ambient lighting strip — original look. */
@@ -521,11 +524,11 @@ enum class LedPattern(val key: String, val label: String) {
     BREATHING("breathing", "Breathing");
 
     companion object {
-        // WAVE, CYCLE, and STARS previously lived here and have moved to
-        // KeyEffect (Themes screen "Effects" section) — fromKey still falls
-        // back safely to NONE for any old stored preference value using
-        // those now-removed keys, so existing installs don't crash on
-        // upgrade, they just silently reset this particular preference.
+        // WAVE/CYCLE/STARS keys no longer map to any LedPattern entry
+        // (they live under KeyEffect now — see KeyboardKeyEffectRipple) —
+        // fromKey falls back safely to NONE for any old stored preference
+        // value using those now-removed keys, so existing installs don't
+        // crash on upgrade, they just silently reset this one preference.
         fun fromKey(key: String): LedPattern = entries.find { it.key == key } ?: NONE
     }
 }
