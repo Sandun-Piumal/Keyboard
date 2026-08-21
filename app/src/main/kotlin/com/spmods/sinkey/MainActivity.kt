@@ -145,6 +145,7 @@ private fun SinKeyApp(prefs: PreferencesManager) {
     val bottomSpaceEnabled by prefs.bottomSpaceEnabled.collectAsState(initial = true)
     val bottomSpaceSize by prefs.bottomSpaceSize.collectAsState(initial = 0f)
     val showKeyBorders by prefs.showKeyBorders.collectAsState(initial = true)
+    val keyOpacity by prefs.keyOpacity.collectAsState(initial = 1f)
     val mixAutoSinhala by prefs.mixAutoSinhala.collectAsState(initial = false)
     val swipeTypingEnabled by prefs.swipeTypingEnabled.collectAsState(initial = false)
     val smoothImeTransition by prefs.smoothImeTransition.collectAsState(initial = true)
@@ -389,13 +390,15 @@ private fun SinKeyApp(prefs: PreferencesManager) {
                             initialShowKeyBorders = showKeyBorders,
                             initialBlur = customBackgroundBlur,
                             initialBrightness = customBackgroundBrightness,
+                            initialKeyOpacity = keyOpacity,
                             onBack = { photoEditStep = PhotoEditStep.CROP },
-                            onDone = { newShowKeyBorders, blur, brightness ->
+                            onDone = { newShowKeyBorders, blur, brightness, newKeyOpacity ->
                                 val finalBitmap = croppedBitmap!!
                                 scope.launch {
                                     prefs.setShowKeyBorders(newShowKeyBorders)
                                     prefs.setCustomBackgroundBlur(blur)
                                     prefs.setCustomBackgroundBrightness(brightness)
+                                    prefs.setKeyOpacity(newKeyOpacity)
                                     val savedUri = saveCroppedBackground(context, finalBitmap)
                                     prefs.setCustomBackgroundUri(savedUri)
                                 }
@@ -411,10 +414,12 @@ private fun SinKeyApp(prefs: PreferencesManager) {
                             bottomSpaceEnabled = bottomSpaceEnabled,
                             bottomSpaceSize = bottomSpaceSize,
                             showKeyBorders = showKeyBorders,
+                            keyOpacity = keyOpacity,
                             onKeyboardHeightChange = { v -> scope.launch { prefs.setKeyboardHeight(v) } },
                             onBottomSpaceEnabledChange = { v -> scope.launch { prefs.setBottomSpaceEnabled(v) } },
                             onBottomSpaceSizeChange = { v -> scope.launch { prefs.setBottomSpaceSize(v) } },
                             onShowKeyBordersChange = { v -> scope.launch { prefs.setShowKeyBorders(v) } },
+                            onKeyOpacityChange = { v -> scope.launch { prefs.setKeyOpacity(v) } },
                             onBack = { settingsSubScreen = SettingsSubScreen.MAIN }
                         )
                     }
