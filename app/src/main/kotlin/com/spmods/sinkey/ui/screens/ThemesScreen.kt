@@ -127,8 +127,24 @@ fun ThemesScreen(
         modifier = Modifier
             .fillMaxWidth()
             .verticalScroll(rememberScrollState())
-            .padding(bottom = 12.dp)
-    )
+            .padding(bottom = 24.dp)
+    ) {
+        Column(modifier = Modifier.padding(22.dp, 18.dp, 22.dp, 4.dp)) {
+            Text(
+                "APPEARANCE",
+                fontSize = 11.sp,
+                fontWeight = FontWeight.Bold,
+                letterSpacing = 1.5.sp,
+                color = MaterialTheme.colorScheme.secondary
+            )
+            Text("Choose a theme", fontSize = 22.sp, fontWeight = FontWeight.ExtraBold)
+            Text(
+                "The keyboard follows your pick everywhere you type.",
+                fontSize = 13.sp,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(top = 6.dp)
+            )
+        }
 
         // Manual 2-column chunking instead of LazyVerticalGrid — this Column
         // is now inside the page's own verticalScroll, and nesting a lazy
