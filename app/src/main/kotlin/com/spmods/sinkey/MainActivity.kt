@@ -15,6 +15,7 @@ import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
@@ -54,6 +55,8 @@ import com.spmods.sinkey.data.KeyEffect
 import com.spmods.sinkey.data.PreferencesManager
 import com.spmods.sinkey.data.ThemeMode
 import com.spmods.sinkey.keyboard.KeyboardView
+import com.spmods.sinkey.ui.screens.AppHeader
+import com.spmods.sinkey.ui.screens.HeaderMenuMode
 import com.spmods.sinkey.ui.screens.HomeScreen
 import com.spmods.sinkey.ui.screens.KeyboardHeightScreen
 import com.spmods.sinkey.ui.screens.PhotoCropScreen
@@ -330,7 +333,43 @@ private fun SinKeyApp(prefs: PreferencesManager) {
                 modifier = Modifier.fillMaxSize(),
                 color = MaterialTheme.colorScheme.background
             ) {
-                when {
+                // ── Fixed (non-scrolling) header ────────────────────────────
+                // Shown above the tab content on Home/Themes/Settings' MAIN
+                // sub-screen only — hidden during the "My themes" photo crop/
+                // edit flow, the Keyboard Height sub-screen, and the keyboard
+                // preview overlay, all of which are full-screen flows of
+                // their own. This Column itself never scrolls; each screen
+                // below scrolls internally (see HomeScreen/ThemesScreen/
+                // SettingsScreen's own verticalScroll Columns), so the header
+                // stays fixed at the top while the page content scrolls
+                // underneath it.
+                val showHeader = photoEditStep == PhotoEditStep.NONE &&
+                    settingsSubScreen == SettingsSubScreen.MAIN &&
+                    !showKeyboardPreview
+
+                Column(modifier = Modifier.fillMaxSize()) {
+                    if (showHeader) {
+                        val headerMenuMode = when (tab) {
+                            Tab.HOME -> HeaderMenuMode.PREMIUM
+                            Tab.THEMES -> HeaderMenuMode.THEME_RESET
+                            Tab.SETTINGS -> HeaderMenuMode.SETTINGS_RESET
+                        }
+                        AppHeader(
+                            menuMode = headerMenuMode,
+                            onResetClick = {
+                                scope.launch {
+                                    when (tab) {
+                                        Tab.THEMES -> prefs.resetThemeSettings()
+                                        Tab.SETTINGS -> prefs.resetAppSettings()
+                                        Tab.HOME -> {}
+                                    }
+                                }
+                            }
+                        )
+                    }
+
+                    Box(modifier = Modifier.fillMaxSize()) {
+                        when {
                     photoEditStep == PhotoEditStep.CROP && rawPickedBitmap != null -> {
                         PhotoCropScreen(
                             sourceBitmap = rawPickedBitmap!!,
@@ -379,7 +418,7 @@ private fun SinKeyApp(prefs: PreferencesManager) {
                             onBack = { settingsSubScreen = SettingsSubScreen.MAIN }
                         )
                     }
-                    tab == Tab.HOME -> HomeScreen()
+                    tab == Tab.HOME -> HomeScreen(isDark = isDark)
                     tab == Tab.THEMES -> ThemesScreen(
                         currentMode = themeMode,
                         onSelect = { mode -> scope.launch { prefs.setThemeMode(mode) } },
@@ -441,6 +480,8 @@ private fun SinKeyApp(prefs: PreferencesManager) {
                         onSmoothImeTransitionChange = { enabled -> scope.launch { prefs.setSmoothImeTransition(enabled) } },
                         onOpenKeyboardHeight = { settingsSubScreen = SettingsSubScreen.KEYBOARD_HEIGHT }
                     )
+                        }
+                    }
                 }
             }
 
