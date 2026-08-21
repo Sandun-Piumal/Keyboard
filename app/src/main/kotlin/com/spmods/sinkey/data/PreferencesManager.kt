@@ -367,6 +367,63 @@ class PreferencesManager(private val context: Context) {
         }
     }
 
+    /**
+     * Resets every preference shown on the Themes screen back to its
+     * original default, WITHOUT touching anything from the Settings screen
+     * (default language, key sound/vibrate, mix mode, swipe typing, smooth
+     * IME transition, keyboard height/bottom-space/borders) or the theme
+     * mode itself (light/dark/system — that one lives under Settings'
+     * "THEME MODE" section, not Themes, even though ThemesScreen also
+     * offers the same three "Default" cards for convenience).
+     *
+     * Clears CUSTOM_BACKGROUND_URI/TYPING_ANIMATION_IMAGE_URI to blank
+     * rather than deleting the underlying saved files — matches
+     * setCustomBackgroundUri(null)'s existing behavior, so a stray
+     * custom_background_*.jpg is simply orphaned (harmless) rather than
+     * risking a crash if this runs while a screen still holds a reference
+     * to the old bitmap.
+     */
+    suspend fun resetThemeSettings() {
+        context.dataStore.edit { prefs ->
+            prefs[Keys.KEY_COLOR_PALETTE] = KeyColorPalette.DEFAULT.key
+            prefs[Keys.KEY_EFFECT] = KeyEffect.NONE.key
+            prefs[Keys.CUSTOM_BACKGROUND_URI] = ""
+            prefs[Keys.BACKGROUND_STYLE] = BackgroundStyle.NONE.key
+            prefs[Keys.CUSTOM_BACKGROUND_BLUR] = 0f
+            prefs[Keys.CUSTOM_BACKGROUND_BRIGHTNESS] = 0.5f
+            prefs[Keys.MATERIAL_YOU_ENABLED] = false
+            prefs[Keys.TYPING_ANIMATION] = TypingAnimation.NONE.key
+            prefs[Keys.TYPING_ANIMATION_EMOJI] = "✨"
+            prefs[Keys.TYPING_ANIMATION_IMAGE_URI] = ""
+            prefs[Keys.LED_PATTERN] = LedPattern.NONE.key
+            prefs[Keys.LED_IDLE_DIMMING] = true
+        }
+    }
+
+    /**
+     * Resets every preference shown on the Settings screen back to its
+     * original default — language, key sound/vibrate, mix mode, swipe
+     * typing, smooth IME transition, keyboard height/bottom-space/borders,
+     * AND theme mode (Settings' own "THEME MODE" section). Does not touch
+     * anything under the Themes screen (colors/effects/backgrounds/LED/
+     * typing animation) — use resetThemeSettings() for that.
+     */
+    suspend fun resetAppSettings() {
+        context.dataStore.edit { prefs ->
+            prefs[Keys.THEME_MODE] = ThemeMode.SYSTEM.name
+            prefs[Keys.DEFAULT_LANG] = "mix"
+            prefs[Keys.KEY_SOUND] = true
+            prefs[Keys.KEY_VIBRATE] = false
+            prefs[Keys.MIX_AUTO_SINHALA] = false
+            prefs[Keys.SWIPE_TYPING_ENABLED] = false
+            prefs[Keys.SMOOTH_IME_TRANSITION] = true
+            prefs[Keys.KEYBOARD_HEIGHT] = 2f
+            prefs[Keys.BOTTOM_SPACE_ENABLED] = true
+            prefs[Keys.BOTTOM_SPACE_SIZE] = 0f
+            prefs[Keys.SHOW_KEY_BORDERS] = true
+        }
+    }
+
     companion object {
         const val MAX_RECENT = 20 // LazyRow allows unlimited scroll — keep up to 20 recent emojis
     }
