@@ -1,6 +1,7 @@
 package com.spmods.sinkey.data.dictionary
 
 import androidx.room.Entity
+import androidx.room.Index
 import androidx.room.PrimaryKey
 
 /**
@@ -18,8 +19,23 @@ import androidx.room.PrimaryKey
  *                frequency pairs are predicted first.
  * [lastUsed]     timestamp (epoch millis) of the most recent occurrence,
  *                used as a tiebreaker between equally frequent pairs.
+ *
+ * Index (see WordDatabase MIGRATION_2_3): the primary key is
+ * (previousWord, nextWord, language), which already lets findByPreviousWord
+ * range-scan on previousWord, but every query also filters on `language`
+ * and findByPreviousWordAndPrefix additionally does `nextWord LIKE
+ * 'prefix%'`. idx_bigrams_lookup puts (previousWord, language) first so
+ * both queries stay fast index scans — narrowed to the right language
+ * before the nextWord prefix check — instead of scanning every pair ever
+ * learned for that previousWord across both languages.
  */
-@Entity(tableName = "bigrams", primaryKeys = ["previousWord", "nextWord", "language"])
+@Entity(
+    tableName = "bigrams",
+    primaryKeys = ["previousWord", "nextWord", "language"],
+    indices = [
+        Index(value = ["previousWord", "language", "nextWord"], name = "idx_bigrams_lookup")
+    ]
+)
 data class BigramEntity(
     val previousWord: String,
     val nextWord: String,
