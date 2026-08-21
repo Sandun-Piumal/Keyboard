@@ -51,10 +51,12 @@ fun KeyboardHeightScreen(
     bottomSpaceEnabled: Boolean,
     bottomSpaceSize: Float,          // 0f=S  1f=M  2f=L  3f=XL
     showKeyBorders: Boolean,
+    keyOpacity: Float,
     onKeyboardHeightChange: (Float) -> Unit,
     onBottomSpaceEnabledChange: (Boolean) -> Unit,
     onBottomSpaceSizeChange: (Float) -> Unit,
     onShowKeyBordersChange: (Boolean) -> Unit,
+    onKeyOpacityChange: (Float) -> Unit,
     onBack: () -> Unit
 ) {
     val isDefault = keyboardHeight == 2f   // L is the factory default
@@ -192,6 +194,34 @@ fun KeyboardHeightScreen(
                     colors = SwitchDefaults.colors(
                         checkedTrackColor = MaterialTheme.colorScheme.primary
                     )
+                )
+            }
+
+            Spacer(modifier = Modifier.height(8.dp))
+            Divider(color = MaterialTheme.colorScheme.outlineVariant)
+
+            // ── Key opacity row ───────────────────────────────────────────
+            // Continuous 0f..1f (not the 4-step SizeSlider) — lets the user
+            // dial in a subtle amount rather than snap between a few fixed
+            // steps. Most useful with a custom background photo set (see
+            // PhotoEditThemeScreen, which offers the same slider at the
+            // point of picking a photo), but works the same either way.
+            Column(modifier = Modifier.padding(horizontal = 16.dp, vertical = 14.dp)) {
+                Text("Key opacity", fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
+                Text(
+                    "Lower this to let a custom background show through each key",
+                    fontSize = 12.sp,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                Slider(
+                    value = keyOpacity,
+                    onValueChange = onKeyOpacityChange,
+                    colors = SliderDefaults.colors(
+                        thumbColor = MaterialTheme.colorScheme.primary,
+                        activeTrackColor = MaterialTheme.colorScheme.primary,
+                        inactiveTrackColor = MaterialTheme.colorScheme.outlineVariant
+                    ),
+                    modifier = Modifier.padding(top = 8.dp)
                 )
             }
         }
