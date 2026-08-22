@@ -889,24 +889,7 @@ class SinKeyInputMethodService : InputMethodService() {
                         onSwipeGesture = ::resolveGestureCandidates,
                         onGestureWordCommitted = ::commitGestureWord,
                         onKey = ::handleKey,
-                        onOpenAppSettings = {
-                            // Launches MainActivity's Settings tab, replacing the
-                            // old mic pill button (see AppsMicBar's doc comment on
-                            // this param — the mic button never did real voice
-                            // typing anyway, just sendDefaultEditorAction(true)).
-                            val intent = android.content.Intent(this, com.spmods.sinkey.MainActivity::class.java).apply {
-                                addFlags(
-                                    android.content.Intent.FLAG_ACTIVITY_NEW_TASK or
-                                    android.content.Intent.FLAG_ACTIVITY_CLEAR_TOP
-                                )
-                                putExtra(com.spmods.sinkey.MainActivity.EXTRA_OPEN_TAB, com.spmods.sinkey.MainActivity.TAB_SETTINGS)
-                            }
-                            try {
-                                startActivity(intent)
-                            } catch (e: Exception) {
-                                android.util.Log.w("SinKey", "Failed to open Settings from keyboard", e)
-                            }
-                        },
+                        onOpenAppSettings = ::openAppSettingsFromKeyboard,
                         inputType = currentInputTypeState.value,
                         boardStack = boardStack.value,
                         onBoardStackChange = { boardStack.value = it },
@@ -2834,6 +2817,32 @@ class SinKeyInputMethodService : InputMethodService() {
                 "Couldn't open the picker — try again",
                 android.widget.Toast.LENGTH_SHORT
             ).show()
+        }
+    }
+
+    /**
+     * Launches SinKey's own Settings tab (MainActivity) from the keyboard's
+     * "Settings" pill button — see AppsMicBar's onOpenAppSettings doc
+     * comment (replaces the old mic button, which never did real voice
+     * typing — just sendDefaultEditorAction(true)). A real member function
+     * called by reference (::openAppSettingsFromKeyboard) rather than an
+     * inline lambda at the KeyboardView(...) call site: written inline
+     * there, `this`/`startActivity` sat inside the Composable lambda tree
+     * and failed to resolve to the Service at all (build error) — as a
+     * member function, `this` is unambiguous.
+     */
+    private fun openAppSettingsFromKeyboard() {
+        val intent = android.content.Intent(this, com.spmods.sinkey.MainActivity::class.java).apply {
+            addFlags(
+                android.content.Intent.FLAG_ACTIVITY_NEW_TASK or
+                android.content.Intent.FLAG_ACTIVITY_CLEAR_TOP
+            )
+            putExtra(com.spmods.sinkey.MainActivity.EXTRA_OPEN_TAB, com.spmods.sinkey.MainActivity.TAB_SETTINGS)
+        }
+        try {
+            startActivity(intent)
+        } catch (e: Exception) {
+            android.util.Log.w("SinKey", "Failed to open Settings from keyboard", e)
         }
     }
 
