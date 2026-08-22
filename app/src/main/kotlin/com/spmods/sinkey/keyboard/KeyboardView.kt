@@ -498,7 +498,7 @@ internal fun KeyboardView(
     showKeyBorders: Boolean = true,
     isDark: Boolean = false,
     suggestions: List<String> = emptyList(),
-    onSuggestionSelected: (String) -> Unit = {},
+    onSuggestionSelected: (String, Int) -> Unit = {},
     // Non-null right after a silent autocorrect swapped what the user
     // typed for a spell-checker correction — holds the original typed
     // word so AppsMicBar can show a one-tap "Undo" chip. Owned by the IME
@@ -729,6 +729,7 @@ internal fun KeyboardView(
     val coroutineScope = rememberCoroutineScope()
     val selectedFontKey by prefsManager.keyboardFont.collectAsState(initial = FancyTextStyle.NONE.key)
     val decorationEnabled by prefsManager.decorationEnabled.collectAsState(initial = false)
+    val decorationVaryStyles by prefsManager.decorationVaryStyles.collectAsState(initial = true)
     val selectedDecorationKey by prefsManager.decorationStyle.collectAsState(initial = DecorationStyle.NONE.key)
     val stickerRepository = remember { com.spmods.sinkey.data.sticker.StickerRepository(context) }
     val ownStickers by stickerRepository.all.collectAsState(initial = emptyList())
@@ -832,6 +833,7 @@ internal fun KeyboardView(
                     onTranslateSourceTextTapped = onTranslateSourceTextTapped,
                     selectedFontStyle = FancyTextStyle.fromKey(selectedFontKey),
                     decorationEnabled = decorationEnabled,
+                    decorationVaryStyles = decorationVaryStyles,
                     selectedDecorationStyle = DecorationStyle.fromKey(selectedDecorationKey)
                 )
             }
@@ -933,6 +935,10 @@ internal fun KeyboardView(
                     enabled = decorationEnabled,
                     onEnabledChange = { enabled ->
                         coroutineScope.launch { prefsManager.setDecorationEnabled(enabled) }
+                    },
+                    varyStyles = decorationVaryStyles,
+                    onVaryStylesChange = { vary ->
+                        coroutineScope.launch { prefsManager.setDecorationVaryStyles(vary) }
                     },
                     selectedStyleKey = selectedDecorationKey,
                     onStyleSelected = { styleKey ->
@@ -2057,7 +2063,7 @@ private fun AppsMicBar(
     colors: KeyboardColors,
     isDark: Boolean = false,
     suggestions: List<String>,
-    onSuggestionSelected: (String) -> Unit,
+    onSuggestionSelected: (String, Int) -> Unit,
     // Non-null right after an autocorrect swap — renders as a distinct
     // "Undo" chip pinned before the regular suggestions. See KeyboardView's
     // doc comment on this same param for ownership/lifecycle.
@@ -2091,6 +2097,7 @@ private fun AppsMicBar(
     onTranslateSourceTextTapped: (Int) -> Unit = {},
     selectedFontStyle: FancyTextStyle = FancyTextStyle.NONE,
     decorationEnabled: Boolean = false,
+    decorationVaryStyles: Boolean = true,
     selectedDecorationStyle: DecorationStyle = DecorationStyle.NONE
 ) {
     // The undo chip must be able to show the strip even when there are no
@@ -2228,14 +2235,23 @@ private fun AppsMicBar(
                         // they've already tapped it. FancyTextMapper only maps
                         // a-z/A-Z/0-9, so Sinhala suggestion chips pass through
                         // completely unchanged — safe to apply unconditionally.
+                        val decorationForThisChip = when {
+                            !decorationEnabled -> DecorationStyle.NONE
+                            // "Vary styles": each suggestion slot gets a different
+                            // style (deterministic by position — see
+                            // TextDecorator.cycleStyleFor's doc comment) instead of
+                            // every chip using the one style picked in the list.
+                            decorationVaryStyles -> TextDecorator.cycleStyleFor(idx)
+                            else -> selectedDecorationStyle
+                        }
                         val displayWord = TextDecorator.apply(
                             FancyTextMapper.apply(word, selectedFontStyle),
-                            if (decorationEnabled) selectedDecorationStyle else DecorationStyle.NONE
+                            decorationForThisChip
                         )
                         Box(
                             modifier = Modifier
                                 .clip(RoundedCornerShape(4.dp))
-                                .clickable { onSuggestionSelected(word) }
+                                .clickable { onSuggestionSelected(word, idx) }
                                 .padding(horizontal = 12.dp, vertical = 6.dp),
                             contentAlignment = Alignment.Center
                         ) {
@@ -4300,6 +4316,8 @@ private fun DecorationPickerView(
     targetContentHeight: Dp,
     enabled: Boolean,
     onEnabledChange: (Boolean) -> Unit,
+    varyStyles: Boolean,
+    onVaryStylesChange: (Boolean) -> Unit,
     selectedStyleKey: String,
     onStyleSelected: (String) -> Unit,
     onBack: () -> Unit
@@ -4352,7 +4370,7 @@ private fun DecorationPickerView(
                     color = colors.keyText
                 )
                 Text(
-                    "Wraps suggestion-bar words in the style below; tap one to apply it",
+                    "Wraps suggestion-bar words in a decorative style; tap one to apply it",
                     fontSize = 11.sp,
                     color = colors.subText
                 )
@@ -4364,23 +4382,57 @@ private fun DecorationPickerView(
             )
         }
 
-        LazyColumn(
-            modifier = Modifier.fillMaxWidth().weight(1f),
-            contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 8.dp, vertical = 4.dp)
-        ) {
-            items(DecorationStyle.entries.toList(), key = { it.key }) { style ->
-                DecorationRow(
-                    style = style,
-                    selected = style.key == selectedStyleKey,
-                    // Style rows are only meaningfully pickable once the
-                    // feature is enabled — dimmed (not hidden, so the user
-                    // can still preview/browse) while off, matching how a
-                    // disabled Switch's dependents are usually shown.
-                    dimmed = !enabled,
-                    colors = colors,
-                    onSelect = { onStyleSelected(style.key) }
+        // Vary-styles row + the style list itself are only shown once the
+        // feature is actually on — hidden entirely (not dimmed) while off,
+        // per the reference screenshot's feedback: a disabled-looking list
+        // was still visually present and confusing.
+        if (enabled) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 12.dp, vertical = 8.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        "Vary styles",
+                        fontSize = 13.sp,
+                        fontWeight = FontWeight.Medium,
+                        color = colors.keyText
+                    )
+                    Text(
+                        "Cycle a different style per suggestion instead of picking one below",
+                        fontSize = 11.sp,
+                        color = colors.subText
+                    )
+                }
+                androidx.compose.material3.Switch(
+                    checked = varyStyles,
+                    onCheckedChange = onVaryStylesChange,
+                    colors = androidx.compose.material3.SwitchDefaults.colors(checkedTrackColor = DeshGreen)
                 )
             }
+
+            // The fixed-style list only matters once "Vary styles" is off —
+            // picking a row here is what "Vary styles" would otherwise
+            // override. Same hide-not-dim treatment as the section above:
+            // shown, but its purpose only applies with Vary styles off.
+            LazyColumn(
+                modifier = Modifier.fillMaxWidth().weight(1f),
+                contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 8.dp, vertical = 4.dp)
+            ) {
+                items(DecorationStyle.pickable, key = { it.key }) { style ->
+                    DecorationRow(
+                        style = style,
+                        selected = style.key == selectedStyleKey,
+                        dimmed = varyStyles,
+                        colors = colors,
+                        onSelect = { onStyleSelected(style.key) }
+                    )
+                }
+            }
+        } else {
+            Spacer(modifier = Modifier.weight(1f))
         }
 
         Spacer(modifier = Modifier.height(bottomPadding))
