@@ -894,12 +894,12 @@ class SinKeyInputMethodService : InputMethodService() {
                             // old mic pill button (see AppsMicBar's doc comment on
                             // this param — the mic button never did real voice
                             // typing anyway, just sendDefaultEditorAction(true)).
-                            val intent = android.content.Intent(this, MainActivity::class.java).apply {
+                            val intent = android.content.Intent(this, com.spmods.sinkey.MainActivity::class.java).apply {
                                 addFlags(
                                     android.content.Intent.FLAG_ACTIVITY_NEW_TASK or
                                     android.content.Intent.FLAG_ACTIVITY_CLEAR_TOP
                                 )
-                                putExtra(MainActivity.EXTRA_OPEN_TAB, MainActivity.TAB_SETTINGS)
+                                putExtra(com.spmods.sinkey.MainActivity.EXTRA_OPEN_TAB, com.spmods.sinkey.MainActivity.TAB_SETTINGS)
                             }
                             try {
                                 startActivity(intent)
