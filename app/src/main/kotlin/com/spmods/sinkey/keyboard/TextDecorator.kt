@@ -12,29 +12,38 @@ package com.spmods.sinkey.keyboard
  *     prefix/suffix (works for Sinhala and English alike, since it never
  *     touches the letters themselves) — OR, for GLITCH-kind styles, layers
  *     combining diacritical marks onto each of the word's own characters in
- *     addition to a prefix/suffix wrap (see Kind.GLITCH doc comment below).
+ *     addition to a prefix/suffix wrap (see DecorationKind's doc comment
+ *     below).
  * Both can be layered: apply() takes already-fancy-styled text as input
  * when the caller wants both active at once — see IME service call sites.
  */
+
+/**
+ * Whether a DecorationStyle wraps text unchanged (WRAP) or also glitches
+ * the word's own letters with combining marks first (GLITCH) — see
+ * DecorationStyle.kind's doc comment for the full explanation. A top-level
+ * type rather than nested inside DecorationStyle: Kotlin requires every
+ * enum entry (NONE, BOX_CHERRY_BOW, ...) to appear before any other member
+ * declaration in an enum class body, so a nested "enum class Kind" can't
+ * sit above them the way a nested type normally could in an ordinary class.
+ */
+enum class DecorationKind { WRAP, GLITCH }
+
 enum class DecorationStyle(
     val key: String,
     val label: String,
     val prefix: String,
     val suffix: String,
-    val kind: Kind = Kind.WRAP
+    // WRAP: prefix/suffix concatenated around the word unchanged — the
+    // original, simpler mechanism (box+emoji+arrow, vine borders).
+    // GLITCH: the word's own characters each get combining diacritical
+    // marks layered onto them (the "zalgo text" look — e.g. "පිච්ච" →
+    // "පි͠ච̷්ච̶"), in addition to the same prefix/suffix wrap — see the
+    // reference example this style was requested from:
+    // "පි͠ච̷්ච̶─⃞🌸⃘̬ٜٜٜ͠🍃⃘̬͞⃝🦋》". Handled by TextDecorator.apply, which
+    // checks `kind` and calls GlitchMarks.apply() first when it's GLITCH.
+    val kind: DecorationKind = DecorationKind.WRAP
 ) {
-    /**
-     * WRAP: prefix/suffix concatenated around the word unchanged — the
-     * original, simpler mechanism (box+emoji+arrow, vine borders).
-     * GLITCH: the word's own characters each get 1-3 random combining
-     * diacritical marks layered onto them (the "zalgo text" look — e.g.
-     * "පිච්ච" → "පි͠ච̷්ච̶"), in addition to the same prefix/suffix wrap —
-     * see the reference example this style was requested from:
-     * "පි͠ච̷්ච̶─⃞🌸⃘̬ٜٜٜ͠🍃⃘̬͞⃝🦋》". Handled by TextDecorator.apply, which
-     * checks `kind` and calls GlitchMarks.apply() first when it's GLITCH.
-     */
-    enum class Kind { WRAP, GLITCH }
-
     NONE("none", "None", "", ""),
 
     // ── Matching the reference screenshot's own pattern ─────────────────
@@ -72,11 +81,11 @@ enum class DecorationStyle(
     // themselves are randomized per call, per GlitchMarks.apply's own doc
     // comment, which is where the "same style, different word, different
     // marks each time" behavior actually lives.
-    GLITCH_BUTTERFLY("glitch_butterfly", "Glitch · Butterfly", "─⃞", "🌸⃘̬ٜٜٜ͠🍃⃘̬͞⃝🦋》", Kind.GLITCH),
-    GLITCH_MOON("glitch_moon", "Glitch · Moon", "─⃞", "🌙⃘̬ٜٜٜ͠✨⃘̬͞⃝⭐》", Kind.GLITCH),
-    GLITCH_ROSE("glitch_rose", "Glitch · Rose", "─⃞", "🥀⃘̬ٜٜٜ͠🍂⃘̬͞⃝🕸》", Kind.GLITCH),
-    GLITCH_SKULL("glitch_skull", "Glitch · Skull", "─⃞", "💀⃘̬ٜٜٜ͠⚡⃘̬͞⃝🖤》", Kind.GLITCH),
-    GLITCH_SNAKE("glitch_snake", "Glitch · Snake", "─⃞", "🐍⃘̬ٜٜٜ͠🌿⃘̬͞⃝🍄》", Kind.GLITCH);
+    GLITCH_BUTTERFLY("glitch_butterfly", "Glitch · Butterfly", "─⃞", "🌸⃘̬ٜٜٜ͠🍃⃘̬͞⃝🦋》", DecorationKind.GLITCH),
+    GLITCH_MOON("glitch_moon", "Glitch · Moon", "─⃞", "🌙⃘̬ٜٜٜ͠✨⃘̬͞⃝⭐》", DecorationKind.GLITCH),
+    GLITCH_ROSE("glitch_rose", "Glitch · Rose", "─⃞", "🥀⃘̬ٜٜٜ͠🍂⃘̬͞⃝🕸》", DecorationKind.GLITCH),
+    GLITCH_SKULL("glitch_skull", "Glitch · Skull", "─⃞", "💀⃘̬ٜٜٜ͠⚡⃘̬͞⃝🖤》", DecorationKind.GLITCH),
+    GLITCH_SNAKE("glitch_snake", "Glitch · Snake", "─⃞", "🐍⃘̬ٜٜٜ͠🌿⃘̬͞⃝🍄》", DecorationKind.GLITCH);
 
     companion object {
         fun fromKey(key: String): DecorationStyle = entries.find { it.key == key } ?: NONE
@@ -96,7 +105,7 @@ enum class DecorationStyle(
 
 /**
  * Generates the "zalgo"-style combining-diacritical-mark overlay used by
- * DecorationStyle.Kind.GLITCH. The person explicitly asked for the marks to
+ * DecorationKind.GLITCH. The person explicitly asked for the marks to
  * vary — the same word decorated twice should look visibly different each
  * time, not use one fixed pattern — but that can't mean truly random on
  * every call: the suggestion-bar chip and the actual committed text are two
@@ -152,7 +161,7 @@ object TextDecorator {
      * that's already been through FancyTextMapper) since it only ever
      * concatenates around the outside — never inspects individual
      * characters, so it's safe to layer after fancy-font styling. For
-     * Kind.GLITCH styles, the word's own characters are first run through
+     * DecorationKind.GLITCH styles, the word's own characters are first run through
      * GlitchMarks.apply() (see its doc comment for why this is
      * seed-derived, not freely random) before the prefix/suffix wrap goes
      * on around the result. [glitchSeed] defaults to [text]'s own hashCode
@@ -165,7 +174,7 @@ object TextDecorator {
      */
     fun apply(text: String, style: DecorationStyle, glitchSeed: Long = text.hashCode().toLong()): String {
         if (style == DecorationStyle.NONE || text.isEmpty()) return text
-        val body = if (style.kind == DecorationStyle.Kind.GLITCH) GlitchMarks.apply(text, glitchSeed) else text
+        val body = if (style.kind == DecorationKind.GLITCH) GlitchMarks.apply(text, glitchSeed) else text
         return style.prefix + body + style.suffix
     }
 
