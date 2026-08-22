@@ -15,7 +15,7 @@ package com.spmods.sinkey.keyboard
  * when the caller wants both active at once — see IME service call sites.
  */
 enum class DecorationStyle(val key: String, val label: String, val prefix: String, val suffix: String) {
-    NONE("none", "None (off)", "", ""),
+    NONE("none", "None", "", ""),
 
     // ── Matching the reference screenshot's own pattern ─────────────────
     // word + "-" + box glyph + emoji + arrow, e.g. "වෙනස්-⊟🍒🎀»"
@@ -46,6 +46,17 @@ enum class DecorationStyle(val key: String, val label: String, val prefix: Strin
 
     companion object {
         fun fromKey(key: String): DecorationStyle = entries.find { it.key == key } ?: NONE
+
+        /**
+         * The real, pickable styles — excludes NONE, which only exists as
+         * the internal "nothing selected yet" sentinel/preference default
+         * (see PreferencesManager.decorationStyle) and as the fallback used
+         * when the whole feature is toggled off. NONE is never shown as a
+         * row in DecorationPickerView — with no style chosen, "Vary styles"
+         * cycles through this full list instead of falling back to plain
+         * text (see cycleStyleFor in this file).
+         */
+        val pickable: List<DecorationStyle> = entries.filter { it != NONE }
     }
 }
 
@@ -60,5 +71,19 @@ object TextDecorator {
     fun apply(text: String, style: DecorationStyle): String {
         if (style == DecorationStyle.NONE || text.isEmpty()) return text
         return style.prefix + text + style.suffix
+    }
+
+    /**
+     * "Vary styles" mode: no single style is selected, so instead each
+     * suggestion-bar slot gets a different style, cycling through
+     * DecorationStyle.pickable by [index] (the suggestion's position in the
+     * bar). Deterministic per index — not random — so the same suggestion
+     * set shows the same style each recomposition instead of flickering
+     * between styles on every redraw.
+     */
+    fun cycleStyleFor(index: Int): DecorationStyle {
+        val styles = DecorationStyle.pickable
+        if (styles.isEmpty()) return DecorationStyle.NONE
+        return styles[index % styles.size]
     }
 }
