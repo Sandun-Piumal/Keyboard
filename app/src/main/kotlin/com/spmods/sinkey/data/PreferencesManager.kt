@@ -62,6 +62,12 @@ class PreferencesManager(private val context: Context) {
         // TextDecorator.cycleStyleFor). OFF: the one style chosen in
         // DECORATION_STYLE applies to every suggestion instead.
         val DECORATION_VARY_STYLES = booleanPreferencesKey("decoration_vary_styles")
+        // "Hidden message" tools-row toggle — see ZeroWidthEncoder.kt. When
+        // on, committed text is wrapped in a visible dot/quote pattern with
+        // the real text encoded invisibly inside it (never sent as an
+        // empty-looking message — see ZeroWidthEncoder.encode's doc
+        // comment on that constraint).
+        val HIDDEN_MESSAGE_ENABLED = booleanPreferencesKey("hidden_message_enabled")
         // Mix mode only: when true, finishing a word (space/enter) converts the
         // typed Latin buffer to its Sinhala transliteration, same as pure "si"
         // mode. Default OFF — mix mode commits the word as plain typed text.
@@ -214,6 +220,11 @@ class PreferencesManager(private val context: Context) {
         prefs[Keys.DECORATION_VARY_STYLES] ?: true
     }
 
+    /** "Hidden message" toggle — see ZeroWidthEncoder.kt. Default off. */
+    val hiddenMessageEnabled: Flow<Boolean> = context.dataStore.data.map { prefs ->
+        prefs[Keys.HIDDEN_MESSAGE_ENABLED] ?: false
+    }
+
     /** Mix mode: auto-convert the typed word to Sinhala on space/enter. Default off. */
     val mixAutoSinhala: Flow<Boolean> = context.dataStore.data.map { prefs ->
         prefs[Keys.MIX_AUTO_SINHALA] ?: false
@@ -359,6 +370,10 @@ class PreferencesManager(private val context: Context) {
 
     suspend fun setDecorationVaryStyles(enabled: Boolean) {
         context.dataStore.edit { it[Keys.DECORATION_VARY_STYLES] = enabled }
+    }
+
+    suspend fun setHiddenMessageEnabled(enabled: Boolean) {
+        context.dataStore.edit { it[Keys.HIDDEN_MESSAGE_ENABLED] = enabled }
     }
 
     suspend fun setMixAutoSinhala(enabled: Boolean) {
