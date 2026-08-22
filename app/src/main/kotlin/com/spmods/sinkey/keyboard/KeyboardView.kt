@@ -94,6 +94,8 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.filled.PushPin
 import androidx.compose.material.icons.outlined.PushPin
+import androidx.compose.material.icons.filled.VisibilityOff
+import androidx.compose.material.icons.outlined.VisibilityOff
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.runtime.rememberCoroutineScope
 import kotlinx.coroutines.launch
@@ -497,6 +499,13 @@ internal fun KeyboardView(
     bottomSpaceSize: Float = 0f,
     showKeyBorders: Boolean = true,
     isDark: Boolean = false,
+    // "Hidden message" decode reveal — non-null shows a dismissible banner
+    // above the keyboard with the just-decoded text (see
+    // SinKeyInputMethodService's hiddenMessageDecodedText/
+    // registerClipboardListener). Passing null hides it; onDismiss should
+    // set it back to null upstream.
+    hiddenMessageDecodedText: String? = null,
+    onDismissHiddenMessageBanner: () -> Unit = {},
     suggestions: List<String> = emptyList(),
     onSuggestionSelected: (String, Int) -> Unit = { _, _ -> },
     // Non-null right after a silent autocorrect swapped what the user
@@ -524,6 +533,12 @@ internal fun KeyboardView(
     onGestureWordCommitted: (String) -> Unit = {},
     onKey: (String) -> Unit,
     onDismiss: (() -> Unit)? = null,
+    // Opens SinKey's Settings screen (the app's own MainActivity) from the
+    // keyboard — see AppsMicBar's matching param doc comment. Only the IME
+    // service can actually start an Activity here (KeyboardView itself has
+    // no Activity/Service context to do it from), so this is threaded in
+    // rather than resolved locally the way e.g. decorationEnabled is.
+    onOpenAppSettings: () -> Unit = {},
     inputType: Int = 0,
     // Board stack owned by the IME service so it survives keyboard hide/show cycles.
     // Preview callers (MainActivity) omit these and get default MAIN behaviour.
@@ -730,6 +745,7 @@ internal fun KeyboardView(
     val selectedFontKey by prefsManager.keyboardFont.collectAsState(initial = FancyTextStyle.NONE.key)
     val decorationEnabled by prefsManager.decorationEnabled.collectAsState(initial = false)
     val decorationVaryStyles by prefsManager.decorationVaryStyles.collectAsState(initial = true)
+    val hiddenMessageEnabled by prefsManager.hiddenMessageEnabled.collectAsState(initial = false)
     val selectedDecorationKey by prefsManager.decorationStyle.collectAsState(initial = DecorationStyle.NONE.key)
     val stickerRepository = remember { com.spmods.sinkey.data.sticker.StickerRepository(context) }
     val ownStickers by stickerRepository.all.collectAsState(initial = emptyList())
@@ -791,6 +807,20 @@ internal fun KeyboardView(
         Column(
             modifier = Modifier.fillMaxWidth().wrapContentHeight().background(colors.bg)
         ) {
+            // ── Hidden-message decode banner — sits above the toolbar,
+            // pushing the whole keyboard down while visible, same as the
+            // translate row's own placement. Only rendered when there's
+            // something decoded to show; dismissing (tap or the X) hides it
+            // and hands control back to onDismissHiddenMessageBanner, which
+            // clears the upstream state so it doesn't reappear until the
+            // next matching copy.
+            if (hiddenMessageDecodedText != null) {
+                HiddenMessageBanner(
+                    colors = colors,
+                    decodedText = hiddenMessageDecodedText,
+                    onDismiss = onDismissHiddenMessageBanner
+                )
+            }
             // ── Toolbar (always visible, never re-created on pad switch,
             // except for the Emoji board — which moves its own category
             // tabs to the very top instead, in place of this toolbar) ──────
@@ -817,6 +847,11 @@ internal fun KeyboardView(
                     onClipboardOpen = { pushBoard(Board.CLIPBOARD) },
                     onFontOpen = { pushBoard(Board.FONT) },
                     onDecorationOpen = { pushBoard(Board.DECORATION) },
+                    hiddenMessageEnabled = hiddenMessageEnabled,
+                    onHiddenMessageToggle = {
+                        coroutineScope.launch { prefsManager.setHiddenMessageEnabled(!hiddenMessageEnabled) }
+                    },
+                    onOpenAppSettings = onOpenAppSettings,
                     onStickerOpen = { pushBoard(Board.STICKER) },
                     isTranslateMode = isTranslateMode,
                     onTranslateOpen = onTranslateModeChange?.let { { it(true) } } ?: {},
@@ -2073,6 +2108,16 @@ private fun AppsMicBar(
     onClipboardOpen: () -> Unit,
     onFontOpen: () -> Unit,
     onDecorationOpen: () -> Unit = {},
+    // "Hidden message" tools-row toggle — see ZeroWidthEncoder.kt. Purely a
+    // state flip here (no board to open); the actual encoding happens at
+    // commit time in the IME service, reading the same cached preference.
+    hiddenMessageEnabled: Boolean = false,
+    onHiddenMessageToggle: () -> Unit = {},
+    // Opens SinKey's own Settings screen (MainActivity) — replaces the
+    // previous mic pill button, which only ever called
+    // sendDefaultEditorAction(true) (effectively a second Enter key, not
+    // real voice typing) rather than anything mic-related.
+    onOpenAppSettings: () -> Unit = {},
     onStickerOpen: () -> Unit,
     // See KeyboardView's own doc comment on these — the translate row is a
     // third state of this same toolbar area (tools row / suggestion strip
@@ -2270,13 +2315,18 @@ private fun AppsMicBar(
             }
         } else {
             // ── Full tools row ───────────────────────────────────────────
+            // TOOL_SETTINGS previously did nothing (logged "not yet
+            // implemented"). Repurposed to the "Hidden message" toggle —
+            // real Settings access moved to the pill button at the end of
+            // the row (onOpenAppSettings), replacing the old mic button
+            // there, which likewise never did real voice typing.
             val tools = listOf(
                 R.drawable.ic_unified_menu  to "TOOL_APPS",
                 R.drawable.ic_sticker       to "TOOL_STICKER",
                 R.drawable.ic_clipboard     to "TOOL_CLIPBOARD",
                 R.drawable.ic_custom_font   to "TOOL_FONT",
                 R.drawable.ic_translation   to "TOOL_TRANSLATE",
-                R.drawable.ic_settings      to "TOOL_SETTINGS"
+                null                        to "TOOL_HIDDEN_MESSAGE"
             )
             Row(
                 modifier = Modifier
@@ -2310,35 +2360,49 @@ private fun AppsMicBar(
                                     "TOOL_APPS" -> onDecorationOpen()
                                     "TOOL_STICKER" -> onStickerOpen()
                                     "TOOL_TRANSLATE" -> onTranslateOpen()
+                                    "TOOL_HIDDEN_MESSAGE" -> onHiddenMessageToggle()
                                     else -> onKey(action)
                                 }
                             },
                         contentAlignment = Alignment.Center
                     ) {
-                        Icon(
-                            painter = painterResource(id = iconRes),
-                            contentDescription = null,
-                            modifier = Modifier.size(22.dp),
-                            tint = colors.subText
-                        )
+                        if (action == "TOOL_HIDDEN_MESSAGE") {
+                            // Filled while on, outline while off — same
+                            // filled/outlined pairing already used for the
+                            // pinned-sticker star elsewhere in this file.
+                            Icon(
+                                imageVector = if (hiddenMessageEnabled) Icons.Filled.VisibilityOff else Icons.Outlined.VisibilityOff,
+                                contentDescription = "Hidden message",
+                                modifier = Modifier.size(22.dp),
+                                tint = if (hiddenMessageEnabled) colors.accent else colors.subText
+                            )
+                        } else if (iconRes != null) {
+                            Icon(
+                                painter = painterResource(id = iconRes),
+                                contentDescription = null,
+                                modifier = Modifier.size(22.dp),
+                                tint = colors.subText
+                            )
+                        }
                     }
                 }
                 Box(
                     modifier = Modifier
                         .size(36.dp)
                         .clip(RoundedCornerShape(50))
-                        // Mic button keeps its pill background regardless of
-                        // showKeyBorders — it's a distinct action button, not
-                        // a regular key, so it shouldn't go flat/invisible.
+                        // Kept the same pill background treatment the mic
+                        // button had — a distinct action button, not a
+                        // regular key, so it shouldn't go flat/invisible
+                        // regardless of showKeyBorders.
                         .background(
                             if (isDark) Color(0x1FFFFFFF) else Color(0x14000000)
                         )
-                        .clickable { onKey("TOOL_MIC") },
+                        .clickable { onOpenAppSettings() },
                     contentAlignment = Alignment.Center
                 ) {
                     Icon(
-                        painter = painterResource(id = R.drawable.ic_microphone_normal),
-                        contentDescription = null,
+                        painter = painterResource(id = R.drawable.ic_settings),
+                        contentDescription = "Open SinKey settings",
                         modifier = Modifier.size(22.dp),
                         tint = colors.subText
                     )
@@ -4436,6 +4500,66 @@ private fun DecorationPickerView(
         }
 
         Spacer(modifier = Modifier.height(bottomPadding))
+    }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Hidden-message decode banner — see KeyboardView's hiddenMessageDecodedText
+// param doc comment. A read-only reveal, not an editable row like
+// TranslateRow: the user didn't open this, a matching copy triggered it, so
+// it only ever needs to show text and offer dismissal.
+// ─────────────────────────────────────────────────────────────────────────────
+@Composable
+private fun HiddenMessageBanner(
+    colors: KeyboardColors,
+    decodedText: String,
+    onDismiss: () -> Unit
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(DeshGreen.copy(alpha = 0.12f))
+            .padding(horizontal = 12.dp, vertical = 10.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Icon(
+            imageVector = Icons.Outlined.VisibilityOff,
+            contentDescription = null,
+            modifier = Modifier.size(18.dp),
+            tint = DeshGreen
+        )
+        Column(
+            modifier = Modifier
+                .weight(1f)
+                .padding(start = 10.dp)
+        ) {
+            Text(
+                text = "Hidden message found",
+                fontSize = 11.sp,
+                fontWeight = FontWeight.Medium,
+                color = colors.subText
+            )
+            Text(
+                text = decodedText,
+                fontSize = 15.sp,
+                color = colors.keyText,
+                maxLines = 3
+            )
+        }
+        Box(
+            modifier = Modifier
+                .size(28.dp)
+                .clip(RoundedCornerShape(50))
+                .clickable { onDismiss() },
+            contentAlignment = Alignment.Center
+        ) {
+            Icon(
+                imageVector = Icons.Filled.Close,
+                contentDescription = "Dismiss",
+                modifier = Modifier.size(16.dp),
+                tint = colors.subText
+            )
+        }
     }
 }
 
