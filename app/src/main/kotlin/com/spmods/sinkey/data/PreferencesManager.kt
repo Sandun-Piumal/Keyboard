@@ -24,6 +24,12 @@ class PreferencesManager(private val context: Context) {
         val DEFAULT_LANG = stringPreferencesKey("default_lang") // "si", "en", or "mix"
         val KEY_SOUND = booleanPreferencesKey("key_sound")
         val KEY_VIBRATE = booleanPreferencesKey("key_vibrate")
+        // Vibration duration in milliseconds for key-press haptic feedback,
+        // shown to the user as "Vibration level" (matches the reference
+        // Sound & vibration screen's wording/units — it's actually a
+        // duration, not an intensity, but kept under that name to match).
+        // Default 14 to match that reference screen's "Default (14 ms)".
+        val KEY_VIBRATION_MS = floatPreferencesKey("key_vibration_ms")
         val RECENT_EMOJIS = stringPreferencesKey("recent_emojis") // comma-separated
         // Keyboard Height settings
         val KEYBOARD_HEIGHT = floatPreferencesKey("keyboard_height") // 0f=S, 1f=M, 2f=L, 3f=XL
@@ -138,6 +144,11 @@ class PreferencesManager(private val context: Context) {
 
     val keyVibrateEnabled: Flow<Boolean> = context.dataStore.data.map { prefs ->
         prefs[Keys.KEY_VIBRATE] ?: false
+    }
+
+    /** Vibration duration in ms for key-press haptics. Default 14. */
+    val keyVibrationMs: Flow<Float> = context.dataStore.data.map { prefs ->
+        prefs[Keys.KEY_VIBRATION_MS] ?: 14f
     }
 
     // 0f=S, 1f=M, 2f=L, 3f=XL — default L (2f)
@@ -280,6 +291,10 @@ class PreferencesManager(private val context: Context) {
 
     suspend fun setKeyVibrateEnabled(enabled: Boolean) {
         context.dataStore.edit { it[Keys.KEY_VIBRATE] = enabled }
+    }
+
+    suspend fun setKeyVibrationMs(value: Float) {
+        context.dataStore.edit { it[Keys.KEY_VIBRATION_MS] = value.coerceIn(1f, 50f) }
     }
 
     suspend fun setKeyboardHeight(value: Float) {
@@ -438,6 +453,7 @@ class PreferencesManager(private val context: Context) {
             prefs[Keys.DEFAULT_LANG] = "mix"
             prefs[Keys.KEY_SOUND] = true
             prefs[Keys.KEY_VIBRATE] = false
+            prefs[Keys.KEY_VIBRATION_MS] = 14f
             prefs[Keys.MIX_AUTO_SINHALA] = false
             prefs[Keys.SWIPE_TYPING_ENABLED] = false
             prefs[Keys.SMOOTH_IME_TRANSITION] = true
