@@ -56,6 +56,12 @@ class PreferencesManager(private val context: Context) {
         // either alone.
         val DECORATION_ENABLED = booleanPreferencesKey("decoration_enabled")
         val DECORATION_STYLE = stringPreferencesKey("decoration_style")
+        // "Vary styles" — only meaningful while DECORATION_ENABLED is on.
+        // ON (default): no single style needs picking — each suggestion-bar
+        // slot cycles through DecorationStyle.pickable instead (see
+        // TextDecorator.cycleStyleFor). OFF: the one style chosen in
+        // DECORATION_STYLE applies to every suggestion instead.
+        val DECORATION_VARY_STYLES = booleanPreferencesKey("decoration_vary_styles")
         // Mix mode only: when true, finishing a word (space/enter) converts the
         // typed Latin buffer to its Sinhala transliteration, same as pure "si"
         // mode. Default OFF — mix mode commits the word as plain typed text.
@@ -203,6 +209,11 @@ class PreferencesManager(private val context: Context) {
         prefs[Keys.DECORATION_STYLE] ?: com.spmods.sinkey.keyboard.DecorationStyle.NONE.key
     }
 
+    /** "Vary styles" toggle — see DECORATION_VARY_STYLES doc comment. Default on. */
+    val decorationVaryStyles: Flow<Boolean> = context.dataStore.data.map { prefs ->
+        prefs[Keys.DECORATION_VARY_STYLES] ?: true
+    }
+
     /** Mix mode: auto-convert the typed word to Sinhala on space/enter. Default off. */
     val mixAutoSinhala: Flow<Boolean> = context.dataStore.data.map { prefs ->
         prefs[Keys.MIX_AUTO_SINHALA] ?: false
@@ -344,6 +355,10 @@ class PreferencesManager(private val context: Context) {
 
     suspend fun setDecorationStyle(styleKey: String) {
         context.dataStore.edit { it[Keys.DECORATION_STYLE] = styleKey }
+    }
+
+    suspend fun setDecorationVaryStyles(enabled: Boolean) {
+        context.dataStore.edit { it[Keys.DECORATION_VARY_STYLES] = enabled }
     }
 
     suspend fun setMixAutoSinhala(enabled: Boolean) {
