@@ -498,7 +498,7 @@ internal fun KeyboardView(
     showKeyBorders: Boolean = true,
     isDark: Boolean = false,
     suggestions: List<String> = emptyList(),
-    onSuggestionSelected: (String, Int) -> Unit = {},
+    onSuggestionSelected: (String, Int) -> Unit = { _, _ -> },
     // Non-null right after a silent autocorrect swapped what the user
     // typed for a spell-checker correction — holds the original typed
     // word so AppsMicBar can show a one-tap "Undo" chip. Owned by the IME
