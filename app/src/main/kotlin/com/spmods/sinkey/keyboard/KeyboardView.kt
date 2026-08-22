@@ -72,6 +72,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
@@ -480,7 +481,7 @@ private fun stepToBottomPadding(step: Float): Dp = when (Math.round(step)) {
 // Replaces the previous ad-hoc boolean flags (showSymbols, showEmojiPicker)
 // which had no memory of which board opened them, so back always went to MAIN.
 // Must be internal (not private) so SinKeyInputMethodService can reference it.
-enum class Board { MAIN, SYMBOLS, NUMPAD, EMOJI, CLIPBOARD, FONT, STICKER, STICKER_CREATE, STICKER_EDIT }
+enum class Board { MAIN, SYMBOLS, NUMPAD, EMOJI, CLIPBOARD, FONT, DECORATION, STICKER, STICKER_CREATE, STICKER_EDIT }
 
 /** Result of Board.STICKER_EDIT's async preview-image decode — see that branch in KeyboardView's content `when`. */
 private sealed class StickerEditDecodeResult {
@@ -727,6 +728,8 @@ internal fun KeyboardView(
     val clipHistory by clipRepository.history.collectAsState(initial = emptyList())
     val coroutineScope = rememberCoroutineScope()
     val selectedFontKey by prefsManager.keyboardFont.collectAsState(initial = FancyTextStyle.NONE.key)
+    val decorationEnabled by prefsManager.decorationEnabled.collectAsState(initial = false)
+    val selectedDecorationKey by prefsManager.decorationStyle.collectAsState(initial = DecorationStyle.NONE.key)
     val stickerRepository = remember { com.spmods.sinkey.data.sticker.StickerRepository(context) }
     val ownStickers by stickerRepository.all.collectAsState(initial = emptyList())
     val favouriteStickers by stickerRepository.favourites.collectAsState(initial = emptyList())
@@ -791,6 +794,7 @@ internal fun KeyboardView(
             // except for the Emoji board — which moves its own category
             // tabs to the very top instead, in place of this toolbar) ──────
             if (currentBoard != Board.EMOJI && currentBoard != Board.CLIPBOARD && currentBoard != Board.FONT &&
+                currentBoard != Board.DECORATION &&
                 currentBoard != Board.STICKER && currentBoard != Board.STICKER_CREATE) {
                 AppsMicBar(
                     colors = colors,
@@ -811,6 +815,7 @@ internal fun KeyboardView(
                     onKey = onKey,
                     onClipboardOpen = { pushBoard(Board.CLIPBOARD) },
                     onFontOpen = { pushBoard(Board.FONT) },
+                    onDecorationOpen = { pushBoard(Board.DECORATION) },
                     onStickerOpen = { pushBoard(Board.STICKER) },
                     isTranslateMode = isTranslateMode,
                     onTranslateOpen = onTranslateModeChange?.let { { it(true) } } ?: {},
@@ -825,7 +830,9 @@ internal fun KeyboardView(
                     isTranslating = isTranslating,
                     translateErrorMessage = translateErrorMessage,
                     onTranslateSourceTextTapped = onTranslateSourceTextTapped,
-                    selectedFontStyle = FancyTextStyle.fromKey(selectedFontKey)
+                    selectedFontStyle = FancyTextStyle.fromKey(selectedFontKey),
+                    decorationEnabled = decorationEnabled,
+                    selectedDecorationStyle = DecorationStyle.fromKey(selectedDecorationKey)
                 )
             }
 
@@ -837,6 +844,7 @@ internal fun KeyboardView(
             // shifts or resizes) — the recent-emoji strip itself is not
             // shown at all while the banner is up.
             if (!isPhoneInput && currentBoard != Board.EMOJI && currentBoard != Board.CLIPBOARD && currentBoard != Board.FONT &&
+                currentBoard != Board.DECORATION &&
                 currentBoard != Board.STICKER && currentBoard != Board.STICKER_CREATE) {
                 if (showUpdateBanner) {
                     UpdateBanner(
@@ -914,6 +922,21 @@ internal fun KeyboardView(
                     selectedFontKey = selectedFontKey,
                     onFontSelected = { fontKey ->
                         coroutineScope.launch { prefsManager.setKeyboardFont(fontKey) }
+                    },
+                    onBack = { popBoard() }
+                )
+                currentBoard == Board.DECORATION -> DecorationPickerView(
+                    colors = colors, keyHeight = keyHeight,
+                    bottomPadding = bottomPadding,
+                    targetContentHeight = measuredMainContentHeight + 48.dp +
+                        (if (!isPhoneInput && (showUpdateBanner || recentEmojis.isNotEmpty())) 44.dp else 0.dp),
+                    enabled = decorationEnabled,
+                    onEnabledChange = { enabled ->
+                        coroutineScope.launch { prefsManager.setDecorationEnabled(enabled) }
+                    },
+                    selectedStyleKey = selectedDecorationKey,
+                    onStyleSelected = { styleKey ->
+                        coroutineScope.launch { prefsManager.setDecorationStyle(styleKey) }
                     },
                     onBack = { popBoard() }
                 )
@@ -2043,6 +2066,7 @@ private fun AppsMicBar(
     onKey: (String) -> Unit,
     onClipboardOpen: () -> Unit,
     onFontOpen: () -> Unit,
+    onDecorationOpen: () -> Unit = {},
     onStickerOpen: () -> Unit,
     // See KeyboardView's own doc comment on these — the translate row is a
     // third state of this same toolbar area (tools row / suggestion strip
@@ -2065,7 +2089,9 @@ private fun AppsMicBar(
     // See TranslateRow's own doc comment on the matching param — forwarded
     // straight through, same as every other translate-row callback here.
     onTranslateSourceTextTapped: (Int) -> Unit = {},
-    selectedFontStyle: FancyTextStyle = FancyTextStyle.NONE
+    selectedFontStyle: FancyTextStyle = FancyTextStyle.NONE,
+    decorationEnabled: Boolean = false,
+    selectedDecorationStyle: DecorationStyle = DecorationStyle.NONE
 ) {
     // The undo chip must be able to show the strip even when there are no
     // regular suggestions to go with it — right after autocorrect commits a
@@ -2134,7 +2160,7 @@ private fun AppsMicBar(
                         .padding(start = 8.dp)
                         .size(36.dp)
                         .clip(RoundedCornerShape(6.dp))
-                        .clickable { onKey("TOOL_APPS") },
+                        .clickable { onDecorationOpen() },
                     contentAlignment = Alignment.Center
                 ) {
                     Icon(
@@ -2202,7 +2228,10 @@ private fun AppsMicBar(
                         // they've already tapped it. FancyTextMapper only maps
                         // a-z/A-Z/0-9, so Sinhala suggestion chips pass through
                         // completely unchanged — safe to apply unconditionally.
-                        val displayWord = FancyTextMapper.apply(word, selectedFontStyle)
+                        val displayWord = TextDecorator.apply(
+                            FancyTextMapper.apply(word, selectedFontStyle),
+                            if (decorationEnabled) selectedDecorationStyle else DecorationStyle.NONE
+                        )
                         Box(
                             modifier = Modifier
                                 .clip(RoundedCornerShape(4.dp))
@@ -2258,6 +2287,11 @@ private fun AppsMicBar(
                                 when (action) {
                                     "TOOL_CLIPBOARD" -> onClipboardOpen()
                                     "TOOL_FONT" -> onFontOpen()
+                                    // TOOL_APPS ("More", grid icon) previously did nothing
+                                    // (logged "not yet implemented" — see IME service's
+                                    // handleKey). Repurposed to open the Decorative text
+                                    // picker/toggle screen.
+                                    "TOOL_APPS" -> onDecorationOpen()
                                     "TOOL_STICKER" -> onStickerOpen()
                                     "TOOL_TRANSLATE" -> onTranslateOpen()
                                     else -> onKey(action)
@@ -4252,10 +4286,156 @@ private fun FontRow(
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Phone Dial Pad  (auto-shown when system sends TYPE_CLASS_PHONE)
-// Layout: 1 / 2 ABC / 3 DEF / 4 GHI / 5 JKL / 6 MNO
-//          7 PQRS / 8 TUV / 9 WXYZ / *# / 0+ / _ / Search(green)
+// Decorative text picker — Board.DECORATION. Same layout skeleton as
+// FontPickerView above (own full-page board, toolbar/emoji-row hidden while
+// it's open), plus an enable Switch at the top: the style list only matters
+// once the feature itself is on, same relationship as e.g. Vibrate on tap +
+// Vibration level in SoundVibrationScreen.
 // ─────────────────────────────────────────────────────────────────────────────
+@Composable
+private fun DecorationPickerView(
+    colors: KeyboardColors,
+    keyHeight: Dp,
+    bottomPadding: Dp,
+    targetContentHeight: Dp,
+    enabled: Boolean,
+    onEnabledChange: (Boolean) -> Unit,
+    selectedStyleKey: String,
+    onStyleSelected: (String) -> Unit,
+    onBack: () -> Unit
+) {
+    val headerHeight = 44.dp
+
+    Column(modifier = Modifier.fillMaxWidth().height(targetContentHeight).background(colors.bg)) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(headerHeight)
+                .padding(horizontal = 8.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Box(
+                modifier = Modifier
+                    .size(32.dp)
+                    .clip(RoundedCornerShape(6.dp))
+                    .clickable { onBack() },
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    painter = painterResource(id = R.drawable.ic_back_to_keyboard),
+                    contentDescription = "Back",
+                    modifier = Modifier.size(20.dp),
+                    tint = colors.subText
+                )
+            }
+            Text(
+                text = "Decorative text",
+                fontSize = 15.sp,
+                fontWeight = FontWeight.Medium,
+                color = colors.keyText,
+                modifier = Modifier.weight(1f).padding(start = 4.dp)
+            )
+        }
+
+        // ── Enable row — same switch look as SoundVibrationScreen's rows ──
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 12.dp, vertical = 8.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    "Decorate suggestions",
+                    fontSize = 13.sp,
+                    fontWeight = FontWeight.Medium,
+                    color = colors.keyText
+                )
+                Text(
+                    "Wraps suggestion-bar words in the style below; tap one to apply it",
+                    fontSize = 11.sp,
+                    color = colors.subText
+                )
+            }
+            androidx.compose.material3.Switch(
+                checked = enabled,
+                onCheckedChange = onEnabledChange,
+                colors = androidx.compose.material3.SwitchDefaults.colors(checkedTrackColor = DeshGreen)
+            )
+        }
+
+        LazyColumn(
+            modifier = Modifier.fillMaxWidth().weight(1f),
+            contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 8.dp, vertical = 4.dp)
+        ) {
+            items(DecorationStyle.entries.toList(), key = { it.key }) { style ->
+                DecorationRow(
+                    style = style,
+                    selected = style.key == selectedStyleKey,
+                    // Style rows are only meaningfully pickable once the
+                    // feature is enabled — dimmed (not hidden, so the user
+                    // can still preview/browse) while off, matching how a
+                    // disabled Switch's dependents are usually shown.
+                    dimmed = !enabled,
+                    colors = colors,
+                    onSelect = { onStyleSelected(style.key) }
+                )
+            }
+        }
+
+        Spacer(modifier = Modifier.height(bottomPadding))
+    }
+}
+
+@Composable
+private fun DecorationRow(
+    style: DecorationStyle,
+    selected: Boolean,
+    dimmed: Boolean,
+    colors: KeyboardColors,
+    onSelect: () -> Unit
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 3.dp)
+            .clip(RoundedCornerShape(8.dp))
+            .background(if (selected) DeshGreen.copy(alpha = 0.15f) else colors.cardBg)
+            .clickable { onSelect() }
+            .padding(horizontal = 12.dp, vertical = 10.dp)
+            .alpha(if (dimmed) 0.5f else 1f),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                text = style.label,
+                fontSize = 13.sp,
+                color = colors.subText,
+            )
+            Text(
+                // Same principle as FontRow above — the exact string that
+                // will wrap the committed/suggested word, not an approximation.
+                text = TextDecorator.apply("word", style),
+                fontSize = 17.sp,
+                color = colors.keyText,
+                maxLines = 1
+            )
+        }
+        if (selected) {
+            Box(
+                modifier = Modifier
+                    .size(22.dp)
+                    .clip(RoundedCornerShape(50))
+                    .background(DeshGreen),
+                contentAlignment = Alignment.Center
+            ) {
+                Text("✓", fontSize = 13.sp, color = Color.White, fontWeight = FontWeight.Bold)
+            }
+        }
+    }
+}
+
+
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun PhoneDialPadContent(
