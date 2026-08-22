@@ -236,6 +236,7 @@ class SinKeyInputMethodService : InputMethodService() {
     // Also enables key sound which was previously unimplemented.
     private var cachedVibrateEnabled = false
     private var cachedSoundEnabled = true
+    private var cachedVibrationMs = 14L
 
     // Fancy-text style (TOOL_FONT) applied to committed ENGLISH text only —
     // see FancyTextMapper. Cached the same way as the feedback prefs above:
@@ -416,6 +417,9 @@ class SinKeyInputMethodService : InputMethodService() {
         // whenever the user changes them in Settings. No blocking reads on key taps.
         serviceScope.launch {
             prefs.keyVibrateEnabled.collect { cachedVibrateEnabled = it }
+        }
+        serviceScope.launch {
+            prefs.keyVibrationMs.collect { cachedVibrationMs = it.toLong().coerceIn(1L, 50L) }
         }
         serviceScope.launch {
             prefs.keySoundEnabled.collect { cachedSoundEnabled = it }
@@ -3156,8 +3160,14 @@ class SinKeyInputMethodService : InputMethodService() {
         if (cachedVibrateEnabled) {
             val vibrator = getSystemService(Vibrator::class.java)
             if (vibrator != null) {
-                // FlorisBoard defaults: duration=50ms, strength=50 (of 100).
-                val durationMs = 50L
+                // Duration now comes from the "Vibration level" setting
+                // (Settings > Sound & vibration) instead of a fixed 50ms —
+                // see cachedVibrationMs, refreshed live from
+                // PreferencesManager.keyVibrationMs above. Strength stays
+                // fixed at FlorisBoard's default (50 of 100) — the
+                // reference screen's slider controls duration, not
+                // amplitude, matching its "Default (14 ms)" label.
+                val durationMs = cachedVibrationMs
                 val strengthPercent = 50
                 val amplitude = if (vibrator.hasAmplitudeControl()) {
                     (255.0 * (strengthPercent / 100.0)).toInt().coerceIn(1, 255)
