@@ -88,10 +88,28 @@ private enum class SettingsSubScreen { MAIN, KEYBOARD_HEIGHT, SOUND_VIBRATION }
 private enum class PhotoEditStep { NONE, CROP, EDIT }
 
 class MainActivity : ComponentActivity() {
+    companion object {
+        /** Intent extra: which tab to open on launch — see TAB_SETTINGS etc. below. */
+        const val EXTRA_OPEN_TAB = "open_tab"
+        const val TAB_HOME = "home"
+        const val TAB_THEMES = "themes"
+        const val TAB_SETTINGS = "settings"
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         installSplashScreen()
         super.onCreate(savedInstanceState)
         val prefs = PreferencesManager(applicationContext)
+        // Lets external callers (currently: the "Settings" pill button on
+        // the keyboard's tools row — see SinKeyInputMethodService's
+        // onOpenAppSettings) launch straight into a specific tab instead of
+        // always landing on Home. Absent/unrecognized extra falls through
+        // to SinKeyApp's own Tab.HOME default.
+        val initialTab = when (intent?.getStringExtra(EXTRA_OPEN_TAB)) {
+            TAB_SETTINGS -> Tab.SETTINGS
+            TAB_THEMES -> Tab.THEMES
+            else -> Tab.HOME
+        }
 
         setContent {
             val themeMode by prefs.themeMode.collectAsState(initial = ThemeMode.SYSTEM)
@@ -111,7 +129,7 @@ class MainActivity : ComponentActivity() {
                 }
 
                 Surface(color = MaterialTheme.colorScheme.background) {
-                    SinKeyApp(prefs)
+                    SinKeyApp(prefs, initialTab = initialTab)
                 }
             }
         }
@@ -119,8 +137,8 @@ class MainActivity : ComponentActivity() {
 }
 
 @Composable
-private fun SinKeyApp(prefs: PreferencesManager) {
-    var tab by remember { mutableStateOf(Tab.HOME) }
+private fun SinKeyApp(prefs: PreferencesManager, initialTab: Tab = Tab.HOME) {
+    var tab by remember { mutableStateOf(initialTab) }
     var settingsSubScreen by remember { mutableStateOf(SettingsSubScreen.MAIN) }
     var photoEditStep by remember { mutableStateOf(PhotoEditStep.NONE) }
     // Raw picker Uri decoded to a Bitmap (CROP step's source), then the
