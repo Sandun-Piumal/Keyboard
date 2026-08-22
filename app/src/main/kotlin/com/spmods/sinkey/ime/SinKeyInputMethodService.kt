@@ -148,6 +148,14 @@ class SinKeyInputMethodService : InputMethodService() {
     private var isTranslateMode = mutableStateOf(false)
     private var translateSourceLang = mutableStateOf("en")
     private var translateTargetLang = mutableStateOf("si")
+    // "Hidden message" decode preview — non-null holds the just-decoded
+    // real text from something the user copied (see registerClipboardListener's
+    // hidden-message branch), shown as a translate-row-style banner over
+    // the keyboard until dismissed. Deliberately its own state rather than
+    // reusing isTranslateMode/translateResultText — this is a passive,
+    // read-only reveal triggered by an external copy, not an interactive
+    // typing mode the user opened themselves.
+    private var hiddenMessageDecodedText = mutableStateOf<String?>(null)
     // The row's own notepad buffer — what the user has typed/edited since
     // opening translate mode (or since Clear/swap), in RAW form (Latin for
     // English/mix-mode-as-typed, exactly as the user's fingers hit keys —
@@ -255,6 +263,16 @@ class SinKeyInputMethodService : InputMethodService() {
     private var cachedDecorationEnabled = false
     private var cachedDecorationStyle = com.spmods.sinkey.keyboard.DecorationStyle.NONE
     private var cachedDecorationVaryStyles = true
+    // "Hidden message" tools-row toggle — see ZeroWidthEncoder.kt. Applied
+    // at the same whole-word commit points as decoration (never per-
+    // character composing text — same reasoning as cachedDecorationEnabled
+    // above), and layered AFTER decoration/fancy-font styling: the already-
+    // styled word becomes the *hidden* payload, and — if decoration is also
+    // on — the decorated text's own wrapper doubles as the *visible*
+    // pattern instead of generating the default dot/quote one, so a user
+    // with both features on sees one coherent decorative-looking result
+    // rather than two independent wrappers stacked on each other.
+    private var cachedHiddenMessageEnabled = false
     // Mix mode: when true, space/enter converts the typed word to Sinhala
     // (same as pure "si"); when false (default), it commits the raw typed
     // Latin text as-is unless the user picked a suggestion.
@@ -447,6 +465,9 @@ class SinKeyInputMethodService : InputMethodService() {
             prefs.decorationVaryStyles.collect { cachedDecorationVaryStyles = it }
         }
         serviceScope.launch {
+            prefs.hiddenMessageEnabled.collect { cachedHiddenMessageEnabled = it }
+        }
+        serviceScope.launch {
             prefs.mixAutoSinhala.collect { cachedMixAutoSinhala = it }
         }
 
@@ -489,6 +510,17 @@ class SinKeyInputMethodService : InputMethodService() {
             if (clip != null && clip.itemCount > 0) {
                 val text = clip.getItemAt(0).coerceToText(this)?.toString()
                 if (!text.isNullOrBlank()) {
+                    // "Hidden message" — only decode-and-reveal when the
+                    // user has the feature toggled on themselves; someone
+                    // without it enabled just sees the ordinary visible
+                    // pattern text as plain clipboard content, same as
+                    // anyone without this keyboard at all.
+                    if (cachedHiddenMessageEnabled && com.spmods.sinkey.keyboard.ZeroWidthEncoder.containsEncoded(text)) {
+                        val decoded = com.spmods.sinkey.keyboard.ZeroWidthEncoder.decode(text)
+                        if (!decoded.isNullOrEmpty()) {
+                            hiddenMessageDecodedText.value = decoded
+                        }
+                    }
                     serviceScope.launch { clipRepo.record(text) }
                     learnWordsFromClipboard(text)
                 }
@@ -847,6 +879,8 @@ class SinKeyInputMethodService : InputMethodService() {
                         bottomSpaceSize = bottomSpaceSize,
                         showKeyBorders = showKeyBorders,
                         isDark = isDark,
+                        hiddenMessageDecodedText = hiddenMessageDecodedText.value,
+                        onDismissHiddenMessageBanner = { hiddenMessageDecodedText.value = null },
                         suggestions = suggestions.value,
                         onSuggestionSelected = { word, idx -> if (isTranslateMode.value) handleTranslateSuggestion(word) else handleSuggestion(word, idx) },
                         autocorrectUndoWord = autocorrectUndo.value?.originalTyped,
@@ -855,6 +889,24 @@ class SinKeyInputMethodService : InputMethodService() {
                         onSwipeGesture = ::resolveGestureCandidates,
                         onGestureWordCommitted = ::commitGestureWord,
                         onKey = ::handleKey,
+                        onOpenAppSettings = {
+                            // Launches MainActivity's Settings tab, replacing the
+                            // old mic pill button (see AppsMicBar's doc comment on
+                            // this param — the mic button never did real voice
+                            // typing anyway, just sendDefaultEditorAction(true)).
+                            val intent = android.content.Intent(this, MainActivity::class.java).apply {
+                                addFlags(
+                                    android.content.Intent.FLAG_ACTIVITY_NEW_TASK or
+                                    android.content.Intent.FLAG_ACTIVITY_CLEAR_TOP
+                                )
+                                putExtra(MainActivity.EXTRA_OPEN_TAB, MainActivity.TAB_SETTINGS)
+                            }
+                            try {
+                                startActivity(intent)
+                            } catch (e: Exception) {
+                                android.util.Log.w("SinKey", "Failed to open Settings from keyboard", e)
+                            }
+                        },
                         inputType = currentInputTypeState.value,
                         boardStack = boardStack.value,
                         onBoardStackChange = { boardStack.value = it },
@@ -2344,6 +2396,24 @@ class SinKeyInputMethodService : InputMethodService() {
         return com.spmods.sinkey.keyboard.TextDecorator.apply(word, style)
     }
 
+    /**
+     * If "Hidden message" is on, encodes [plainWord] (the real, undecorated
+     * word — always the hidden payload, regardless of decoration) as an
+     * invisible payload inside a visible pattern. The visible pattern is
+     * [styledWord] when decoration/fancy-font styling produced something
+     * different from [plainWord] (so decoration ON + hidden-message ON
+     * shows the decorated word as the visible "pattern" — the point of
+     * passing both here separately instead of only the already-styled
+     * text), or ZeroWidthEncoder's own default ".....'''''..." pattern
+     * when there's no decoration to show (styledWord == plainWord).
+     * No-op (returns [styledWord] unchanged) if the feature is off.
+     */
+    private fun applyHiddenMessage(plainWord: String, styledWord: String): String {
+        if (!cachedHiddenMessageEnabled || plainWord.isEmpty()) return styledWord
+        val visible = if (styledWord != plainWord) styledWord else ""
+        return com.spmods.sinkey.keyboard.ZeroWidthEncoder.encode(hiddenText = plainWord, visibleText = visible)
+    }
+
     private fun commitPendingWord() {
         if (wordBuffer.isEmpty()) return
         val ic = currentInputConnection
@@ -2353,10 +2423,14 @@ class SinKeyInputMethodService : InputMethodService() {
         // always converts, same as before.
         val convertToSinhala = currentLanguage.value != "mix" || cachedMixAutoSinhala
         val plainWord = if (convertToSinhala) SinhalaTransliterator.transliterate(raw) else raw
-        val finalWord = decorate(
+        val decorated = decorate(
             if (convertToSinhala) plainWord
             else com.spmods.sinkey.keyboard.FancyTextMapper.apply(raw, cachedFancyTextStyle)
         )
+        // Hidden message wraps LAST, after decoration — see
+        // applyHiddenMessage's doc comment for why the real undecorated
+        // word (not the decorated form) is always what's actually hidden.
+        val finalWord = applyHiddenMessage(plainWord = if (convertToSinhala) plainWord else raw, styledWord = decorated)
         ic?.setComposingText("", 1)
         // If this word was resumed from an existing on-screen word (cursor
         // tapped back into it — see reseedSuggestionsForWordAtCursor), that
@@ -2618,9 +2692,10 @@ class SinKeyInputMethodService : InputMethodService() {
             // matching path rather than always treating it as Sinhala.
             val pickedEnglish = currentLanguage.value == "mix" &&
                 word.equals(mixEnglishQuery, ignoreCase = true)
-            val toCommit = if (pickedEnglish)
+            val decorated = if (pickedEnglish)
                 decorate(com.spmods.sinkey.keyboard.FancyTextMapper.apply(word, cachedFancyTextStyle), suggestionIndex)
             else decorate(word, suggestionIndex)
+            val toCommit = applyHiddenMessage(plainWord = word, styledWord = decorated)
             ic.setComposingText("", 1)
             ic.commitText(toCommit, 1)
             wordBuffer.clear()
@@ -2649,7 +2724,8 @@ class SinKeyInputMethodService : InputMethodService() {
             )
             val len = committedStyled.length
             if (len > 0) ic.deleteSurroundingText(len, 0)
-            val styled = decorate(com.spmods.sinkey.keyboard.FancyTextMapper.apply(word, cachedFancyTextStyle), suggestionIndex)
+            val decorated = decorate(com.spmods.sinkey.keyboard.FancyTextMapper.apply(word, cachedFancyTextStyle), suggestionIndex)
+            val styled = applyHiddenMessage(plainWord = word, styledWord = decorated)
             ic.commitText(styled, 1)
             englishBuffer.clear()
             resumedWordBeforeCursor = null
