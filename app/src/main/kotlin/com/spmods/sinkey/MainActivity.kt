@@ -530,7 +530,7 @@ private fun SinKeyApp(prefs: PreferencesManager) {
                     showKeyBorders = showKeyBorders,
                     isDark = isDark,
                     suggestions = emptyList(),
-                    onSuggestionSelected = { /* preview — no input dispatch */ },
+                    onSuggestionSelected = { _, _ -> /* preview — no input dispatch */ },
                     onKey = { /* preview — no input dispatch */ },
                     onDismiss = { showKeyboardPreview = false }
                 )
