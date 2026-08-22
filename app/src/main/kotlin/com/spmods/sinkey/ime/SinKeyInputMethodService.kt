@@ -245,6 +245,15 @@ class SinKeyInputMethodService : InputMethodService() {
     // equivalent for Sinhala script, so it's applied only in the "en" branch
     // of handleKey/handleSuggestion below.
     private var cachedFancyTextStyle = com.spmods.sinkey.data.FancyTextStyle.NONE
+    // "Decorative text" feature (see TextDecorator.kt) — unlike
+    // cachedFancyTextStyle above, this is intentionally NOT applied at any
+    // per-character commit site (the live-typing commitText calls). It only
+    // wraps text at whole-word finalization points (picking a suggestion,
+    // committing a gesture-typed word) — see handleSuggestion/
+    // commitGestureWord. Wrapping every keystroke would nest the template
+    // around each letter individually instead of the finished word.
+    private var cachedDecorationEnabled = false
+    private var cachedDecorationStyle = com.spmods.sinkey.keyboard.DecorationStyle.NONE
     // Mix mode: when true, space/enter converts the typed word to Sinhala
     // (same as pure "si"); when false (default), it commits the raw typed
     // Latin text as-is unless the user picked a suggestion.
@@ -426,6 +435,12 @@ class SinKeyInputMethodService : InputMethodService() {
         }
         serviceScope.launch {
             prefs.keyboardFont.collect { cachedFancyTextStyle = com.spmods.sinkey.data.FancyTextStyle.fromKey(it) }
+        }
+        serviceScope.launch {
+            prefs.decorationEnabled.collect { cachedDecorationEnabled = it }
+        }
+        serviceScope.launch {
+            prefs.decorationStyle.collect { cachedDecorationStyle = com.spmods.sinkey.keyboard.DecorationStyle.fromKey(it) }
         }
         serviceScope.launch {
             prefs.mixAutoSinhala.collect { cachedMixAutoSinhala = it }
@@ -1473,10 +1488,12 @@ class SinKeyInputMethodService : InputMethodService() {
             }
             "SYMBOLS_SHIFT", "EMOJI", "NUMPAD" -> { /* handled in KeyboardView */ }
             "TOOL_MIC" -> { sendDefaultEditorAction(true) }
-            // TOOL_STICKER, TOOL_FONT, and TOOL_TRANSLATE never reach here —
-            // AppsMicBar intercepts them directly (onStickerOpen/onFontOpen/
-            // onTranslateOpen) before calling onKey, same as TOOL_CLIPBOARD.
-            "TOOL_APPS", "TOOL_SETTINGS" -> {
+            // TOOL_STICKER, TOOL_FONT, TOOL_TRANSLATE, and TOOL_APPS never
+            // reach here — AppsMicBar intercepts them directly
+            // (onStickerOpen/onFontOpen/onTranslateOpen/onDecorationOpen)
+            // before calling onKey, same as TOOL_CLIPBOARD. TOOL_SETTINGS
+            // still falls through to here (not yet implemented).
+            "TOOL_SETTINGS" -> {
                 android.util.Log.d("SinKey", "Tool action: $key (not yet implemented)")
             }
             "SWITCH_KEYBOARD" -> {
@@ -2296,6 +2313,17 @@ class SinKeyInputMethodService : InputMethodService() {
         }
     }
 
+    /**
+     * Applies the currently-selected decoration template around [word] if
+     * the feature is on — used only at genuine whole-word commit points
+     * (never per-character composing text; see cachedDecorationEnabled's
+     * doc comment above for why).
+     */
+    private fun decorate(word: String): String {
+        if (!cachedDecorationEnabled) return word
+        return com.spmods.sinkey.keyboard.TextDecorator.apply(word, cachedDecorationStyle)
+    }
+
     private fun commitPendingWord() {
         if (wordBuffer.isEmpty()) return
         val ic = currentInputConnection
@@ -2304,10 +2332,11 @@ class SinKeyInputMethodService : InputMethodService() {
         // turned on "auto-convert to Sinhala" in settings — pure "si" mode
         // always converts, same as before.
         val convertToSinhala = currentLanguage.value != "mix" || cachedMixAutoSinhala
-        val finalWord = when {
-            convertToSinhala -> SinhalaTransliterator.transliterate(raw)
-            else -> com.spmods.sinkey.keyboard.FancyTextMapper.apply(raw, cachedFancyTextStyle)
-        }
+        val plainWord = if (convertToSinhala) SinhalaTransliterator.transliterate(raw) else raw
+        val finalWord = decorate(
+            if (convertToSinhala) plainWord
+            else com.spmods.sinkey.keyboard.FancyTextMapper.apply(raw, cachedFancyTextStyle)
+        )
         ic?.setComposingText("", 1)
         // If this word was resumed from an existing on-screen word (cursor
         // tapped back into it — see reseedSuggestionsForWordAtCursor), that
@@ -2321,9 +2350,10 @@ class SinKeyInputMethodService : InputMethodService() {
         ic?.commitText(finalWord, 1)
         wordBuffer.clear()
         clearSuggestions()
-        // Learn the plain (unstyled) word, not the fancy-font glyphs, so the
-        // personal dictionary and future suggestions stay in normal text.
-        learnWord(if (convertToSinhala) finalWord else raw, if (convertToSinhala) "si" else "en")
+        // Learn the plain (unstyled, un-decorated) word, not the fancy-font
+        // glyphs or decoration wrapping, so the personal dictionary and
+        // future suggestions stay in normal text.
+        learnWord(if (convertToSinhala) plainWord else raw, if (convertToSinhala) "si" else "en")
         // See onUpdateSelection's doc comment. Redundant when called from
         // within handleKey (which syncs again at its own end) but needed
         // for commitPendingWord's other callers (e.g. onFinishInputView) —
@@ -2534,11 +2564,13 @@ class SinKeyInputMethodService : InputMethodService() {
         englishBuffer.clear()
         resumedWordBeforeCursor = null
         val language = if (isSinhalaTyping()) "si" else "en"
-        val styled = if (language == "en") {
-            com.spmods.sinkey.keyboard.FancyTextMapper.apply(word, cachedFancyTextStyle)
-        } else {
-            word
-        }
+        val styled = decorate(
+            if (language == "en") {
+                com.spmods.sinkey.keyboard.FancyTextMapper.apply(word, cachedFancyTextStyle)
+            } else {
+                word
+            }
+        )
         ic.commitText(styled, 1)
         ic.commitText(" ", 1)
         learnWord(word, language)
@@ -2567,8 +2599,8 @@ class SinKeyInputMethodService : InputMethodService() {
             val pickedEnglish = currentLanguage.value == "mix" &&
                 word.equals(mixEnglishQuery, ignoreCase = true)
             val toCommit = if (pickedEnglish)
-                com.spmods.sinkey.keyboard.FancyTextMapper.apply(word, cachedFancyTextStyle)
-            else word
+                decorate(com.spmods.sinkey.keyboard.FancyTextMapper.apply(word, cachedFancyTextStyle))
+            else decorate(word)
             ic.setComposingText("", 1)
             ic.commitText(toCommit, 1)
             wordBuffer.clear()
@@ -2585,16 +2617,19 @@ class SinKeyInputMethodService : InputMethodService() {
             learnWord(word, if (pickedEnglish) "en" else "si")
         } else {
             // Delete the length of what's actually on screen (the styled/
-            // fancy text), not the plain-text buffer length — fancy fonts
-            // map many letters to surrogate-pair Unicode glyphs (2 UTF-16
-            // units each), so the two lengths can differ and a raw-length
-            // delete leaves stray fancy characters behind.
+            // fancy text as it was live-typed — NOT decoration, since
+            // decoration is only ever applied at this final commit step,
+            // never to the letter-by-letter text already sitting in the
+            // field), not the plain-text buffer length — fancy fonts map
+            // many letters to surrogate-pair Unicode glyphs (2 UTF-16 units
+            // each), so the two lengths can differ and a raw-length delete
+            // leaves stray fancy characters behind.
             val committedStyled = com.spmods.sinkey.keyboard.FancyTextMapper.apply(
                 englishBuffer.toString(), cachedFancyTextStyle
             )
             val len = committedStyled.length
             if (len > 0) ic.deleteSurroundingText(len, 0)
-            val styled = com.spmods.sinkey.keyboard.FancyTextMapper.apply(word, cachedFancyTextStyle)
+            val styled = decorate(com.spmods.sinkey.keyboard.FancyTextMapper.apply(word, cachedFancyTextStyle))
             ic.commitText(styled, 1)
             englishBuffer.clear()
             resumedWordBeforeCursor = null
