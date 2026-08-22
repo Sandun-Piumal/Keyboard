@@ -59,6 +59,7 @@ import com.spmods.sinkey.ui.screens.AppHeader
 import com.spmods.sinkey.ui.screens.HeaderMenuMode
 import com.spmods.sinkey.ui.screens.HomeScreen
 import com.spmods.sinkey.ui.screens.KeyboardHeightScreen
+import com.spmods.sinkey.ui.screens.SoundVibrationScreen
 import com.spmods.sinkey.ui.screens.PhotoCropScreen
 import com.spmods.sinkey.ui.screens.PhotoEditThemeScreen
 import com.spmods.sinkey.ui.screens.SettingsScreen
@@ -72,7 +73,7 @@ private val DeshGreen = Color(0xFF1B5E37)
 
 private enum class Tab { HOME, THEMES, SETTINGS }
 
-private enum class SettingsSubScreen { MAIN, KEYBOARD_HEIGHT }
+private enum class SettingsSubScreen { MAIN, KEYBOARD_HEIGHT, SOUND_VIBRATION }
 
 /**
  * "My themes" custom-photo flow steps, layered the same way as
@@ -141,6 +142,7 @@ private fun SinKeyApp(prefs: PreferencesManager) {
     val defaultLanguage by prefs.defaultLanguage.collectAsState(initial = "si")
     val keySoundEnabled by prefs.keySoundEnabled.collectAsState(initial = true)
     val keyVibrateEnabled by prefs.keyVibrateEnabled.collectAsState(initial = false)
+    val keyVibrationMs by prefs.keyVibrationMs.collectAsState(initial = 14f)
     val keyboardHeight by prefs.keyboardHeight.collectAsState(initial = 2f)
     val bottomSpaceEnabled by prefs.bottomSpaceEnabled.collectAsState(initial = true)
     val bottomSpaceSize by prefs.bottomSpaceSize.collectAsState(initial = 0f)
@@ -274,6 +276,10 @@ private fun SinKeyApp(prefs: PreferencesManager) {
     }
 
     if (settingsSubScreen == SettingsSubScreen.KEYBOARD_HEIGHT) {
+        BackHandler { settingsSubScreen = SettingsSubScreen.MAIN }
+    }
+
+    if (settingsSubScreen == SettingsSubScreen.SOUND_VIBRATION) {
         BackHandler { settingsSubScreen = SettingsSubScreen.MAIN }
     }
 
@@ -423,6 +429,17 @@ private fun SinKeyApp(prefs: PreferencesManager) {
                             onBack = { settingsSubScreen = SettingsSubScreen.MAIN }
                         )
                     }
+                    settingsSubScreen == SettingsSubScreen.SOUND_VIBRATION -> {
+                        SoundVibrationScreen(
+                            soundEnabled = keySoundEnabled,
+                            vibrateEnabled = keyVibrateEnabled,
+                            vibrationMs = keyVibrationMs,
+                            onSoundEnabledChange = { enabled -> scope.launch { prefs.setKeySoundEnabled(enabled) } },
+                            onVibrateEnabledChange = { enabled -> scope.launch { prefs.setKeyVibrateEnabled(enabled) } },
+                            onVibrationMsChange = { ms -> scope.launch { prefs.setKeyVibrationMs(ms) } },
+                            onBack = { settingsSubScreen = SettingsSubScreen.MAIN }
+                        )
+                    }
                     tab == Tab.HOME -> HomeScreen(isDark = isDark)
                     tab == Tab.THEMES -> ThemesScreen(
                         currentMode = themeMode,
@@ -470,20 +487,17 @@ private fun SinKeyApp(prefs: PreferencesManager) {
                     )
                     tab == Tab.SETTINGS -> SettingsScreen(
                         defaultLanguage = defaultLanguage,
-                        keySoundEnabled = keySoundEnabled,
-                        keyVibrateEnabled = keyVibrateEnabled,
                         themeMode = themeMode,
                         mixAutoSinhala = mixAutoSinhala,
                         swipeTypingEnabled = swipeTypingEnabled,
                         smoothImeTransition = smoothImeTransition,
                         onLanguageChange = { lang -> scope.launch { prefs.setDefaultLanguage(lang) } },
-                        onKeySoundChange = { enabled -> scope.launch { prefs.setKeySoundEnabled(enabled) } },
-                        onKeyVibrateChange = { enabled -> scope.launch { prefs.setKeyVibrateEnabled(enabled) } },
                         onThemeModeChange = { mode -> scope.launch { prefs.setThemeMode(mode) } },
                         onMixAutoSinhalaChange = { enabled -> scope.launch { prefs.setMixAutoSinhala(enabled) } },
                         onSwipeTypingChange = { enabled -> scope.launch { prefs.setSwipeTypingEnabled(enabled) } },
                         onSmoothImeTransitionChange = { enabled -> scope.launch { prefs.setSmoothImeTransition(enabled) } },
-                        onOpenKeyboardHeight = { settingsSubScreen = SettingsSubScreen.KEYBOARD_HEIGHT }
+                        onOpenKeyboardHeight = { settingsSubScreen = SettingsSubScreen.KEYBOARD_HEIGHT },
+                        onOpenSoundVibration = { settingsSubScreen = SettingsSubScreen.SOUND_VIBRATION }
                     )
                         }
                     }
