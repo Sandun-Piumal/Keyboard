@@ -254,6 +254,7 @@ class SinKeyInputMethodService : InputMethodService() {
     // around each letter individually instead of the finished word.
     private var cachedDecorationEnabled = false
     private var cachedDecorationStyle = com.spmods.sinkey.keyboard.DecorationStyle.NONE
+    private var cachedDecorationVaryStyles = true
     // Mix mode: when true, space/enter converts the typed word to Sinhala
     // (same as pure "si"); when false (default), it commits the raw typed
     // Latin text as-is unless the user picked a suggestion.
@@ -441,6 +442,9 @@ class SinKeyInputMethodService : InputMethodService() {
         }
         serviceScope.launch {
             prefs.decorationStyle.collect { cachedDecorationStyle = com.spmods.sinkey.keyboard.DecorationStyle.fromKey(it) }
+        }
+        serviceScope.launch {
+            prefs.decorationVaryStyles.collect { cachedDecorationVaryStyles = it }
         }
         serviceScope.launch {
             prefs.mixAutoSinhala.collect { cachedMixAutoSinhala = it }
@@ -844,7 +848,7 @@ class SinKeyInputMethodService : InputMethodService() {
                         showKeyBorders = showKeyBorders,
                         isDark = isDark,
                         suggestions = suggestions.value,
-                        onSuggestionSelected = { word -> if (isTranslateMode.value) handleTranslateSuggestion(word) else handleSuggestion(word) },
+                        onSuggestionSelected = { word, idx -> if (isTranslateMode.value) handleTranslateSuggestion(word) else handleSuggestion(word, idx) },
                         autocorrectUndoWord = autocorrectUndo.value?.originalTyped,
                         onUndoAutocorrect = ::undoAutocorrect,
                         swipeTypingEnabled = swipeTypingEnabled,
@@ -2314,14 +2318,30 @@ class SinKeyInputMethodService : InputMethodService() {
     }
 
     /**
-     * Applies the currently-selected decoration template around [word] if
-     * the feature is on — used only at genuine whole-word commit points
-     * (never per-character composing text; see cachedDecorationEnabled's
-     * doc comment above for why).
+     * Applies a decoration template around [word] if the feature is on —
+     * used only at genuine whole-word commit points (never per-character
+     * composing text; see cachedDecorationEnabled's doc comment above for
+     * why). [suggestionIndex] is the suggestion bar slot that was tapped
+     * (null for commitPendingWord's space/enter path, which has no bar
+     * slot); when "Vary styles" is on and an index is available, the style
+     * is picked to match exactly what that chip was previewing (via
+     * TextDecorator.cycleStyleFor) rather than always the one style saved
+     * in cachedDecorationStyle — otherwise the committed text could differ
+     * from what the user saw and tapped. When "Vary styles" is on but no
+     * index is available (the space/enter commit path has no suggestion
+     * chip to match), falls back to cycleStyleFor(0) — the first style in
+     * rotation — rather than cachedDecorationStyle, which is NONE by
+     * default in vary-styles mode (no single style needs picking) and
+     * would otherwise silently commit undecorated text.
      */
-    private fun decorate(word: String): String {
+    private fun decorate(word: String, suggestionIndex: Int? = null): String {
         if (!cachedDecorationEnabled) return word
-        return com.spmods.sinkey.keyboard.TextDecorator.apply(word, cachedDecorationStyle)
+        val style = if (cachedDecorationVaryStyles) {
+            com.spmods.sinkey.keyboard.TextDecorator.cycleStyleFor(suggestionIndex ?: 0)
+        } else {
+            cachedDecorationStyle
+        }
+        return com.spmods.sinkey.keyboard.TextDecorator.apply(word, style)
     }
 
     private fun commitPendingWord() {
@@ -2585,7 +2605,7 @@ class SinKeyInputMethodService : InputMethodService() {
      * After committing it we also add a trailing space, since picking a
      * suggestion means the word is finished and the user will keep typing.
      */
-    private fun handleSuggestion(word: String) {
+    private fun handleSuggestion(word: String, suggestionIndex: Int? = null) {
         val ic = currentInputConnection ?: return
         // Picking a suggestion is a separate edit from whatever autocorrect
         // last did — same reasoning as the clearAutocorrectUndoIfAny() call
@@ -2599,8 +2619,8 @@ class SinKeyInputMethodService : InputMethodService() {
             val pickedEnglish = currentLanguage.value == "mix" &&
                 word.equals(mixEnglishQuery, ignoreCase = true)
             val toCommit = if (pickedEnglish)
-                decorate(com.spmods.sinkey.keyboard.FancyTextMapper.apply(word, cachedFancyTextStyle))
-            else decorate(word)
+                decorate(com.spmods.sinkey.keyboard.FancyTextMapper.apply(word, cachedFancyTextStyle), suggestionIndex)
+            else decorate(word, suggestionIndex)
             ic.setComposingText("", 1)
             ic.commitText(toCommit, 1)
             wordBuffer.clear()
@@ -2629,7 +2649,7 @@ class SinKeyInputMethodService : InputMethodService() {
             )
             val len = committedStyled.length
             if (len > 0) ic.deleteSurroundingText(len, 0)
-            val styled = decorate(com.spmods.sinkey.keyboard.FancyTextMapper.apply(word, cachedFancyTextStyle))
+            val styled = decorate(com.spmods.sinkey.keyboard.FancyTextMapper.apply(word, cachedFancyTextStyle), suggestionIndex)
             ic.commitText(styled, 1)
             englishBuffer.clear()
             resumedWordBeforeCursor = null
