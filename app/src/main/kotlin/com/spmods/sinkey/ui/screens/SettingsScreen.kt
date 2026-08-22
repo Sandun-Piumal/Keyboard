@@ -32,20 +32,22 @@ import com.spmods.sinkey.data.ThemeMode
 @Composable
 fun SettingsScreen(
     defaultLanguage: String,
-    keySoundEnabled: Boolean,
-    keyVibrateEnabled: Boolean,
     themeMode: ThemeMode,
     mixAutoSinhala: Boolean,
     swipeTypingEnabled: Boolean,
     smoothImeTransition: Boolean = true,
     onLanguageChange: (String) -> Unit,
-    onKeySoundChange: (Boolean) -> Unit,
-    onKeyVibrateChange: (Boolean) -> Unit,
     onThemeModeChange: (ThemeMode) -> Unit,
     onMixAutoSinhalaChange: (Boolean) -> Unit,
     onSwipeTypingChange: (Boolean) -> Unit,
     onSmoothImeTransitionChange: (Boolean) -> Unit = {},
-    onOpenKeyboardHeight: () -> Unit = {}
+    onOpenKeyboardHeight: () -> Unit = {},
+    // Navigates to the new Sound & vibration sub-screen — see
+    // SoundVibrationScreen.kt. Key sound / Vibrate on tap / Vibration level
+    // used to be inline switches right in this screen; they're a dedicated
+    // page now (matching the reference screenshots), same pattern as
+    // "Keyboard height" below.
+    onOpenSoundVibration: () -> Unit = {}
 ) {
     // Bug fix: this Column had no verticalScroll at all, so once the
     // switches list + Theme Mode section together exceeded one screen's
@@ -108,11 +110,17 @@ fun SettingsScreen(
             ) {
                 Switch(checked = swipeTypingEnabled, onCheckedChange = onSwipeTypingChange)
             }
-            SettingRow(icon = "🔊", title = "Key sound", subtitle = "Play a click on tap") {
-                Switch(checked = keySoundEnabled, onCheckedChange = onKeySoundChange)
-            }
-            SettingRow(icon = "📳", title = "Vibrate on tap", subtitle = "Haptic feedback") {
-                Switch(checked = keyVibrateEnabled, onCheckedChange = onKeyVibrateChange)
+            SettingRow(
+                icon = "🔊",
+                title = "Sound & vibration",
+                subtitle = "Key sound, vibrate, vibration level",
+                modifier = Modifier.clickable { onOpenSoundVibration() }
+            ) {
+                Text(
+                    "›",
+                    fontSize = 20.sp,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
             }
             SettingRow(
                 icon = "✨",
