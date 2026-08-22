@@ -49,6 +49,13 @@ class PreferencesManager(private val context: Context) {
         // key name (keyboard_font) so existing users' stored default isn't
         // silently reset to NONE by this migration.
         val KEYBOARD_FONT = stringPreferencesKey("keyboard_font")
+        // "Decorative text" feature — see TextDecorator.kt/DecorationStyle.
+        // Independent on/off from KEYBOARD_FONT above: a user can have a
+        // fancy font AND a decoration style active together (they compose —
+        // see cachedDecorationStyle's use in SinKeyInputMethodService), or
+        // either alone.
+        val DECORATION_ENABLED = booleanPreferencesKey("decoration_enabled")
+        val DECORATION_STYLE = stringPreferencesKey("decoration_style")
         // Mix mode only: when true, finishing a word (space/enter) converts the
         // typed Latin buffer to its Sinhala transliteration, same as pure "si"
         // mode. Default OFF — mix mode commits the word as plain typed text.
@@ -186,6 +193,16 @@ class PreferencesManager(private val context: Context) {
         prefs[Keys.KEYBOARD_FONT] ?: FancyTextStyle.NONE.key
     }
 
+    /** "Decorative text" master toggle — see TextDecorator.kt. Default off. */
+    val decorationEnabled: Flow<Boolean> = context.dataStore.data.map { prefs ->
+        prefs[Keys.DECORATION_ENABLED] ?: false
+    }
+
+    /** Currently selected decoration template — one of DecorationStyle.entries' .key values. */
+    val decorationStyle: Flow<String> = context.dataStore.data.map { prefs ->
+        prefs[Keys.DECORATION_STYLE] ?: com.spmods.sinkey.keyboard.DecorationStyle.NONE.key
+    }
+
     /** Mix mode: auto-convert the typed word to Sinhala on space/enter. Default off. */
     val mixAutoSinhala: Flow<Boolean> = context.dataStore.data.map { prefs ->
         prefs[Keys.MIX_AUTO_SINHALA] ?: false
@@ -319,6 +336,14 @@ class PreferencesManager(private val context: Context) {
 
     suspend fun setKeyboardFont(fontKey: String) {
         context.dataStore.edit { it[Keys.KEYBOARD_FONT] = fontKey }
+    }
+
+    suspend fun setDecorationEnabled(enabled: Boolean) {
+        context.dataStore.edit { it[Keys.DECORATION_ENABLED] = enabled }
+    }
+
+    suspend fun setDecorationStyle(styleKey: String) {
+        context.dataStore.edit { it[Keys.DECORATION_STYLE] = styleKey }
     }
 
     suspend fun setMixAutoSinhala(enabled: Boolean) {
