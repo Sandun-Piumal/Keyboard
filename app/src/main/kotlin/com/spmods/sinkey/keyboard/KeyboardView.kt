@@ -45,6 +45,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 // doesn't compile.
 import androidx.compose.foundation.layout.wrapContentHeight
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.defaultMinSize
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.window.Popup
@@ -747,6 +748,11 @@ internal fun KeyboardView(
     val decorationVaryStyles by prefsManager.decorationVaryStyles.collectAsState(initial = true)
     val hiddenMessageEnabled by prefsManager.hiddenMessageEnabled.collectAsState(initial = false)
     val selectedDecorationKey by prefsManager.decorationStyle.collectAsState(initial = DecorationStyle.NONE.key)
+    // "Incognito" — see DecorationPickerView's incognitoEnabled param doc
+    // comment and PreferencesManager.Keys.INCOGNITO_ENABLED. Default off,
+    // same self-sourced-from-DataStore pattern as every other toggle read
+    // directly in this composable above.
+    val incognitoEnabled by prefsManager.incognitoEnabled.collectAsState(initial = false)
     val stickerRepository = remember { com.spmods.sinkey.data.sticker.StickerRepository(context) }
     val ownStickers by stickerRepository.all.collectAsState(initial = emptyList())
     val favouriteStickers by stickerRepository.favourites.collectAsState(initial = emptyList())
@@ -967,6 +973,10 @@ internal fun KeyboardView(
                     bottomPadding = bottomPadding,
                     targetContentHeight = measuredMainContentHeight + 48.dp +
                         (if (!isPhoneInput && (showUpdateBanner || recentEmojis.isNotEmpty())) 44.dp else 0.dp),
+                    incognitoEnabled = incognitoEnabled,
+                    onIncognitoChange = { incognito ->
+                        coroutineScope.launch { prefsManager.setIncognitoEnabled(incognito) }
+                    },
                     enabled = decorationEnabled,
                     onEnabledChange = { enabled ->
                         coroutineScope.launch { prefsManager.setDecorationEnabled(enabled) }
@@ -4386,6 +4396,18 @@ private fun DecorationPickerView(
     keyHeight: Dp,
     bottomPadding: Dp,
     targetContentHeight: Dp,
+    // "Incognito" — deliberately placed above the "Decorate suggestions"
+    // row below (per the request this was added for: a new button sitting
+    // above the existing decorate-suggestions toggle). Independent of
+    // enabled/onEnabledChange — a user can be in Incognito with or without
+    // Decorate suggestions on, same relationship as Decorate suggestions
+    // has with Vary styles. Default OFF (see
+    // PreferencesManager.Keys.INCOGNITO_ENABLED's doc comment) — the
+    // service only reads this to gate learning/history writes; it doesn't
+    // change anything about typing itself, so leaving it off changes
+    // nothing for existing users.
+    incognitoEnabled: Boolean,
+    onIncognitoChange: (Boolean) -> Unit,
     enabled: Boolean,
     onEnabledChange: (Boolean) -> Unit,
     varyStyles: Boolean,
@@ -4424,6 +4446,48 @@ private fun DecorationPickerView(
                 fontWeight = FontWeight.Medium,
                 color = colors.keyText,
                 modifier = Modifier.weight(1f).padding(start = 4.dp)
+            )
+        }
+
+        // ── Incognito row — sits above "Decorate suggestions" below. Same
+        // switch look/spacing as every other row on this page, plus a
+        // leading icon (ic_incognito) since this is the one row on the
+        // page that's a standalone feature rather than a sub-option of
+        // Decorative text, so it reads as its own button rather than part
+        // of the decoration group below it.
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 12.dp, vertical = 8.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Icon(
+                painter = painterResource(id = R.drawable.ic_incognito),
+                contentDescription = null,
+                modifier = Modifier.size(20.dp),
+                tint = if (incognitoEnabled) colors.accent else colors.subText
+            )
+            Column(
+                modifier = Modifier
+                    .weight(1f)
+                    .padding(start = 10.dp)
+            ) {
+                Text(
+                    "Incognito",
+                    fontSize = 13.sp,
+                    fontWeight = FontWeight.Medium,
+                    color = colors.keyText
+                )
+                Text(
+                    "Pauses learning: nothing typed is added to your dictionary, clipboard history, or recent emoji while on",
+                    fontSize = 11.sp,
+                    color = colors.subText
+                )
+            }
+            androidx.compose.material3.Switch(
+                checked = incognitoEnabled,
+                onCheckedChange = onIncognitoChange,
+                colors = androidx.compose.material3.SwitchDefaults.colors(checkedTrackColor = DeshGreen)
             )
         }
 
@@ -4489,8 +4553,33 @@ private fun DecorationPickerView(
             // picking a row here is what "Vary styles" would otherwise
             // override. Same hide-not-dim treatment as the section above:
             // shown, but its purpose only applies with Vary styles off.
+            //
+            // BUG FIX (page wouldn't scroll): this LazyColumn previously had
+            // no explicit LazyListState and relied purely on weight(1f) for
+            // its height. That's normally enough, but this Column's own
+            // height is an *explicit* fixed Dp (targetContentHeight) sitting
+            // inside an ancestor chain that is wrapContentHeight() all the
+            // way up (see the outer Box/Column in KeyboardView) — under
+            // those conditions Compose can resolve this weight(1f) pass
+            // against a min-height-0/max-height-unbounded constraint on the
+            // very first composition, which makes the list lay out at its
+            // full intrinsic (unscrollable) height instead of the intended
+            // fixed viewport. Constraining with a matching heightIn(max=)
+            // derived from the same explicit targetContentHeight forces a
+            // bounded, scrollable viewport regardless of how the ancestor
+            // chain resolves its own pass, and an explicit
+            // rememberLazyListState() plus userScrollEnabled = true rule out
+            // the list silently losing its scroll state across recomposition
+            // (e.g. if this branch were ever toggled by `enabled`/`varyStyles`
+            // changing in the same frame).
+            val decorationListState = rememberLazyListState()
             LazyColumn(
-                modifier = Modifier.fillMaxWidth().weight(1f),
+                state = decorationListState,
+                userScrollEnabled = true,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .weight(1f, fill = true)
+                    .heightIn(max = targetContentHeight),
                 contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 8.dp, vertical = 4.dp)
             ) {
                 items(DecorationStyle.pickable, key = { it.key }) { style ->
