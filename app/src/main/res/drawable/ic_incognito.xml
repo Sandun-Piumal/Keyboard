@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<!-- "Incognito" icon — a simple masked-glasses glyph (hat brim + connected
+     lens pair), matching this project's other hand-drawn vector icons
+     (see ic_unified_menu.xml for the same style: outlined shapes, no
+     android:fillColor, tinted via the Icon() composable's own tint param
+     rather than baked into the drawable). -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android" android:height="24.0dip" android:width="24.0dip" android:viewportWidth="24.0" android:viewportHeight="24.0">
+	<!-- Hat brim -->
+	<path android:pathData="M3.5,8.6C5.6,7.1 8.7,6.3 12,6.3C15.3,6.3 18.4,7.1 20.5,8.6" android:strokeColor="@color/black" android:strokeWidth="1.8" android:strokeLineCap="round" />
+	<!-- Left lens -->
+	<path android:pathData="M3.2,9.6C3.2,9.6 3.7,13.6 6.6,13.6C9.1,13.6 9.6,11.2 9.6,10.1" android:strokeColor="@color/black" android:strokeWidth="1.8" android:strokeLineCap="round" android:strokeLineJoin="round" />
+	<!-- Right lens -->
+	<path android:pathData="M20.8,9.6C20.8,9.6 20.3,13.6 17.4,13.6C14.9,13.6 14.4,11.2 14.4,10.1" android:strokeColor="@color/black" android:strokeWidth="1.8" android:strokeLineCap="round" android:strokeLineJoin="round" />
+	<!-- Bridge connecting the two lenses -->
+	<path android:pathData="M9.6,10.1L14.4,10.1" android:strokeColor="@color/black" android:strokeWidth="1.8" android:strokeLineCap="round" />
+</vector>
