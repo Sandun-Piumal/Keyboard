@@ -2587,9 +2587,11 @@ private fun RowScope.CopyPreviewInline(
     onDismiss: () -> Unit
 ) {
     val toolIconTint = if (isDark) Color.White else Color.Black
-    // Pill: icon + one-line truncated preview. Tapping anywhere on it
-    // pastes the copied text at the cursor — same "tap to insert"
-    // behaviour as a clipboard-history entry.
+    // Single pill/card holding everything — icon, truncated preview text,
+    // expand, and close — instead of the expand/close icons sitting
+    // outside it as separate plain buttons. Only the icon+text portion is
+    // its own nested clickable (paste); expand/close keep their own
+    // clickable so tapping them doesn't also trigger a paste.
     Row(
         modifier = Modifier
             .weight(1f)
@@ -2597,55 +2599,63 @@ private fun RowScope.CopyPreviewInline(
             .padding(vertical = 6.dp)
             .clip(RoundedCornerShape(50))
             .background(colors.subText.copy(alpha = 0.14f))
-            .clickable { onPaste() }
-            .padding(horizontal = 12.dp),
+            .padding(horizontal = 6.dp),
         verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(8.dp)
+        horizontalArrangement = Arrangement.spacedBy(2.dp)
     ) {
-        Icon(
-            painter = painterResource(id = R.drawable.ic_clipboard),
-            contentDescription = null,
-            modifier = Modifier.size(16.dp),
-            tint = colors.keyText
-        )
-        Text(
-            text = text,
-            fontSize = 15.sp,
-            color = colors.keyText,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-            modifier = Modifier.weight(1f)
-        )
-    }
-    Box(
-        modifier = Modifier
-            .padding(start = 4.dp)
-            .size(32.dp)
-            .clip(RoundedCornerShape(50))
-            .clickable { onExpand() },
-        contentAlignment = Alignment.Center
-    ) {
-        Icon(
-            imageVector = Icons.Filled.OpenInFull,
-            contentDescription = "Open clipboard history",
-            modifier = Modifier.size(15.dp),
-            tint = toolIconTint
-        )
-    }
-    Box(
-        modifier = Modifier
-            .padding(start = 2.dp)
-            .size(32.dp)
-            .clip(RoundedCornerShape(50))
-            .clickable { onDismiss() },
-        contentAlignment = Alignment.Center
-    ) {
-        Icon(
-            imageVector = Icons.Filled.Close,
-            contentDescription = "Dismiss",
-            modifier = Modifier.size(16.dp),
-            tint = toolIconTint
-        )
+        Row(
+            modifier = Modifier
+                .weight(1f)
+                .fillMaxHeight()
+                .clip(RoundedCornerShape(50))
+                .clickable { onPaste() }
+                .padding(horizontal = 8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            Icon(
+                painter = painterResource(id = R.drawable.ic_clipboard),
+                contentDescription = null,
+                modifier = Modifier.size(16.dp),
+                tint = colors.keyText
+            )
+            Text(
+                text = text,
+                fontSize = 15.sp,
+                color = colors.keyText,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.weight(1f)
+            )
+        }
+        Box(
+            modifier = Modifier
+                .size(32.dp)
+                .clip(RoundedCornerShape(50))
+                .clickable { onExpand() },
+            contentAlignment = Alignment.Center
+        ) {
+            Icon(
+                imageVector = Icons.Filled.OpenInFull,
+                contentDescription = "Open clipboard history",
+                modifier = Modifier.size(15.dp),
+                tint = toolIconTint
+            )
+        }
+        Box(
+            modifier = Modifier
+                .size(32.dp)
+                .clip(RoundedCornerShape(50))
+                .clickable { onDismiss() },
+            contentAlignment = Alignment.Center
+        ) {
+            Icon(
+                imageVector = Icons.Filled.Close,
+                contentDescription = "Dismiss",
+                modifier = Modifier.size(16.dp),
+                tint = toolIconTint
+            )
+        }
     }
 }
 
