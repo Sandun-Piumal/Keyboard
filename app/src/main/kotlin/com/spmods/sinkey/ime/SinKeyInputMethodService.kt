@@ -38,6 +38,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
@@ -47,6 +48,10 @@ import kotlinx.coroutines.runBlocking
 // large paste from flooding the dictionary; a genuine "copied a couple of
 // words" case is well under this.
 private const val MAX_CLIPBOARD_WORDS_PER_COPY = 12
+
+// How long the "just copied" preview strip (justCopiedText) stays visible
+// before auto-hiding itself — see registerClipboardListener.
+private const val COPY_PREVIEW_TIMEOUT_MS = 60_000L
 
 /**
  * The keyboard engine itself. Android binds this service whenever SinKey is
@@ -156,6 +161,18 @@ class SinKeyInputMethodService : InputMethodService() {
     // read-only reveal triggered by an external copy, not an interactive
     // typing mode the user opened themselves.
     private var hiddenMessageDecodedText = mutableStateOf<String?>(null)
+    // "Just copied" preview strip — non-null shows a dismissible banner
+    // (in the same toolbar slot as the suggestion strip / tools row) with
+    // a preview of whatever text was just copied, so the user can see at a
+    // glance what's on the clipboard and re-paste it with one tap without
+    // opening the full clipboard history board. Auto-hides itself after
+    // COPY_PREVIEW_TIMEOUT_MS (see registerClipboardListener), same as a
+    // toast, but stays up if the user is actively looking at it (no
+    // interaction-based reset — simple fixed timer, matching the requested
+    // "always exactly 1 minute" behaviour). Cleared immediately on tap
+    // (paste) or explicit close.
+    private var justCopiedText = mutableStateOf<String?>(null)
+    private var copyPreviewHideJob: kotlinx.coroutines.Job? = null
     // The row's own notepad buffer — what the user has typed/edited since
     // opening translate mode (or since Clear/swap), in RAW form (Latin for
     // English/mix-mode-as-typed, exactly as the user's fingers hit keys —
@@ -566,12 +583,37 @@ class SinKeyInputMethodService : InputMethodService() {
                     if (!cachedIncognitoEnabled) {
                         serviceScope.launch { clipRepo.record(text) }
                         learnWordsFromClipboard(text)
+                        showCopyPreview(text)
                     }
                 }
             }
         }
         clipboard.addPrimaryClipChangedListener(listener)
         clipboardListener = listener
+    }
+
+    /**
+     * Shows the "just copied" preview strip (justCopiedText) with [text]
+     * and (re)starts its auto-hide timer. Called on every new copy — if
+     * the strip is already showing from an earlier copy, the previous
+     * timer is cancelled so the new copy gets its own full
+     * COPY_PREVIEW_TIMEOUT_MS window rather than possibly being hidden
+     * almost immediately by the old timer still running.
+     */
+    private fun showCopyPreview(text: String) {
+        justCopiedText.value = text
+        copyPreviewHideJob?.cancel()
+        copyPreviewHideJob = serviceScope.launch {
+            delay(COPY_PREVIEW_TIMEOUT_MS)
+            justCopiedText.value = null
+        }
+    }
+
+    /** Dismisses the copy-preview strip immediately — explicit close (X) or after paste. */
+    private fun hideCopyPreview() {
+        copyPreviewHideJob?.cancel()
+        copyPreviewHideJob = null
+        justCopiedText.value = null
     }
 
     /**
@@ -925,6 +967,16 @@ class SinKeyInputMethodService : InputMethodService() {
                         isDark = isDark,
                         hiddenMessageDecodedText = hiddenMessageDecodedText.value,
                         onDismissHiddenMessageBanner = { hiddenMessageDecodedText.value = null },
+                        justCopiedText = justCopiedText.value,
+                        onDismissCopyPreview = { hideCopyPreview() },
+                        onCopyPreviewPaste = { text ->
+                            hideCopyPreview()
+                            handleKey("PASTE_TEXT:$text")
+                        },
+                        onCopyPreviewExpand = {
+                            hideCopyPreview()
+                            boardStack.value = boardStack.value + Board.CLIPBOARD
+                        },
                         suggestions = suggestions.value,
                         onSuggestionSelected = { word, idx -> if (isTranslateMode.value) handleTranslateSuggestion(word) else handleSuggestion(word, idx) },
                         autocorrectUndoWord = autocorrectUndo.value?.originalTyped,
