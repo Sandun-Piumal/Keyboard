@@ -484,7 +484,7 @@ private fun stepToBottomPadding(step: Float): Dp = when (Math.round(step)) {
 // Replaces the previous ad-hoc boolean flags (showSymbols, showEmojiPicker)
 // which had no memory of which board opened them, so back always went to MAIN.
 // Must be internal (not private) so SinKeyInputMethodService can reference it.
-enum class Board { MAIN, SYMBOLS, NUMPAD, EMOJI, CLIPBOARD, FONT, DECORATION, STICKER, STICKER_CREATE, STICKER_EDIT }
+enum class Board { MAIN, SYMBOLS, NUMPAD, EMOJI, CLIPBOARD, FONT, DECORATION, DECORATION_STYLES, STICKER, STICKER_CREATE, STICKER_EDIT }
 
 /** Result of Board.STICKER_EDIT's async preview-image decode — see that branch in KeyboardView's content `when`. */
 private sealed class StickerEditDecodeResult {
@@ -831,7 +831,7 @@ internal fun KeyboardView(
             // except for the Emoji board — which moves its own category
             // tabs to the very top instead, in place of this toolbar) ──────
             if (currentBoard != Board.EMOJI && currentBoard != Board.CLIPBOARD && currentBoard != Board.FONT &&
-                currentBoard != Board.DECORATION &&
+                currentBoard != Board.DECORATION && currentBoard != Board.DECORATION_STYLES &&
                 currentBoard != Board.STICKER && currentBoard != Board.STICKER_CREATE) {
                 AppsMicBar(
                     colors = colors,
@@ -887,7 +887,7 @@ internal fun KeyboardView(
             // shifts or resizes) — the recent-emoji strip itself is not
             // shown at all while the banner is up.
             if (!isPhoneInput && currentBoard != Board.EMOJI && currentBoard != Board.CLIPBOARD && currentBoard != Board.FONT &&
-                currentBoard != Board.DECORATION &&
+                currentBoard != Board.DECORATION && currentBoard != Board.DECORATION_STYLES &&
                 currentBoard != Board.STICKER && currentBoard != Board.STICKER_CREATE) {
                 if (showUpdateBanner) {
                     UpdateBanner(
@@ -981,6 +981,15 @@ internal fun KeyboardView(
                     onEnabledChange = { enabled ->
                         coroutineScope.launch { prefsManager.setDecorationEnabled(enabled) }
                     },
+                    varyStyles = decorationVaryStyles,
+                    onStylesOpen = { pushBoard(Board.DECORATION_STYLES) },
+                    onBack = { popBoard() }
+                )
+                currentBoard == Board.DECORATION_STYLES -> DecorationStylesView(
+                    colors = colors, keyHeight = keyHeight,
+                    bottomPadding = bottomPadding,
+                    targetContentHeight = measuredMainContentHeight + 48.dp +
+                        (if (!isPhoneInput && (showUpdateBanner || recentEmojis.isNotEmpty())) 44.dp else 0.dp),
                     varyStyles = decorationVaryStyles,
                     onVaryStylesChange = { vary ->
                         coroutineScope.launch { prefsManager.setDecorationVaryStyles(vary) }
@@ -4411,9 +4420,9 @@ private fun DecorationPickerView(
     enabled: Boolean,
     onEnabledChange: (Boolean) -> Unit,
     varyStyles: Boolean,
-    onVaryStylesChange: (Boolean) -> Unit,
-    selectedStyleKey: String,
-    onStyleSelected: (String) -> Unit,
+    // Opens the separate Board.DECORATION_STYLES page (Vary styles switch +
+    // the fixed-style list) — see DecorationStylesView below.
+    onStylesOpen: () -> Unit,
     onBack: () -> Unit
 ) {
     val headerHeight = 44.dp
@@ -4450,27 +4459,18 @@ private fun DecorationPickerView(
         }
 
         // ── Incognito row — sits above "Decorate suggestions" below. Same
-        // switch look/spacing as every other row on this page, plus a
-        // leading icon (ic_incognito) since this is the one row on the
-        // page that's a standalone feature rather than a sub-option of
-        // Decorative text, so it reads as its own button rather than part
-        // of the decoration group below it.
+        // switch look/spacing as every other row on this page. No leading
+        // icon (removed) — the row reads as its own button via its label
+        // rather than part of the decoration group below it.
         Row(
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(horizontal = 12.dp, vertical = 8.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Icon(
-                painter = painterResource(id = R.drawable.ic_incognito),
-                contentDescription = null,
-                modifier = Modifier.size(20.dp),
-                tint = if (incognitoEnabled) colors.accent else colors.subText
-            )
             Column(
                 modifier = Modifier
                     .weight(1f)
-                    .padding(start = 10.dp)
             ) {
                 Text(
                     "Incognito",
@@ -4518,82 +4518,168 @@ private fun DecorationPickerView(
             )
         }
 
-        // Vary-styles row + the style list itself are only shown once the
-        // feature is actually on — hidden entirely (not dimmed) while off,
-        // per the reference screenshot's feedback: a disabled-looking list
-        // was still visually present and confusing.
+        // "Styles" row — only shown once the feature is actually on, same
+        // hide-not-dim treatment the list previously had. Tapping it opens
+        // the separate Board.DECORATION_STYLES page (Vary styles switch +
+        // the fixed-style list), rather than showing that content inline
+        // here — see DecorationStylesView below.
         if (enabled) {
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
+                    .clickable { onStylesOpen() }
                     .padding(horizontal = 12.dp, vertical = 8.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Column(modifier = Modifier.weight(1f)) {
                     Text(
-                        "Vary styles",
+                        "Styles",
                         fontSize = 13.sp,
                         fontWeight = FontWeight.Medium,
                         color = colors.keyText
                     )
                     Text(
-                        "Cycle a different style per suggestion instead of picking one below",
+                        if (varyStyles) "Varying — cycles a different style per suggestion" else "Choose a fixed style",
                         fontSize = 11.sp,
                         color = colors.subText
                     )
                 }
-                androidx.compose.material3.Switch(
-                    checked = varyStyles,
-                    onCheckedChange = onVaryStylesChange,
-                    colors = androidx.compose.material3.SwitchDefaults.colors(checkedTrackColor = DeshGreen)
+                Icon(
+                    painter = painterResource(id = R.drawable.ic_back_to_keyboard),
+                    contentDescription = null,
+                    modifier = Modifier.size(16.dp).graphicsLayer(rotationZ = 180f),
+                    tint = colors.subText
                 )
             }
+        }
+        Spacer(modifier = Modifier.weight(1f))
 
-            // The fixed-style list only matters once "Vary styles" is off —
-            // picking a row here is what "Vary styles" would otherwise
-            // override. Same hide-not-dim treatment as the section above:
-            // shown, but its purpose only applies with Vary styles off.
-            //
-            // BUG FIX (page wouldn't scroll): this LazyColumn previously had
-            // no explicit LazyListState and relied purely on weight(1f) for
-            // its height. That's normally enough, but this Column's own
-            // height is an *explicit* fixed Dp (targetContentHeight) sitting
-            // inside an ancestor chain that is wrapContentHeight() all the
-            // way up (see the outer Box/Column in KeyboardView) — under
-            // those conditions Compose can resolve this weight(1f) pass
-            // against a min-height-0/max-height-unbounded constraint on the
-            // very first composition, which makes the list lay out at its
-            // full intrinsic (unscrollable) height instead of the intended
-            // fixed viewport. Constraining with a matching heightIn(max=)
-            // derived from the same explicit targetContentHeight forces a
-            // bounded, scrollable viewport regardless of how the ancestor
-            // chain resolves its own pass, and an explicit
-            // rememberLazyListState() plus userScrollEnabled = true rule out
-            // the list silently losing its scroll state across recomposition
-            // (e.g. if this branch were ever toggled by `enabled`/`varyStyles`
-            // changing in the same frame).
-            val decorationListState = rememberLazyListState()
-            LazyColumn(
-                state = decorationListState,
-                userScrollEnabled = true,
+        Spacer(modifier = Modifier.height(bottomPadding))
+    }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Decoration styles picker — Board.DECORATION_STYLES. Split out of
+// DecorationPickerView so the "Vary styles" switch + fixed-style list get
+// their own page instead of sharing DECORATION's page with Incognito /
+// Decorate suggestions. Reached via the "Styles" row on DecorationPickerView
+// (pushBoard(Board.DECORATION_STYLES)); "Back" pops back to DECORATION, not
+// MAIN, same stack behaviour as every other sub-board. Uses the exact same
+// header pattern and targetContentHeight sizing as DecorationPickerView (and
+// FontPickerView, ClipboardHistoryView, etc.) so this page renders at the
+// same size as the keyboard itself, not a different height.
+// ─────────────────────────────────────────────────────────────────────────────
+@Composable
+private fun DecorationStylesView(
+    colors: KeyboardColors,
+    keyHeight: Dp,
+    bottomPadding: Dp,
+    targetContentHeight: Dp,
+    varyStyles: Boolean,
+    onVaryStylesChange: (Boolean) -> Unit,
+    selectedStyleKey: String,
+    onStyleSelected: (String) -> Unit,
+    onBack: () -> Unit
+) {
+    val headerHeight = 44.dp
+
+    Column(modifier = Modifier.fillMaxWidth().height(targetContentHeight).background(colors.bg)) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(headerHeight)
+                .padding(horizontal = 8.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Box(
                 modifier = Modifier
-                    .fillMaxWidth()
-                    .weight(1f, fill = true)
-                    .heightIn(max = targetContentHeight),
-                contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 8.dp, vertical = 4.dp)
+                    .size(32.dp)
+                    .clip(RoundedCornerShape(6.dp))
+                    .clickable { onBack() },
+                contentAlignment = Alignment.Center
             ) {
-                items(DecorationStyle.pickable, key = { it.key }) { style ->
-                    DecorationRow(
-                        style = style,
-                        selected = style.key == selectedStyleKey,
-                        dimmed = varyStyles,
-                        colors = colors,
-                        onSelect = { onStyleSelected(style.key) }
-                    )
-                }
+                Icon(
+                    painter = painterResource(id = R.drawable.ic_back_to_keyboard),
+                    contentDescription = "Back",
+                    modifier = Modifier.size(20.dp),
+                    tint = colors.subText
+                )
             }
-        } else {
-            Spacer(modifier = Modifier.weight(1f))
+            Text(
+                text = "Styles",
+                fontSize = 15.sp,
+                fontWeight = FontWeight.Medium,
+                color = colors.keyText,
+                modifier = Modifier.weight(1f).padding(start = 4.dp)
+            )
+        }
+
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 12.dp, vertical = 8.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    "Vary styles",
+                    fontSize = 13.sp,
+                    fontWeight = FontWeight.Medium,
+                    color = colors.keyText
+                )
+                Text(
+                    "Cycle a different style per suggestion instead of picking one below",
+                    fontSize = 11.sp,
+                    color = colors.subText
+                )
+            }
+            androidx.compose.material3.Switch(
+                checked = varyStyles,
+                onCheckedChange = onVaryStylesChange,
+                colors = androidx.compose.material3.SwitchDefaults.colors(checkedTrackColor = DeshGreen)
+            )
+        }
+
+        // The fixed-style list only matters once "Vary styles" is off —
+        // picking a row here is what "Vary styles" would otherwise
+        // override. Shown regardless (dimmed, not hidden) since it's the
+        // only content on this page.
+        //
+        // BUG FIX (page wouldn't scroll): this LazyColumn previously had
+        // no explicit LazyListState and relied purely on weight(1f) for
+        // its height. That's normally enough, but this Column's own
+        // height is an *explicit* fixed Dp (targetContentHeight) sitting
+        // inside an ancestor chain that is wrapContentHeight() all the
+        // way up (see the outer Box/Column in KeyboardView) — under
+        // those conditions Compose can resolve this weight(1f) pass
+        // against a min-height-0/max-height-unbounded constraint on the
+        // very first composition, which makes the list lay out at its
+        // full intrinsic (unscrollable) height instead of the intended
+        // fixed viewport. Constraining with a matching heightIn(max=)
+        // derived from the same explicit targetContentHeight forces a
+        // bounded, scrollable viewport regardless of how the ancestor
+        // chain resolves its own pass, and an explicit
+        // rememberLazyListState() plus userScrollEnabled = true rule out
+        // the list silently losing its scroll state across recomposition.
+        val decorationListState = rememberLazyListState()
+        LazyColumn(
+            state = decorationListState,
+            userScrollEnabled = true,
+            modifier = Modifier
+                .fillMaxWidth()
+                .weight(1f, fill = true)
+                .heightIn(max = targetContentHeight),
+            contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 8.dp, vertical = 4.dp)
+        ) {
+            items(DecorationStyle.pickable, key = { it.key }) { style ->
+                DecorationRow(
+                    style = style,
+                    selected = style.key == selectedStyleKey,
+                    dimmed = varyStyles,
+                    colors = colors,
+                    onSelect = { onStyleSelected(style.key) }
+                )
+            }
         }
 
         Spacer(modifier = Modifier.height(bottomPadding))
