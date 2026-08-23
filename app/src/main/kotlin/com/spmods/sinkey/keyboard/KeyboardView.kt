@@ -2292,27 +2292,6 @@ private fun AppsMicBar(
     // typing during translate mode no longer goes through the ordinary
     // typing pipeline that produces those suggestions.
     Column(modifier = Modifier.fillMaxWidth()) {
-    if (justCopiedText != null) {
-        // ── "Just copied" preview strip ──────────────────────────────
-        // Takes priority over everything else in this slot (translate
-        // row / suggestion strip / tools row) — it's a transient,
-        // auto-hiding notification about something that just happened,
-        // same rank as a toast, so it briefly owns the toolbar rather
-        // than competing with the tools row for space underneath it.
-        // Deliberately excludes the translate row and suggestion-strip/
-        // tools-row entirely (not just replaces one of them) — both used
-        // to be separate `if` statements that could render alongside
-        // this one since neither depended on justCopiedText, which was
-        // the bug: the tools row kept showing underneath the strip.
-        CopyPreviewStrip(
-            colors = colors,
-            isDark = isDark,
-            text = justCopiedText,
-            onPaste = { onCopyPreviewPaste(justCopiedText) },
-            onExpand = onCopyPreviewExpand,
-            onDismiss = onDismissCopyPreview
-        )
-    } else {
     if (isTranslateMode) {
         TranslateRow(
             colors = colors,
@@ -2329,6 +2308,12 @@ private fun AppsMicBar(
             onClose = onTranslateClose
         )
     }
+    // justCopiedText takes over only the middle of the tools row (between
+    // the always-present grid/TOOL_APPS icon and the settings pill) — see
+    // the tools-row branch below, not a separate branch here. Suggestions
+    // still win over the plain tools row the same as before; the copy
+    // preview only replaces the *icons* inside the tools-row branch, so it
+    // never appears while actively typing (isTyping already covers that).
     if (isTyping) {
             // ── Suggestion strip ─────────────────────────────────────────
             // FIX: The grid/apps icon (TOOL_APPS) used to disappear entirely
@@ -2476,7 +2461,41 @@ private fun AppsMicBar(
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                tools.forEach { (iconRes, action) ->
+                // TOOL_APPS (grid icon) always stays pinned on the left,
+                // copy-preview or not — same reasoning as its pin in the
+                // suggestion strip above (see that Row's own comment).
+                Box(
+                    modifier = Modifier
+                        .size(36.dp)
+                        .clip(RoundedCornerShape(6.dp))
+                        .clickable { onDecorationOpen() },
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        painter = painterResource(id = R.drawable.ic_unified_menu),
+                        contentDescription = null,
+                        modifier = Modifier.size(22.dp),
+                        tint = toolIconTint
+                    )
+                }
+                if (justCopiedText != null) {
+                    // ── "Just copied" preview ────────────────────────────
+                    // Replaces only the middle sticker/clipboard/font/
+                    // translate/hidden-message icons — grid (TOOL_APPS,
+                    // above) and settings (below) stay put either way, so
+                    // this never hides the whole toolbar, only the icons
+                    // that a fresh copy has something more useful to show
+                    // than.
+                    CopyPreviewInline(
+                        colors = colors,
+                        isDark = isDark,
+                        text = justCopiedText,
+                        onPaste = { onCopyPreviewPaste(justCopiedText) },
+                        onExpand = onCopyPreviewExpand,
+                        onDismiss = onDismissCopyPreview
+                    )
+                } else {
+                tools.drop(1).forEach { (iconRes, action) ->
                     Box(
                         modifier = Modifier
                             .size(36.dp)
@@ -2492,11 +2511,6 @@ private fun AppsMicBar(
                                 when (action) {
                                     "TOOL_CLIPBOARD" -> onClipboardOpen()
                                     "TOOL_FONT" -> onFontOpen()
-                                    // TOOL_APPS ("More", grid icon) previously did nothing
-                                    // (logged "not yet implemented" — see IME service's
-                                    // handleKey). Repurposed to open the Decorative text
-                                    // picker/toggle screen.
-                                    "TOOL_APPS" -> onDecorationOpen()
                                     "TOOL_STICKER" -> onStickerOpen()
                                     "TOOL_TRANSLATE" -> onTranslateOpen()
                                     "TOOL_HIDDEN_MESSAGE" -> onHiddenMessageToggle()
@@ -2532,6 +2546,7 @@ private fun AppsMicBar(
                         }
                     }
                 }
+                }
                 Box(
                     modifier = Modifier
                         .size(36.dp)
@@ -2554,16 +2569,16 @@ private fun AppsMicBar(
         }
     }
 }
-}
 
 // ─────────────────────────────────────────────────────────────────────────────
-// "Just copied" preview strip — see AppsMicBar's justCopiedText param doc
-// comment. Sized identically to the suggestion strip/tools row (48dp) so
-// swapping into/out of this slot doesn't resize the IME window (see the
-// FIX Ghost-Toolbar note above AppsMicBar).
+// "Just copied" preview — see AppsMicBar's justCopiedText param doc comment.
+// An inline RowScope piece (not its own Row) since it sits between the
+// always-present grid and settings icons inside the tools row's Row, taking
+// up the middle space those 5 tool icons would otherwise occupy — replacing
+// only them, not the whole toolbar.
 // ─────────────────────────────────────────────────────────────────────────────
 @Composable
-private fun CopyPreviewStrip(
+private fun RowScope.CopyPreviewInline(
     colors: KeyboardColors,
     isDark: Boolean,
     text: String,
@@ -2572,72 +2587,65 @@ private fun CopyPreviewStrip(
     onDismiss: () -> Unit
 ) {
     val toolIconTint = if (isDark) Color.White else Color.Black
+    // Pill: icon + one-line truncated preview. Tapping anywhere on it
+    // pastes the copied text at the cursor — same "tap to insert"
+    // behaviour as a clipboard-history entry.
     Row(
         modifier = Modifier
-            .fillMaxWidth()
-            .height(48.dp)
-            .background(colors.bg)
-            .padding(horizontal = 8.dp, vertical = 6.dp),
+            .weight(1f)
+            .fillMaxHeight()
+            .padding(vertical = 6.dp)
+            .clip(RoundedCornerShape(50))
+            .background(colors.subText.copy(alpha = 0.14f))
+            .clickable { onPaste() }
+            .padding(horizontal = 12.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(8.dp)
     ) {
-        // Pill: icon + one-line truncated preview. Tapping anywhere on it
-        // pastes the copied text at the cursor — same "tap to insert"
-        // behaviour as a clipboard-history entry.
-        Row(
-            modifier = Modifier
-                .weight(1f)
-                .fillMaxHeight()
-                .clip(RoundedCornerShape(50))
-                .background(colors.subText.copy(alpha = 0.14f))
-                .clickable { onPaste() }
-                .padding(horizontal = 12.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(8.dp)
-        ) {
-            Icon(
-                painter = painterResource(id = R.drawable.ic_clipboard),
-                contentDescription = null,
-                modifier = Modifier.size(16.dp),
-                tint = colors.keyText
-            )
-            Text(
-                text = text,
-                fontSize = 15.sp,
-                color = colors.keyText,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-                modifier = Modifier.weight(1f)
-            )
-        }
-        Box(
-            modifier = Modifier
-                .size(32.dp)
-                .clip(RoundedCornerShape(50))
-                .clickable { onExpand() },
-            contentAlignment = Alignment.Center
-        ) {
-            Icon(
-                imageVector = Icons.Filled.OpenInFull,
-                contentDescription = "Open clipboard history",
-                modifier = Modifier.size(15.dp),
-                tint = toolIconTint
-            )
-        }
-        Box(
-            modifier = Modifier
-                .size(32.dp)
-                .clip(RoundedCornerShape(50))
-                .clickable { onDismiss() },
-            contentAlignment = Alignment.Center
-        ) {
-            Icon(
-                imageVector = Icons.Filled.Close,
-                contentDescription = "Dismiss",
-                modifier = Modifier.size(16.dp),
-                tint = toolIconTint
-            )
-        }
+        Icon(
+            painter = painterResource(id = R.drawable.ic_clipboard),
+            contentDescription = null,
+            modifier = Modifier.size(16.dp),
+            tint = colors.keyText
+        )
+        Text(
+            text = text,
+            fontSize = 15.sp,
+            color = colors.keyText,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.weight(1f)
+        )
+    }
+    Box(
+        modifier = Modifier
+            .padding(start = 4.dp)
+            .size(32.dp)
+            .clip(RoundedCornerShape(50))
+            .clickable { onExpand() },
+        contentAlignment = Alignment.Center
+    ) {
+        Icon(
+            imageVector = Icons.Filled.OpenInFull,
+            contentDescription = "Open clipboard history",
+            modifier = Modifier.size(15.dp),
+            tint = toolIconTint
+        )
+    }
+    Box(
+        modifier = Modifier
+            .padding(start = 2.dp)
+            .size(32.dp)
+            .clip(RoundedCornerShape(50))
+            .clickable { onDismiss() },
+        contentAlignment = Alignment.Center
+    ) {
+        Icon(
+            imageVector = Icons.Filled.Close,
+            contentDescription = "Dismiss",
+            modifier = Modifier.size(16.dp),
+            tint = toolIconTint
+        )
     }
 }
 
