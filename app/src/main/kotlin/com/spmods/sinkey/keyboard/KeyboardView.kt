@@ -86,6 +86,7 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -129,6 +130,7 @@ import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Undo
 import androidx.compose.material.icons.filled.SwapHoriz
+import androidx.compose.material.icons.filled.OpenInFull
 
 // Number labels for top row keys
 private val topRowNumbers = listOf("1","2","3","4","5","6","7","8","9","0")
@@ -513,6 +515,19 @@ internal fun KeyboardView(
     // set it back to null upstream.
     hiddenMessageDecodedText: String? = null,
     onDismissHiddenMessageBanner: () -> Unit = {},
+    // "Just copied" preview strip — non-null shows a dismissible strip in
+    // the suggestion-strip/tools-row slot with a one-line preview of the
+    // text just copied (system-wide, via registerClipboardListener).
+    // Auto-hides after ~1 minute (owned/timed by the IME service, see
+    // SinKeyInputMethodService.showCopyPreview); onDismissCopyPreview fires
+    // on explicit X tap, onCopyPreviewPaste on tapping the strip itself
+    // (pastes justCopiedText at the cursor, same as a clipboard-history
+    // entry), onCopyPreviewExpand on the expand icon (opens the full
+    // clipboard history board).
+    justCopiedText: String? = null,
+    onDismissCopyPreview: () -> Unit = {},
+    onCopyPreviewPaste: (String) -> Unit = {},
+    onCopyPreviewExpand: () -> Unit = {},
     suggestions: List<String> = emptyList(),
     onSuggestionSelected: (String, Int) -> Unit = { _, _ -> },
     // Non-null right after a silent autocorrect swapped what the user
@@ -905,6 +920,10 @@ internal fun KeyboardView(
                 AppsMicBar(
                     colors = colors,
                     isDark = isDark,
+                    justCopiedText = justCopiedText,
+                    onDismissCopyPreview = onDismissCopyPreview,
+                    onCopyPreviewPaste = onCopyPreviewPaste,
+                    onCopyPreviewExpand = onCopyPreviewExpand,
                     // BUG FIX: suggestions previously came only from the
                     // real typing pipeline (wordBuffer etc.), which is
                     // fully bypassed while translate mode is open (see
@@ -2185,6 +2204,12 @@ private fun translateLanguageLabel(code: String): String = when (code) {
 private fun AppsMicBar(
     colors: KeyboardColors,
     isDark: Boolean = false,
+    // See KeyboardView's own doc comment on these — same passthrough
+    // pattern as the translate-row params below.
+    justCopiedText: String? = null,
+    onDismissCopyPreview: () -> Unit = {},
+    onCopyPreviewPaste: (String) -> Unit = {},
+    onCopyPreviewExpand: () -> Unit = {},
     suggestions: List<String>,
     onSuggestionSelected: (String, Int) -> Unit,
     // Non-null right after an autocorrect swap — renders as a distinct
@@ -2266,6 +2291,22 @@ private fun AppsMicBar(
     // typing during translate mode no longer goes through the ordinary
     // typing pipeline that produces those suggestions.
     Column(modifier = Modifier.fillMaxWidth()) {
+    if (justCopiedText != null) {
+        // ── "Just copied" preview strip ──────────────────────────────
+        // Takes priority over everything else in this slot (translate
+        // row / suggestion strip / tools row) — it's a transient,
+        // auto-hiding notification about something that just happened,
+        // same rank as a toast, so it briefly owns the toolbar rather
+        // than competing with the tools row for space underneath it.
+        CopyPreviewStrip(
+            colors = colors,
+            isDark = isDark,
+            text = justCopiedText,
+            onPaste = { onCopyPreviewPaste(justCopiedText) },
+            onExpand = onCopyPreviewExpand,
+            onDismiss = onDismissCopyPreview
+        )
+    } else
     if (isTranslateMode) {
         TranslateRow(
             colors = colors,
@@ -2504,6 +2545,91 @@ private fun AppsMicBar(
                     )
                 }
             }
+        }
+    }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// "Just copied" preview strip — see AppsMicBar's justCopiedText param doc
+// comment. Sized identically to the suggestion strip/tools row (48dp) so
+// swapping into/out of this slot doesn't resize the IME window (see the
+// FIX Ghost-Toolbar note above AppsMicBar).
+// ─────────────────────────────────────────────────────────────────────────────
+@Composable
+private fun CopyPreviewStrip(
+    colors: KeyboardColors,
+    isDark: Boolean,
+    text: String,
+    onPaste: () -> Unit,
+    onExpand: () -> Unit,
+    onDismiss: () -> Unit
+) {
+    val toolIconTint = if (isDark) Color.White else Color.Black
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(48.dp)
+            .background(colors.bg)
+            .padding(horizontal = 8.dp, vertical = 6.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(8.dp)
+    ) {
+        // Pill: icon + one-line truncated preview. Tapping anywhere on it
+        // pastes the copied text at the cursor — same "tap to insert"
+        // behaviour as a clipboard-history entry.
+        Row(
+            modifier = Modifier
+                .weight(1f)
+                .fillMaxHeight()
+                .clip(RoundedCornerShape(50))
+                .background(colors.subText.copy(alpha = 0.14f))
+                .clickable { onPaste() }
+                .padding(horizontal = 12.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            Icon(
+                painter = painterResource(id = R.drawable.ic_clipboard),
+                contentDescription = null,
+                modifier = Modifier.size(16.dp),
+                tint = colors.keyText
+            )
+            Text(
+                text = text,
+                fontSize = 15.sp,
+                color = colors.keyText,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.weight(1f)
+            )
+        }
+        Box(
+            modifier = Modifier
+                .size(32.dp)
+                .clip(RoundedCornerShape(50))
+                .clickable { onExpand() },
+            contentAlignment = Alignment.Center
+        ) {
+            Icon(
+                imageVector = Icons.Filled.OpenInFull,
+                contentDescription = "Open clipboard history",
+                modifier = Modifier.size(15.dp),
+                tint = toolIconTint
+            )
+        }
+        Box(
+            modifier = Modifier
+                .size(32.dp)
+                .clip(RoundedCornerShape(50))
+                .clickable { onDismiss() },
+            contentAlignment = Alignment.Center
+        ) {
+            Icon(
+                imageVector = Icons.Filled.Close,
+                contentDescription = "Dismiss",
+                modifier = Modifier.size(16.dp),
+                tint = toolIconTint
+            )
         }
     }
 }
