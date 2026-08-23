@@ -1,5 +1,6 @@
 package com.spmods.sinkey.keyboard
 
+import android.graphics.Bitmap
 import android.util.Log
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
@@ -23,7 +24,11 @@ import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.TransformOrigin
+import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.graphics.ColorFilter
+import androidx.compose.ui.graphics.ColorMatrix
 import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
@@ -53,6 +58,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.size
 import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.foundation.lazy.LazyRow
@@ -616,7 +622,28 @@ internal fun KeyboardView(
     // to text by the caller — see SinKeyInputMethodService.TranslateErrorState
     // — so this file doesn't need to know about that enum, just render
     // whatever string it's given).
-    translateErrorMessage: String? = null
+    translateErrorMessage: String? = null,
+    // ── "Edit theme" live preview override ─────────────────────────────
+    // PhotoEditThemeScreen shows this same KeyboardView as its "real
+    // keyboard" preview while the user is still adjusting Show key
+    // borders / Blur / Brightness / Key opacity for a photo they just
+    // cropped — none of which are saved to PreferencesManager yet (the
+    // user might still cancel via onBack). Everything above this point
+    // reads its background/blur/brightness/keyOpacity from prefsManager
+    // (see customBackgroundUri/customBackgroundBlur/etc. below), which
+    // would only show the *previously saved* theme, not the in-progress
+    // edit. When non-null, previewBackgroundBitmap short-circuits the
+    // normal customBackgroundUri-driven background path to draw this
+    // in-memory Bitmap instead, and the preview*Override values (when
+    // non-null) replace the corresponding prefs-driven value the same
+    // way — every other caller (the real IME service, the plain
+    // keyboard-preview overlay in MainActivity) omits all of these and
+    // gets the normal all-prefs behaviour unchanged.
+    previewBackgroundBitmap: Bitmap? = null,
+    previewBlur: Float? = null,
+    previewBrightness: Float? = null,
+    previewKeyOpacity: Float? = null,
+    previewShowKeyBorders: Boolean? = null
 ) {
     // Read ahead of `colors` below (moved up from where these used to live,
     // further down this function) because keyboardColors() now needs the
@@ -646,14 +673,24 @@ internal fun KeyboardView(
         initial = com.spmods.sinkey.data.LedPattern.NONE
     )
     val ledIdleDimming by prefsManager.ledIdleDimming.collectAsState(initial = true)
-    val keyOpacity by prefsManager.keyOpacity.collectAsState(initial = 1f)
+    val keyOpacityPref by prefsManager.keyOpacity.collectAsState(initial = 1f)
+
+    // Effective values — previewXxx overrides win when non-null (Edit
+    // theme's live preview), otherwise fall back to the normal
+    // prefs-driven value every other caller already relies on. See the
+    // previewBackgroundBitmap doc comment on this function's params for
+    // why this exists.
+    val effectiveShowKeyBorders = previewShowKeyBorders ?: showKeyBorders
+    val effectiveBlur = previewBlur ?: customBackgroundBlur
+    val effectiveBrightness = previewBrightness ?: customBackgroundBrightness
+    val keyOpacity = previewKeyOpacity ?: keyOpacityPref
 
     val colors = keyboardColors(
-        showKeyBorders = showKeyBorders,
+        showKeyBorders = effectiveShowKeyBorders,
         isDark = isDark,
         palette = keyColorPalette,
         keyEffect = keyEffect,
-        transparentBg = customBackgroundUri != null || backgroundStyle != com.spmods.sinkey.data.BackgroundStyle.NONE,
+        transparentBg = previewBackgroundBitmap != null || customBackgroundUri != null || backgroundStyle != com.spmods.sinkey.data.BackgroundStyle.NONE,
         keyOpacity = keyOpacity,
     ).let { base ->
         // Material You: when enabled, override the accent with the
@@ -784,29 +821,61 @@ internal fun KeyboardView(
     // ONE Column for the whole keyboard — toolbar always at top, content below
     Box(modifier = Modifier.fillMaxWidth().wrapContentHeight()) {
         // Built-in procedural background (Gradient/Rainbow/Galaxy/Smoke/...)
-        // — bottom-most layer. Drawn only when no "My themes" photo is set,
-        // since a user-picked photo always takes precedence (see
+        // — bottom-most layer. Drawn only when no "My themes" photo is set
+        // (nor a live preview bitmap — see previewBackgroundBitmap doc
+        // comment), since a user-picked photo always takes precedence (see
         // BackgroundStyle doc comment) — both are still allowed to make
         // colors.bg transparent above so either one shows through cleanly.
-        if (customBackgroundUri == null && backgroundStyle != com.spmods.sinkey.data.BackgroundStyle.NONE) {
+        if (previewBackgroundBitmap == null && customBackgroundUri == null && backgroundStyle != com.spmods.sinkey.data.BackgroundStyle.NONE) {
             KeyboardBuiltInBackground(
                 style = backgroundStyle,
                 isDark = isDark,
                 modifier = Modifier.matchParentSize()
             )
         }
-        // "My themes" custom photo background — drawn as the bottom-most
-        // layer of the outer Box, behind everything else. Only rendered
-        // when a background is actually set; colors.bg is made fully
-        // transparent by keyboardColors(transparentBg = ...) in that case
-        // so every row's own `.background(colors.bg)` (toolbar, suggestion
-        // strip, key rows, etc.) lets this show through instead of
-        // painting over it in solid color band-by-band.
-        customBackgroundUri?.let { uriString ->
+        // "Edit theme" live preview bitmap — takes precedence over the
+        // saved customBackgroundUri below (see previewBackgroundBitmap doc
+        // comment on this function's params). Same blur/brightness
+        // treatment as KeyboardCustomBackground's static-image path, just
+        // drawn directly from the in-memory Bitmap instead of decoding a
+        // Uri, since PhotoEditThemeScreen's cropped photo isn't saved to
+        // one until the user taps Done.
+        if (previewBackgroundBitmap != null) {
+            val previewBrightnessDelta = ((effectiveBrightness) - 0.5f) * 2f * 255f
+            val previewBrightnessFilter = remember(previewBrightnessDelta) {
+                ColorFilter.colorMatrix(
+                    ColorMatrix(
+                        floatArrayOf(
+                            1f, 0f, 0f, 0f, previewBrightnessDelta,
+                            0f, 1f, 0f, 0f, previewBrightnessDelta,
+                            0f, 0f, 1f, 0f, previewBrightnessDelta,
+                            0f, 0f, 0f, 1f, 0f
+                        )
+                    )
+                )
+            }
+            Image(
+                bitmap = previewBackgroundBitmap.asImageBitmap(),
+                contentDescription = null,
+                contentScale = ContentScale.Crop,
+                colorFilter = previewBrightnessFilter,
+                modifier = Modifier
+                    .matchParentSize()
+                    .let { if (effectiveBlur > 0.01f) it.blur(20.dp * effectiveBlur) else it }
+            )
+        } else customBackgroundUri?.let { uriString ->
+            // "My themes" custom photo background — drawn as the
+            // bottom-most layer of the outer Box, behind everything else.
+            // Only rendered when a background is actually set; colors.bg
+            // is made fully transparent by keyboardColors(transparentBg =
+            // ...) in that case so every row's own `.background(colors.bg)`
+            // (toolbar, suggestion strip, key rows, etc.) lets this show
+            // through instead of painting over it in solid color
+            // band-by-band.
             KeyboardCustomBackground(
                 uriString = uriString,
-                blur = customBackgroundBlur,
-                brightness = customBackgroundBrightness,
+                blur = effectiveBlur,
+                brightness = effectiveBrightness,
                 modifier = Modifier.matchParentSize()
             )
         }
@@ -1425,7 +1494,7 @@ internal fun KeyboardView(
                             onShiftStateChange = onShiftStateChange,
                             keyHeight = keyHeight, keyShape = keyShape,
                             bottomPadding = bottomPadding, colors = colors,
-                            showKeyBorders = showKeyBorders,
+                            showKeyBorders = effectiveShowKeyBorders,
                             onKey = onKey,
                             onSymbols = { pushBoard(Board.SYMBOLS) },
                             onEmojiPicker = { pushBoard(Board.EMOJI) },
