@@ -415,6 +415,8 @@ private fun SinKeyApp(prefs: PreferencesManager, initialTab: Tab = Tab.HOME) {
                             initialBlur = customBackgroundBlur,
                             initialBrightness = customBackgroundBrightness,
                             initialKeyOpacity = keyOpacity,
+                            currentLanguage = defaultLanguage,
+                            isDark = isDark,
                             onBack = { photoEditStep = PhotoEditStep.CROP },
                             onDone = { newShowKeyBorders, blur, brightness, newKeyOpacity ->
                                 val finalBitmap = croppedBitmap!!
