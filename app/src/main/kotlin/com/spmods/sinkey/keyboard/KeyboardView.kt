@@ -41,8 +41,8 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 // matchParentSize() is a member of BoxScope (not a top-level extension
 // function like fillMaxSize), so it needs no import — it resolves
@@ -2299,6 +2299,11 @@ private fun AppsMicBar(
         // auto-hiding notification about something that just happened,
         // same rank as a toast, so it briefly owns the toolbar rather
         // than competing with the tools row for space underneath it.
+        // Deliberately excludes the translate row and suggestion-strip/
+        // tools-row entirely (not just replaces one of them) — both used
+        // to be separate `if` statements that could render alongside
+        // this one since neither depended on justCopiedText, which was
+        // the bug: the tools row kept showing underneath the strip.
         CopyPreviewStrip(
             colors = colors,
             isDark = isDark,
@@ -2307,7 +2312,7 @@ private fun AppsMicBar(
             onExpand = onCopyPreviewExpand,
             onDismiss = onDismissCopyPreview
         )
-    } else
+    } else {
     if (isTranslateMode) {
         TranslateRow(
             colors = colors,
@@ -2548,6 +2553,7 @@ private fun AppsMicBar(
             }
         }
     }
+}
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
