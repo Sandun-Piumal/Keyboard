@@ -583,7 +583,15 @@ class SinKeyInputMethodService : InputMethodService() {
                     if (!cachedIncognitoEnabled) {
                         serviceScope.launch { clipRepo.record(text) }
                         learnWordsFromClipboard(text)
-                        showCopyPreview(text)
+                        // Hidden message ON: never show the copy-preview
+                        // strip, even for an ordinary (non-encoded) copy.
+                        // The whole point of that toggle is discretion —
+                        // a strip flashing the just-copied text over the
+                        // keyboard defeats that regardless of whether
+                        // this particular copy happens to be encoded.
+                        if (!cachedHiddenMessageEnabled) {
+                            showCopyPreview(text)
+                        }
                     }
                 }
             }
