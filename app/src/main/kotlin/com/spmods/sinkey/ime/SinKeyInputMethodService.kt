@@ -273,6 +273,16 @@ class SinKeyInputMethodService : InputMethodService() {
     // with both features on sees one coherent decorative-looking result
     // rather than two independent wrappers stacked on each other.
     private var cachedHiddenMessageEnabled = false
+    // "Incognito" — Decorative-text page toggle, above "Decorate
+    // suggestions" (see KeyboardView's DecorationPickerView /
+    // PreferencesManager.Keys.INCOGNITO_ENABLED). Read at every place this
+    // service would otherwise persist something derived from what the user
+    // typed or copied — learnWord() (personal dictionary + next-word
+    // bigrams), the clipboard listener's history record + clipboard-word
+    // learning, and addRecentEmoji — so turning it on pauses all of them at
+    // once without touching typing/suggestions/decoration themselves,
+    // which keep working normally.
+    private var cachedIncognitoEnabled = false
     // Hidden-message "session" state: while the feature is on, every word
     // commit re-encodes the WHOLE sentence typed so far (not just the new
     // word) into one single ZW_START…ZW_END span, replacing whatever
@@ -494,6 +504,9 @@ class SinKeyInputMethodService : InputMethodService() {
         serviceScope.launch {
             prefs.mixAutoSinhala.collect { cachedMixAutoSinhala = it }
         }
+        serviceScope.launch {
+            prefs.incognitoEnabled.collect { cachedIncognitoEnabled = it }
+        }
 
         // FIX #2: Create spell-checker session once for the lifetime of the service.
         initSpellCheckerSession()
@@ -545,8 +558,15 @@ class SinKeyInputMethodService : InputMethodService() {
                             hiddenMessageDecodedText.value = decoded
                         }
                     }
-                    serviceScope.launch { clipRepo.record(text) }
-                    learnWordsFromClipboard(text)
+                    // Incognito: don't add this copy to clipboard history or
+                    // learn any words out of it. The hidden-message decode
+                    // above still runs regardless — that's a read of what's
+                    // already on the clipboard, not a new write to storage,
+                    // so it isn't something Incognito needs to suppress.
+                    if (!cachedIncognitoEnabled) {
+                        serviceScope.launch { clipRepo.record(text) }
+                        learnWordsFromClipboard(text)
+                    }
                 }
             }
         }
@@ -1638,7 +1658,12 @@ class SinKeyInputMethodService : InputMethodService() {
                 if (isEmoji(key)) {
                     commitPendingWord()
                     ic.commitText(key, 1)
-                    serviceScope.launch { prefs.addRecentEmoji(key) }
+                    // Incognito: still sends the emoji, just doesn't record
+                    // it into "recent" — same treatment as clipboard
+                    // history/word learning above.
+                    if (!cachedIncognitoEnabled) {
+                        serviceScope.launch { prefs.addRecentEmoji(key) }
+                    }
                 } else if (isSinhalaTyping()) {
                     // Sinhala's phonetic scheme uses case to pick between
                     // real, distinct letters for a specific subset of keys
@@ -2909,10 +2934,18 @@ class SinKeyInputMethodService : InputMethodService() {
         if (word.isBlank()) return
         val prev = lastCommittedWord
         val prevLanguage = lastCommittedLanguage
-        serviceScope.launch {
-            wordRepo.learn(word, language)
-            if (prev.isNotBlank() && prevLanguage == language) {
-                wordRepo.learnBigram(prev, word, language)
+        // Incognito: skip the actual dictionary/bigram writes, but still
+        // update lastCommittedWord/lastCommittedLanguage below — those only
+        // drive in-session next-word prediction ordering for the rest of
+        // this typing session, not persisted storage, so keeping them
+        // updated doesn't leak anything once Incognito ends and just keeps
+        // suggestions coherent while it's on.
+        if (!cachedIncognitoEnabled) {
+            serviceScope.launch {
+                wordRepo.learn(word, language)
+                if (prev.isNotBlank() && prevLanguage == language) {
+                    wordRepo.learnBigram(prev, word, language)
+                }
             }
         }
         lastCommittedWord = word
