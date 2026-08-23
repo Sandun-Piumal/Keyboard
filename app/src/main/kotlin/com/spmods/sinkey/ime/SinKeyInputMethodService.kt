@@ -273,6 +273,21 @@ class SinKeyInputMethodService : InputMethodService() {
     // with both features on sees one coherent decorative-looking result
     // rather than two independent wrappers stacked on each other.
     private var cachedHiddenMessageEnabled = false
+    // Hidden-message "session" state: while the feature is on, every word
+    // commit re-encodes the WHOLE sentence typed so far (not just the new
+    // word) into one single ZW_START…ZW_END span, replacing whatever
+    // encoded span is currently on screen. This is required because
+    // ZeroWidthEncoder.decode() only ever finds the FIRST encoded span in a
+    // text — if each word were encoded as its own separate span (the
+    // original, buggy behavior), only the first word of a multi-word
+    // message ever decoded on the receiving end; later words' spans were
+    // silently ignored. hiddenMessageSessionWords holds the plain words
+    // committed so far in the current message; hiddenMessageLastEncodedLength
+    // is how many UTF-16 units of encoded text are currently sitting in the
+    // field so the next commit can delete exactly that much before
+    // re-inserting the updated encoding — see commitHiddenMessageSession().
+    private val hiddenMessageSessionWords = mutableListOf<String>()
+    private var hiddenMessageLastEncodedLength = 0
     // Mix mode: when true, space/enter converts the typed word to Sinhala
     // (same as pure "si"); when false (default), it commits the raw typed
     // Latin text as-is unless the user picked a suggestion.
@@ -465,7 +480,16 @@ class SinKeyInputMethodService : InputMethodService() {
             prefs.decorationVaryStyles.collect { cachedDecorationVaryStyles = it }
         }
         serviceScope.launch {
-            prefs.hiddenMessageEnabled.collect { cachedHiddenMessageEnabled = it }
+            prefs.hiddenMessageEnabled.collect {
+                // Toggling off mid-message means whatever comes next is
+                // ordinary plain text, not a continuation of the hidden
+                // sentence — reset so a later toggle-back-on starts a fresh
+                // session instead of silently resuming a stale one (which
+                // would also desync hiddenMessageLastEncodedLength from
+                // whatever plain text got typed while the feature was off).
+                if (!it && cachedHiddenMessageEnabled) resetHiddenMessageSession()
+                cachedHiddenMessageEnabled = it
+            }
         }
         serviceScope.launch {
             prefs.mixAutoSinhala.collect { cachedMixAutoSinhala = it }
@@ -1094,6 +1118,10 @@ class SinKeyInputMethodService : InputMethodService() {
         englishBuffer.clear()
         resumedWordBeforeCursor = null
         clearSuggestions()
+        // A new field (even if restarting=true for the same one) means any
+        // hidden-message sentence built up so far belongs to a different
+        // on-screen message — see resetHiddenMessageSession's doc comment.
+        resetHiddenMessageSession()
         // A pending undo chip refers to text in the field we're leaving —
         // meaningless (and potentially actionable-on-the-wrong-field) once
         // focus moves elsewhere.
@@ -1481,7 +1509,13 @@ class SinKeyInputMethodService : InputMethodService() {
             "SPACE" -> {
                 if (isSinhalaTyping()) {
                     commitPendingWord()
-                    ic.commitText(" ", 1)
+                    // Uses the tracking-aware helper (not a bare
+                    // ic.commitText(" ", 1)) so this space stays included in
+                    // hiddenMessageLastEncodedLength when Hidden message
+                    // mode is on — see that helper's doc comment for why an
+                    // uncounted space here would corrupt the next word's
+                    // replace-the-span delete.
+                    appendTrailingAfterHiddenMessageCommit(ic, " ")
                 } else {
                     maybeAutocorrectAndCommitSpace(ic)
                 }
@@ -1505,8 +1539,18 @@ class SinKeyInputMethodService : InputMethodService() {
                     !forceMultiline &&
                     ic.performEditorAction(action)
 
+                // The message was just submitted (Send/Search/Done/...) —
+                // whatever comes next is a new message, so the hidden-message
+                // running sentence buffer must not carry over into it. See
+                // resetHiddenMessageSession's doc comment.
+                if (handledAsAction) resetHiddenMessageSession()
+
                 if (!handledAsAction) {
-                    ic.commitText("\n", 1)
+                    // Uses the tracking-aware helper for the same reason
+                    // SPACE does above — an uncounted commitText("\n", 1)
+                    // here would desync hiddenMessageLastEncodedLength from
+                    // what's actually on screen for the next word's replace.
+                    appendTrailingAfterHiddenMessageCommit(ic, "\n")
                 }
                 // New line = sentence start → auto-shift
                 if (shiftState.value == ShiftState.OFF) shiftState.value = ShiftState.ONE_SHOT
@@ -2380,6 +2424,48 @@ class SinKeyInputMethodService : InputMethodService() {
     }
 
     /**
+     * Call when hidden-message mode is off, or the field/input session has
+     * changed underneath us (e.g. onStartInputView for a new field) — clears
+     * the running sentence buffer so a stale session doesn't bleed into a
+     * different message or field. Deliberately NOT called on every commit;
+     * see commitHiddenMessageSession's own doc comment for the normal reset
+     * points (space after a completed send, Enter-as-submit).
+     */
+    private fun resetHiddenMessageSession() {
+        hiddenMessageSessionWords.clear()
+        hiddenMessageLastEncodedLength = 0
+    }
+
+    /**
+     * Adds [plainWord] to the running hidden-message sentence buffer,
+     * re-encodes the WHOLE sentence so far as one span, and replaces
+     * whatever encoded span is currently on screen with the updated one —
+     * see hiddenMessageSessionWords's doc comment for why re-encoding the
+     * full sentence (not appending a second independent span) is required.
+     * [visiblePattern] is the same per-word decoration/dot-quote pattern
+     * ZeroWidthEncoder.encode would otherwise generate for a single word;
+     * here it's passed through unchanged as the visible text surrounding
+     * the (now full-sentence) hidden payload, so the visible pattern still
+     * grows/updates to roughly track the message rather than staying
+     * whatever length the first word alone produced.
+     * Returns the text to commit to the field (the caller still does the
+     * actual delete-old / commit-new via the InputConnection — this
+     * function only computes what that new text should be).
+     */
+    private fun commitHiddenMessageSession(plainWord: String, visiblePattern: String): String {
+        if (plainWord.isNotEmpty()) hiddenMessageSessionWords.add(plainWord)
+        val fullSentence = hiddenMessageSessionWords.joinToString(" ")
+        // hiddenMessageLastEncodedLength is NOT set here — it's set by
+        // replaceHiddenMessageSpan once the trailing space is also known
+        // (this function only computes the encoded text itself; it doesn't
+        // touch the InputConnection or know whether a space will follow).
+        return com.spmods.sinkey.keyboard.ZeroWidthEncoder.encode(
+            hiddenText = fullSentence,
+            visibleText = visiblePattern
+        )
+    }
+
+    /**
      * If "Hidden message" is on, encodes [plainWord] (the real, undecorated
      * word — always the hidden payload, regardless of decoration) as an
      * invisible payload inside a visible pattern. The visible pattern is
@@ -2390,11 +2476,50 @@ class SinKeyInputMethodService : InputMethodService() {
      * text), or ZeroWidthEncoder's own default ".....'''''..." pattern
      * when there's no decoration to show (styledWord == plainWord).
      * No-op (returns [styledWord] unchanged) if the feature is off.
+     *
+     * IMPORTANT: this only returns what the NEXT word's own visible pattern
+     * would look like in isolation — callers that actually commit to the
+     * field must go through commitHiddenMessageSession (which folds this
+     * word into the running multi-word sentence) rather than committing
+     * this function's return value directly, or only the most recent word
+     * ends up in the encoded payload. See commitPendingWord/handleSuggestion
+     * for the correct two-step call pattern.
      */
     private fun applyHiddenMessage(plainWord: String, styledWord: String): String {
         if (!cachedHiddenMessageEnabled || plainWord.isEmpty()) return styledWord
         val visible = if (styledWord != plainWord) styledWord else ""
-        return com.spmods.sinkey.keyboard.ZeroWidthEncoder.encode(hiddenText = plainWord, visibleText = visible)
+        return commitHiddenMessageSession(plainWord, visible)
+    }
+
+    /**
+     * Deletes the currently-on-screen encoded hidden-message span (if any —
+     * see hiddenMessageLastEncodedLength) immediately before committing
+     * [newEncodedText] in its place, then commits [trailingText] right
+     * after it (may be "" — e.g. commitPendingWord's callers don't all want
+     * a trailing space; handleSuggestion's auto-space does).
+     * hiddenMessageLastEncodedLength is updated to cover BOTH
+     * newEncodedText and trailingText together, as one unit — so the *next*
+     * word's delete-before-replace removes exactly "this span + whatever
+     * followed it" and nothing more/less. Passing trailingText as a
+     * parameter (rather than this function always adding its own fixed
+     * space, or the caller adding a space via a separate commitText call
+     * afterward) is what keeps that length accurate for every caller: a
+     * space added outside this function, after it returns, wouldn't be
+     * reflected in hiddenMessageLastEncodedLength, and the following word's
+     * delete would then be one character short — clipping the tail of the
+     * new span while leaving the stray old trailing character behind.
+     */
+    private fun replaceHiddenMessageSpan(
+        ic: android.view.inputmethod.InputConnection?,
+        newEncodedText: String,
+        trailingText: String = ""
+    ) {
+        if (hiddenMessageLastEncodedLength > 0) {
+            ic?.deleteSurroundingText(hiddenMessageLastEncodedLength, 0)
+        }
+        ic?.commitText(newEncodedText, 1)
+        if (trailingText.isNotEmpty()) ic?.commitText(trailingText, 1)
+        hiddenMessageLastEncodedLength = newEncodedText.length + trailingText.length
     }
 
     private fun commitPendingWord() {
@@ -2424,7 +2549,18 @@ class SinKeyInputMethodService : InputMethodService() {
         // is a no-op for the normal case. Verifies the text is still really
         // there first — see consumeResumedWordIfStillPresent's doc comment.
         if (ic != null) consumeResumedWordIfStillPresent(ic) else resumedWordBeforeCursor = null
-        ic?.commitText(finalWord, 1)
+        // Hidden message: finalWord already contains the WHOLE sentence's
+        // encoding (see commitHiddenMessageSession) when the feature is on,
+        // so the previous word's span must be deleted first — a plain
+        // commitText here would leave both spans on screen. When the
+        // feature is off, finalWord is just the ordinary styled word and
+        // this is equivalent to the old plain commitText call
+        // (hiddenMessageLastEncodedLength stays 0, so no delete happens).
+        if (cachedHiddenMessageEnabled) {
+            replaceHiddenMessageSpan(ic, finalWord)
+        } else {
+            ic?.commitText(finalWord, 1)
+        }
         wordBuffer.clear()
         clearSuggestions()
         // Learn the plain (unstyled, un-decorated) word, not the fancy-font
@@ -2436,6 +2572,23 @@ class SinKeyInputMethodService : InputMethodService() {
         // for commitPendingWord's other callers (e.g. onFinishInputView) —
         // harmless either way since it just re-reads the real position.
         ic?.let { syncExpectedCursorPosition(it) }
+    }
+
+    /**
+     * Call immediately after commitPendingWord() when the caller is about
+     * to commit more text (typically a single space or newline) right
+     * after the word commitPendingWord() just placed, AND
+     * cachedHiddenMessageEnabled is on. Grows hiddenMessageLastEncodedLength
+     * by [text]'s length so the *next* word's delete-before-replace still
+     * removes exactly "the encoded span + this trailing text" as one unit —
+     * see replaceHiddenMessageSpan's doc comment for why an uncounted
+     * separate commitText call after a hidden-message commit corrupts the
+     * next replace. A plain no-op when the feature is off (nothing to keep
+     * in sync).
+     */
+    private fun appendTrailingAfterHiddenMessageCommit(ic: android.view.inputmethod.InputConnection?, text: String) {
+        ic?.commitText(text, 1)
+        if (cachedHiddenMessageEnabled) hiddenMessageLastEncodedLength += text.length
     }
 
     /**
@@ -2680,7 +2833,16 @@ class SinKeyInputMethodService : InputMethodService() {
             else decorate(word, suggestionIndex)
             val toCommit = applyHiddenMessage(plainWord = word, styledWord = decorated)
             ic.setComposingText("", 1)
-            ic.commitText(toCommit, 1)
+            if (cachedHiddenMessageEnabled) {
+                // The auto-space below (after this if/else) is folded in
+                // here as trailingText instead — see replaceHiddenMessageSpan's
+                // doc comment for why a separately-committed space would
+                // desync hiddenMessageLastEncodedLength from what's actually
+                // on screen.
+                replaceHiddenMessageSpan(ic, toCommit, trailingText = " ")
+            } else {
+                ic.commitText(toCommit, 1)
+            }
             wordBuffer.clear()
             resumedWordBeforeCursor = null
             // BUG FIX: previously the mix-mode suggestion buckets
@@ -2709,14 +2871,22 @@ class SinKeyInputMethodService : InputMethodService() {
             if (len > 0) ic.deleteSurroundingText(len, 0)
             val decorated = decorate(com.spmods.sinkey.keyboard.FancyTextMapper.apply(word, cachedFancyTextStyle), suggestionIndex)
             val styled = applyHiddenMessage(plainWord = word, styledWord = decorated)
-            ic.commitText(styled, 1)
+            if (cachedHiddenMessageEnabled) {
+                replaceHiddenMessageSpan(ic, styled, trailingText = " ")
+            } else {
+                ic.commitText(styled, 1)
+            }
             englishBuffer.clear()
             resumedWordBeforeCursor = null
             clearSuggestions()
             learnWord(word, "en")
         }
-        // Auto-space after applying a suggestion.
-        ic.commitText(" ", 1)
+        // Auto-space after applying a suggestion — already committed as
+        // part of replaceHiddenMessageSpan's trailingText above when hidden
+        // message mode is on (see that function's doc comment for why it
+        // can't be a separate commitText call in that case); only commit it
+        // here for the ordinary, feature-off path.
+        if (!cachedHiddenMessageEnabled) ic.commitText(" ", 1)
         updateAutoShift(ic)
         // Word just finished — offer a next-word prediction instead of
         // leaving the suggestion bar empty.
