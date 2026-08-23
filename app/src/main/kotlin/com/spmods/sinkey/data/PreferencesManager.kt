@@ -68,6 +68,19 @@ class PreferencesManager(private val context: Context) {
         // empty-looking message — see ZeroWidthEncoder.encode's doc
         // comment on that constraint).
         val HIDDEN_MESSAGE_ENABLED = booleanPreferencesKey("hidden_message_enabled")
+        // "Incognito" — lives on the same Decorative-text page, directly
+        // above the "Decorate suggestions" row. When on, nothing typed
+        // during the session is learned into the personal dictionary
+        // (WordRepository — including the next-word bigram pairs learned
+        // alongside each word), nothing is added to clipboard history, and
+        // recent-emoji tracking doesn't update — same spirit as a browser's
+        // incognito mode. Default OFF: existing learning/history behavior
+        // is unchanged until the user deliberately turns this on, and it is
+        // never persisted as "sticky" beyond what the user themselves set —
+        // it's an ordinary DataStore-backed toggle like every other setting
+        // here, so it stays off across keyboard restarts unless the user
+        // turned it on and left it on.
+        val INCOGNITO_ENABLED = booleanPreferencesKey("incognito_enabled")
         // Mix mode only: when true, finishing a word (space/enter) converts the
         // typed Latin buffer to its Sinhala transliteration, same as pure "si"
         // mode. Default OFF — mix mode commits the word as plain typed text.
@@ -225,6 +238,14 @@ class PreferencesManager(private val context: Context) {
         prefs[Keys.HIDDEN_MESSAGE_ENABLED] ?: false
     }
 
+    /**
+     * "Incognito" toggle — see Keys.INCOGNITO_ENABLED's doc comment. Default
+     * off, same as every other learning/history-affecting toggle here.
+     */
+    val incognitoEnabled: Flow<Boolean> = context.dataStore.data.map { prefs ->
+        prefs[Keys.INCOGNITO_ENABLED] ?: false
+    }
+
     /** Mix mode: auto-convert the typed word to Sinhala on space/enter. Default off. */
     val mixAutoSinhala: Flow<Boolean> = context.dataStore.data.map { prefs ->
         prefs[Keys.MIX_AUTO_SINHALA] ?: false
@@ -374,6 +395,10 @@ class PreferencesManager(private val context: Context) {
 
     suspend fun setHiddenMessageEnabled(enabled: Boolean) {
         context.dataStore.edit { it[Keys.HIDDEN_MESSAGE_ENABLED] = enabled }
+    }
+
+    suspend fun setIncognitoEnabled(enabled: Boolean) {
+        context.dataStore.edit { it[Keys.INCOGNITO_ENABLED] = enabled }
     }
 
     suspend fun setMixAutoSinhala(enabled: Boolean) {
