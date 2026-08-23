@@ -4,17 +4,14 @@ import android.graphics.Bitmap
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.gestures.detectTransformGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -44,14 +41,13 @@ import androidx.compose.ui.layout.layout
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.ColorFilter
-import androidx.compose.ui.graphics.ColorMatrix
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.spmods.sinkey.keyboard.KeyboardView
 import kotlin.math.max
 import kotlin.math.min
 
@@ -171,11 +167,21 @@ fun PhotoCropScreen(
 }
 
 /**
- * Step 2 of the "My themes" custom photo flow: shows a mock keyboard with
- * the cropped photo as its background (WhatsApp-chat mock above it, exactly
- * matching the reference "Edit theme" screen), plus Show key borders /
- * Blur / Brightness controls. Done commits [blur]/[brightness] and the
- * bitmap together via [onDone].
+ * Step 2 of the "My themes" custom photo flow: shows the actual keyboard
+ * (KeyboardView — the same composable the real IME and MainActivity's own
+ * "preview" FAB use, display-only here via no-op onKey/onSuggestionSelected)
+ * with the cropped photo as its live background, plus Show key borders /
+ * Blur / Brightness / Key opacity controls. Previously this screen drew a
+ * hand-built QWERTY mock (MockKeyboardRows) that only approximated the real
+ * keyboard's look — swapping in KeyboardView itself means the preview is
+ * pixel-for-pixel what the user will actually see while typing, including
+ * the toolbar/suggestion strip, key shapes, and language-specific glyphs,
+ * not just three rows of plain Latin letters. The in-progress photo/blur/
+ * brightness/opacity aren't saved to PreferencesManager until Done is
+ * tapped, so they're threaded into KeyboardView's previewXxx override
+ * params (see that function's doc comment) rather than relying on its
+ * normal prefs-driven path, which would still show the *previous* theme.
+ * Done commits [blur]/[brightness] and the bitmap together via [onDone].
  */
 @Composable
 fun PhotoEditThemeScreen(
@@ -188,6 +194,11 @@ fun PhotoEditThemeScreen(
     // through each key (not just the gaps between them, which the photo
     // already shows through regardless of this value).
     initialKeyOpacity: Float = 1f,
+    // Threaded in so the KeyboardView preview matches what the user would
+    // actually see typing — same values MainActivity's own keyboard-preview
+    // FAB passes to KeyboardView (see that call site).
+    currentLanguage: String = "si",
+    isDark: Boolean = false,
     onBack: () -> Unit,
     onDone: (showKeyBorders: Boolean, blur: Float, brightness: Float, keyOpacity: Float) -> Unit
 ) {
@@ -195,20 +206,6 @@ fun PhotoEditThemeScreen(
     var blur by remember { mutableStateOf(initialBlur) }
     var brightness by remember { mutableStateOf(initialBrightness) }
     var keyOpacity by remember { mutableStateOf(initialKeyOpacity) }
-
-    val brightnessDelta = (brightness - 0.5f) * 2f * 255f
-    val brightnessFilter = remember(brightnessDelta) {
-        ColorFilter.colorMatrix(
-            ColorMatrix(
-                floatArrayOf(
-                    1f, 0f, 0f, 0f, brightnessDelta,
-                    0f, 1f, 0f, 0f, brightnessDelta,
-                    0f, 0f, 1f, 0f, brightnessDelta,
-                    0f, 0f, 0f, 1f, 0f
-                )
-            )
-        )
-    }
 
     Column(
         modifier = Modifier
@@ -230,37 +227,28 @@ fun PhotoEditThemeScreen(
             )
         }
 
-        // Mock keyboard preview — matches the reference recording: no chat
-        // header, photo fills the whole preview box (blank space above),
-        // full QWERTY (all 3 letter rows + suggestion strip) with the
-        // photo showing through every key, live blur/brightness applied.
+        // Real keyboard preview — KeyboardView itself, not a mock. Clipped
+        // to the same rounded box the mock used to sit in; live blur/
+        // brightness/opacity/border edits recompose this immediately since
+        // they're passed straight through as previewXxx overrides.
         Box(
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(horizontal = 20.dp)
-                // Real keyboard aspect ratio: toolbar (48dp) + 3 letter
-                // rows + bottom row (48dp each, default height step) + row
-                // spacing + outer padding ≈ 278dp tall on a ~392dp-wide
-                // screen ≈ 1.41 width:height (see stepToKeyHeight/
-                // AppsMicBar's fixed 48dp in KeyboardView.kt) — this
-                // preview box was previously ~0.95 (near-square), which
-                // stretched every key into a tall rectangle instead of the
-                // real short, wide keyboard shape.
-                .aspectRatio(1.41f)
                 .clip(RoundedCornerShape(16.dp))
         ) {
-            Image(
-                bitmap = croppedBitmap.asImageBitmap(),
-                contentDescription = null,
-                contentScale = ContentScale.Crop,
-                colorFilter = brightnessFilter,
-                modifier = Modifier
-                    .fillMaxSize()
-                    .let { if (blur > 0.01f) it.blur(20.dp * blur) else it }
+            KeyboardView(
+                currentLanguage = currentLanguage,
+                isDark = isDark,
+                suggestions = emptyList(),
+                onSuggestionSelected = { _, _ -> /* preview — no input dispatch */ },
+                onKey = { /* preview — no input dispatch */ },
+                previewBackgroundBitmap = croppedBitmap,
+                previewBlur = blur,
+                previewBrightness = brightness,
+                previewKeyOpacity = keyOpacity,
+                previewShowKeyBorders = showKeyBorders
             )
-            Column(modifier = Modifier.fillMaxSize()) {
-                MockKeyboardRows(showKeyBorders = showKeyBorders, keyOpacity = keyOpacity, modifier = Modifier.weight(1f))
-            }
         }
 
         Column(
@@ -337,89 +325,6 @@ fun PhotoEditThemeScreen(
         ) {
             Text("Done", fontSize = 16.sp, fontWeight = FontWeight.Bold)
         }
-    }
-}
-
-/** A plain, non-interactive QWERTY row mock for the Edit theme preview — visual only. */
-@Composable
-private fun MockKeyboardRows(showKeyBorders: Boolean, keyOpacity: Float = 1f, modifier: Modifier = Modifier) {
-    val rows = listOf("QWERTYUIOP", "ASDFGHJKL", "ZXCVBNM")
-    val keyShape = RoundedCornerShape(6.dp)
-    val keyBorderModifier = if (showKeyBorders) {
-        Modifier.border(1.dp, Color.White.copy(alpha = 0.4f), keyShape)
-    } else {
-        Modifier
-    }
-
-    // No dark background band — Desh's real screenshot shows the photo
-    // directly behind the keys with no separate overlay strip, so this
-    // Column only carries padding, not a .background() of its own. Every
-    // row (including the bottom row) gets equal .weight(1f) so all 4 rows
-    // together fill the *entire* preview box height with no leftover
-    // blank space above or below, matching the reference exactly.
-    Column(
-        modifier = modifier
-            .fillMaxWidth()
-            .padding(vertical = 10.dp, horizontal = 6.dp),
-        verticalArrangement = Arrangement.spacedBy(6.dp)
-    ) {
-        rows.forEachIndexed { rowIndex, row ->
-            Row(
-                modifier = Modifier.fillMaxWidth().weight(1f),
-                horizontalArrangement = Arrangement.spacedBy(4.dp)
-            ) {
-                // Middle/bottom rows get a half-key-width side inset so
-                // the staggered QWERTY look reads correctly, matching the
-                // reference recording's real keyboard rows.
-                if (rowIndex > 0) Box(modifier = Modifier.weight(0.5f))
-                row.forEach { ch ->
-                    Box(
-                        modifier = Modifier
-                            .weight(1f)
-                            .fillMaxHeight()
-                            .clip(keyShape)
-                            .then(keyBorderModifier)
-                            .background(Color.White.copy(alpha = 0.12f * keyOpacity)),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Text(ch.toString(), color = Color.White, fontSize = 13.sp)
-                    }
-                }
-                if (rowIndex > 0) Box(modifier = Modifier.weight(0.5f))
-            }
-        }
-        // Bottom row: ?123 / emoji / space / backspace, matching the
-        // reference recording's real bottom row layout.
-        Row(
-            modifier = Modifier.fillMaxWidth().weight(1f),
-            horizontalArrangement = Arrangement.spacedBy(4.dp)
-        ) {
-            MockSpecialKey("?123", weight = 1.3f, showKeyBorders = showKeyBorders, keyOpacity = keyOpacity)
-            MockSpecialKey("☺", weight = 1f, showKeyBorders = showKeyBorders, keyOpacity = keyOpacity)
-            MockSpecialKey("", weight = 4f, showKeyBorders = showKeyBorders, keyOpacity = keyOpacity)
-            MockSpecialKey("⌫", weight = 1.3f, showKeyBorders = showKeyBorders, keyOpacity = keyOpacity)
-        }
-    }
-}
-
-@Composable
-private fun RowScope.MockSpecialKey(label: String, weight: Float, showKeyBorders: Boolean, keyOpacity: Float = 1f) {
-    val keyShape = RoundedCornerShape(6.dp)
-    val keyBorderModifier = if (showKeyBorders) {
-        Modifier.border(1.dp, Color.White.copy(alpha = 0.4f), keyShape)
-    } else {
-        Modifier
-    }
-    Box(
-        modifier = Modifier
-            .weight(weight)
-            .fillMaxHeight()
-            .clip(keyShape)
-            .then(keyBorderModifier)
-            .background(Color.White.copy(alpha = 0.12f * keyOpacity)),
-        contentAlignment = Alignment.Center
-    ) {
-        Text(label, color = Color.White, fontSize = 13.sp)
     }
 }
 
