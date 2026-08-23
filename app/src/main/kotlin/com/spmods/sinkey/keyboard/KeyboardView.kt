@@ -420,9 +420,9 @@ private fun keyboardColorsBase(showKeyBorders: Boolean, isDark: Boolean): Keyboa
         // Now borderless uses the same bg colour as the keyboard background so
         // keys appear "flat/floating", while bordered uses a clearly lighter slab.
         KeyboardColors(
-            bg             = Color(0xFF1E1E1E),
-            keyBg          = if (showKeyBorders) Color(0xFF3A3A3A) else Color(0xFF1E1E1E),
-            specialKeyBg   = if (showKeyBorders) Color(0xFF2C2C2C) else Color(0xFF1E1E1E),
+            bg             = Color(0xFF000000),
+            keyBg          = if (showKeyBorders) Color(0xFF3A3A3A) else Color(0xFF000000),
+            specialKeyBg   = if (showKeyBorders) Color(0xFF2C2C2C) else Color(0xFF000000),
             keyText        = Color(0xFFE8E8E8),
             specialKeyText = Color(0xFFCCCCCC),
             subText        = Color(0xFF888888),
@@ -2328,6 +2328,10 @@ private fun AppsMicBar(
                 R.drawable.ic_translation   to "TOOL_TRANSLATE",
                 null                        to "TOOL_HIDDEN_MESSAGE"
             )
+            // Pure white on dark theme, pure black on light theme — see the
+            // doc comment at this Row's icon Icon() calls for why this
+            // isn't colors.subText.
+            val toolIconTint = if (isDark) Color.White else Color.Black
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -2366,6 +2370,13 @@ private fun AppsMicBar(
                             },
                         contentAlignment = Alignment.Center
                     ) {
+                        // Tools-row icons are pure white on dark theme / pure
+                        // black on light theme — deliberately NOT colors.subText
+                        // (a mid-grey in both themes), which read as washed-out
+                        // against the toolbar. toolIconTint below is local to
+                        // this Row, not part of KeyboardColors, since nothing
+                        // else in the keyboard wants pure white/black rather
+                        // than the softer subText grey.
                         if (action == "TOOL_HIDDEN_MESSAGE") {
                             // Filled while on, outline while off — same
                             // filled/outlined pairing already used for the
@@ -2374,14 +2385,14 @@ private fun AppsMicBar(
                                 imageVector = if (hiddenMessageEnabled) Icons.Filled.VisibilityOff else Icons.Outlined.VisibilityOff,
                                 contentDescription = "Hidden message",
                                 modifier = Modifier.size(22.dp),
-                                tint = if (hiddenMessageEnabled) colors.accent else colors.subText
+                                tint = if (hiddenMessageEnabled) colors.accent else toolIconTint
                             )
                         } else if (iconRes != null) {
                             Icon(
                                 painter = painterResource(id = iconRes),
                                 contentDescription = null,
                                 modifier = Modifier.size(22.dp),
-                                tint = colors.subText
+                                tint = toolIconTint
                             )
                         }
                     }
@@ -2389,14 +2400,11 @@ private fun AppsMicBar(
                 Box(
                     modifier = Modifier
                         .size(36.dp)
-                        .clip(RoundedCornerShape(50))
-                        // Kept the same pill background treatment the mic
-                        // button had — a distinct action button, not a
-                        // regular key, so it shouldn't go flat/invisible
-                        // regardless of showKeyBorders.
-                        .background(
-                            if (isDark) Color(0x1FFFFFFF) else Color(0x14000000)
-                        )
+                        .clip(RoundedCornerShape(6.dp))
+                        // No background pill — matches the rest of the
+                        // tools row (a plain icon button, not a filled
+                        // circle) rather than standing out as the one
+                        // highlighted-looking icon in the row.
                         .clickable { onOpenAppSettings() },
                     contentAlignment = Alignment.Center
                 ) {
@@ -2404,7 +2412,7 @@ private fun AppsMicBar(
                         painter = painterResource(id = R.drawable.ic_settings),
                         contentDescription = "Open SinKey settings",
                         modifier = Modifier.size(22.dp),
-                        tint = colors.subText
+                        tint = toolIconTint
                     )
                 }
             }
