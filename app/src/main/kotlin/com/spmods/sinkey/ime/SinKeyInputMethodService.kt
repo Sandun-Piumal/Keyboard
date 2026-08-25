@@ -1203,14 +1203,19 @@ class SinKeyInputMethodService : InputMethodService() {
         if (lifecycleOwner.lifecycle.currentState != Lifecycle.State.RESUMED) {
             lifecycleOwner.handleLifecycleEvent(Lifecycle.Event.ON_RESUME)
         }
-        // BUG FIX (keyboard sometimes never appears): same resync as in
-        // onStartInputView, kept here too since onWindowShown can fire on
-        // its own (e.g. re-showing the same already-started field) without
-        // onStartInputView running again. Cheap (a single hasWindowFocus()
-        // read) and idempotent, so doing it unconditionally on every show
-        // is safe.
-        window?.window?.decorView?.let { decor ->
-            hostWindowFocused.value = decor.hasWindowFocus()
+        // BUG FIX (keyboard sometimes never appears), revised: only correct
+        // a STUCK false, never write false here. hasWindowFocus() can
+        // legitimately read false at this exact point even on a totally
+        // normal show — focus is frequently granted a moment AFTER the
+        // window is shown, not before — so forcing hostWindowFocused to
+        // whatever hasWindowFocus() says right now risked blanking the
+        // keyboard on every single show instead of just the rare stuck
+        // case this was meant to fix. Only flip it back to true here; the
+        // real OnWindowFocusChangeListener (registered once in
+        // onCreateInputView) remains the sole source that can ever set it
+        // false, exactly as before.
+        if (!hostWindowFocused.value) {
+            hostWindowFocused.value = true
         }
     }
 
@@ -1241,12 +1246,15 @@ class SinKeyInputMethodService : InputMethodService() {
         // With focused=false, the Compose content renders nothing at all
         // (see the field comment on hostWindowFocused), so the keyboard
         // silently fails to show even though the window itself is up.
-        // Resync it here from the real, current focus state of our own
-        // window every time a fresh input view session starts, so a stale
-        // false value from a previous session can never carry over and
-        // permanently blank the keyboard.
-        window?.window?.decorView?.let { decor ->
-            hostWindowFocused.value = decor.hasWindowFocus()
+        // BUG FIX (keyboard sometimes never appears), revised: only correct
+        // a STUCK false — never force-write false here. See the matching
+        // comment in onWindowShown for why writing hasWindowFocus()'s
+        // live value unconditionally was wrong (it can legitimately be
+        // false at this exact point on an ordinary show, which was
+        // blanking the keyboard every time instead of just fixing the
+        // rare stuck case).
+        if (!hostWindowFocused.value) {
+            hostWindowFocused.value = true
         }
 
         // BUG FIX (suggestions sometimes never work): retry spell-checker
