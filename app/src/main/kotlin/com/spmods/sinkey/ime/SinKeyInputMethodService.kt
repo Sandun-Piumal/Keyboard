@@ -41,7 +41,6 @@ import kotlinx.coroutines.cancel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.runBlocking
 
 // Caps how many distinct words a single clipboard copy can add to the
 // personal dictionary in one go — see learnWordsFromClipboard(). Keeps one
@@ -479,9 +478,22 @@ class SinKeyInputMethodService : InputMethodService() {
         // fire-and-forget here rather than gating keyboard startup on it.
         serviceScope.launch { wordRepo.seedBaseDictionaryIfNeeded() }
 
-        // FIX #1: Still need initial language synchronously, but we only block once
-        // here at startup (not on every key tap).
-        currentLanguage.value = runBlocking { prefs.defaultLanguage.first() }
+        // BUG FIX (keyboard sometimes never appears): this used to be
+        // `runBlocking { prefs.defaultLanguage.first() }` — a synchronous
+        // DataStore disk read on the main thread, during onCreate(), which
+        // is exactly when the system is waiting on this service to finish
+        // initializing before it can show the IME window. DataStore's
+        // first read after process start is not always fast (cold page
+        // cache, device under load, first-run file creation) — when it's
+        // slow, this blocks the whole IME window setup and can make the
+        // system give up on showing the keyboard in time, or show it only
+        // after a visible stall. currentLanguage already has a safe
+        // default ("mix", set at field declaration), so it's fine to load
+        // the real stored value asynchronously and let the UI update the
+        // moment it arrives, same as every other cached pref below.
+        serviceScope.launch {
+            prefs.defaultLanguage.collect { currentLanguage.value = it }
+        }
 
         // FIX #1 + #3: Keep feedback prefs cached in memory; update asynchronously
         // whenever the user changes them in Settings. No blocking reads on key taps.
@@ -728,8 +740,29 @@ class SinKeyInputMethodService : InputMethodService() {
         val topCorrection: String?
     )
 
-    // FIX #2: Single SpellCheckerSession created once and reused.
+    // BUG FIX (suggestions sometimes never work): initSpellCheckerSession()
+    // used to run exactly once, from onCreate(), with no retry. If it
+    // failed at that moment — TextServicesManager not yet ready this early
+    // in process startup, the system's spell-checker service not bound
+    // yet, or newSpellCheckerSession() throwing/returning a session that
+    // silently never delivers a callback because the underlying service
+    // connection raced with our own service's init — spellCheckerSession
+    // stayed null (or dead) for the entire remaining lifetime of this IME
+    // process, which Android can keep alive for hours. English suggestions
+    // and English-mode autocorrect both depend entirely on this session
+    // (see updateSuggestions' else-branch and fetchEnglishSuggestionsForMix),
+    // so that one failed attempt silently broke suggestions until the user
+    // happened to restart the app/device. This count lets a handful of
+    // retry points below re-attempt initialization instead of accepting a
+    // single cold-start failure as permanent.
+    private var spellCheckerInitAttempts = 0
+    private val MAX_SPELL_CHECKER_INIT_ATTEMPTS = 3
+
+    // FIX #2: Single SpellCheckerSession created once and reused (now with
+    // retry — see field comment on spellCheckerInitAttempts above).
     private fun initSpellCheckerSession() {
+        if (spellCheckerSession != null) return
+        spellCheckerInitAttempts++
         val tsm = getSystemService(android.view.textservice.TextServicesManager::class.java)
             ?: return
         try {
@@ -1170,6 +1203,15 @@ class SinKeyInputMethodService : InputMethodService() {
         if (lifecycleOwner.lifecycle.currentState != Lifecycle.State.RESUMED) {
             lifecycleOwner.handleLifecycleEvent(Lifecycle.Event.ON_RESUME)
         }
+        // BUG FIX (keyboard sometimes never appears): same resync as in
+        // onStartInputView, kept here too since onWindowShown can fire on
+        // its own (e.g. re-showing the same already-started field) without
+        // onStartInputView running again. Cheap (a single hasWindowFocus()
+        // read) and idempotent, so doing it unconditionally on every show
+        // is safe.
+        window?.window?.decorView?.let { decor ->
+            hostWindowFocused.value = decor.hasWindowFocus()
+        }
     }
 
     override fun onWindowHidden() {
@@ -1186,6 +1228,37 @@ class SinKeyInputMethodService : InputMethodService() {
         super.onStartInputView(info, restarting)
         android.util.Log.d("SinKeyDebug", "onStartInputView called, restarting=$restarting, packageName=${info?.packageName}")
         // lifecycle ON_RESUME is driven by onWindowShown()
+
+        // BUG FIX (keyboard sometimes never appears): hostWindowFocused is
+        // otherwise ONLY ever written by the decorView's
+        // OnWindowFocusChangeListener (registered once, in
+        // onCreateInputView). If that listener's last delivered value
+        // before this show was `false` — e.g. the host app's window was
+        // transiently unfocused right as the keyboard was being dismissed
+        // last time, or the callback simply never fired for a particular
+        // OEM's window-manager timing — hostWindowFocused stays stuck
+        // false forever afterward, since nothing else ever corrects it.
+        // With focused=false, the Compose content renders nothing at all
+        // (see the field comment on hostWindowFocused), so the keyboard
+        // silently fails to show even though the window itself is up.
+        // Resync it here from the real, current focus state of our own
+        // window every time a fresh input view session starts, so a stale
+        // false value from a previous session can never carry over and
+        // permanently blank the keyboard.
+        window?.window?.decorView?.let { decor ->
+            hostWindowFocused.value = decor.hasWindowFocus()
+        }
+
+        // BUG FIX (suggestions sometimes never work): retry spell-checker
+        // init here if it never succeeded — see spellCheckerInitAttempts'
+        // field comment. onStartInputView is a good retry point because it
+        // fires on every fresh keyboard show, well after the process's own
+        // cold-start window (where the original failure most likely
+        // happened) has passed, and it's naturally rate-limited to a
+        // handful of attempts rather than retrying on every keystroke.
+        if (spellCheckerSession == null && spellCheckerInitAttempts < MAX_SPELL_CHECKER_INIT_ATTEMPTS) {
+            initSpellCheckerSession()
+        }
 
         // Bug O4 Fix: Cancel any active composing span on the previous
         // InputConnection before switching fields. Without this, the underlined
