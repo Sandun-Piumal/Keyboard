@@ -264,7 +264,7 @@ object SinhalaTransliterator {
         "TH" to "ඨ", "DH" to "ඪ",
         "N"  to "ණ",
         "T"  to "ත",
-        "D"  to "ද",
+        "D"  to "ඩ",
         "L"  to "ළ",
         "k" to "ක", "g" to "ග",
         "j" to "ජ",
