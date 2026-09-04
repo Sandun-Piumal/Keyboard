@@ -1809,7 +1809,7 @@ class SinKeyInputMethodService : InputMethodService() {
                     // Sinhala's phonetic scheme uses case to pick between
                     // real, distinct letters for a specific subset of keys
                     // (lowercase n=න vs uppercase N=ණ, l=ල vs L=ළ, t=ට vs
-                    // T=ත, d=ද vs D=ද, "sh"=ශ vs "Sh"=ෂ, "th"=ත vs "TH"=ඨ) —
+                    // T=ත, d=ද vs D=ඩ, "sh"=ශ vs "Sh"=ෂ, "th"=ත vs "TH"=ඨ) —
                     // for those, case is never cosmetic, so auto-capitalize
                     // (ONE_SHOT at sentence/field start) must NOT apply the
                     // way it does for English; only an explicit user Shift
@@ -3443,6 +3443,28 @@ class SinKeyInputMethodService : InputMethodService() {
             if (raw.length > 1) {
                 val cap = SinhalaTransliterator.transliterate(raw[0].uppercaseChar() + raw.substring(1))
                 if (!list.contains(cap) && list.size < 5) list.add(cap)
+            }
+            // BUG FIX: the `cap` candidate above only ever uppercases
+            // raw[0], so it can only surface the alternate letter (ණ/ත/ඩ/ළ
+            // instead of න/ට/ද/ල) when the ambiguous consonant is the very
+            // first character of the word (e.g. "da" -> ඩ candidate). Mid-word
+            // occurrences — "ado" (wants අඩො, not just අදො), "kade" (wants
+            // කඩේ) — never got an alt candidate at all, since nothing else
+            // in this function re-checks case sensitivity past position 0.
+            // Fix: try uppercasing each case-sensitive letter (n/t/d/l, one
+            // at a time, isCaseSensitiveSinhalaLetter's set) at every
+            // position in raw, and offer whichever of those actually
+            // changes the output as additional candidates. One swap at a
+            // time (not all combinations) keeps this to at most raw.length
+            // extra transliterate() calls and covers the common case of a
+            // single ambiguous consonant per word.
+            for (idx in raw.indices) {
+                if (list.size >= 5) break
+                val ch = raw[idx]
+                if (ch.lowercaseChar() !in "ntdl" || ch.isUpperCase()) continue
+                val swapped = raw.substring(0, idx) + ch.uppercaseChar() + raw.substring(idx + 1)
+                val altCandidate = SinhalaTransliterator.transliterate(swapped)
+                if (altCandidate != primary && !list.contains(altCandidate)) list.add(altCandidate)
             }
             // BUG FIX: in mix mode this used to write straight into
             // suggestions.value, which the async English spell-check reply
