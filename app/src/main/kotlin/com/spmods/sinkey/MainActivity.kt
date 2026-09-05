@@ -349,15 +349,7 @@ private fun SinKeyApp(prefs: PreferencesManager, initialTab: Tab = Tab.HOME) {
     }
     if (hasSeenOnboarding == false) {
         OnboardingScreen(
-            onFinish = { scope.launch { prefs.setHasSeenOnboarding(true) } },
-            onEnableKeyboard = {
-                scope.launch { prefs.setHasSeenOnboarding(true) }
-                // Same flow HomeScreen's own "Enable keyboard" prompt uses —
-                // opens the system's input method list rather than trying to
-                // enable SinKey directly, since apps can't toggle another
-                // app's IME enablement themselves.
-                context.startActivity(android.content.Intent(android.provider.Settings.ACTION_INPUT_METHOD_SETTINGS))
-            }
+            onFinish = { scope.launch { prefs.setHasSeenOnboarding(true) } }
         )
         return
     }
