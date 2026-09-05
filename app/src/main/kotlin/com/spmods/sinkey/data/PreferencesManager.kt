@@ -40,6 +40,13 @@ class PreferencesManager(private val context: Context) {
         // in "si"/"mix" language modes (see sinhalaKeyHints in
         // KeyboardLayouts.kt). Default true.
         val SINHALA_KEY_HINTS_ENABLED = booleanPreferencesKey("sinhala_key_hints_enabled")
+        // "Quick text" shortcut expansion (e.g. "gm" -> "Good morning") —
+        // see data/shortcut/ShortcutRepository.kt and QuickTextScreen.
+        // Default OFF: unlike most typing-assist features here, expanding
+        // arbitrary short strings the user didn't ask this app to change
+        // is surprising behavior until they've deliberately turned it on
+        // and added their own shortcuts.
+        val QUICK_TEXT_ENABLED = booleanPreferencesKey("quick_text_enabled")
         // Opacity of individual key surfaces (letter keys, special keys,
         // space bar) — 0f=fully transparent, 1f=fully opaque. Default 1f so
         // existing users/themes render byte-for-byte the same until they
@@ -208,6 +215,11 @@ class PreferencesManager(private val context: Context) {
     /** Sinhala-glyph key hints — see SINHALA_KEY_HINTS_ENABLED. Default true. */
     val sinhalaKeyHintsEnabled: Flow<Boolean> = context.dataStore.data.map { prefs ->
         prefs[Keys.SINHALA_KEY_HINTS_ENABLED] ?: true
+    }
+
+    /** "Quick text" shortcut expansion — see QUICK_TEXT_ENABLED. Default false. */
+    val quickTextEnabled: Flow<Boolean> = context.dataStore.data.map { prefs ->
+        prefs[Keys.QUICK_TEXT_ENABLED] ?: false
     }
 
     /**
@@ -386,6 +398,10 @@ class PreferencesManager(private val context: Context) {
         context.dataStore.edit { it[Keys.SINHALA_KEY_HINTS_ENABLED] = enabled }
     }
 
+    suspend fun setQuickTextEnabled(enabled: Boolean) {
+        context.dataStore.edit { it[Keys.QUICK_TEXT_ENABLED] = enabled }
+    }
+
     suspend fun setKeyOpacity(value: Float) {
         context.dataStore.edit { it[Keys.KEY_OPACITY] = value.coerceIn(0f, 1f) }
     }
@@ -556,6 +572,7 @@ class PreferencesManager(private val context: Context) {
             prefs[Keys.SHOW_KEY_BORDERS] = true
             prefs[Keys.KEY_OPACITY] = 1f
             prefs[Keys.SINHALA_KEY_HINTS_ENABLED] = true
+            prefs[Keys.QUICK_TEXT_ENABLED] = false
         }
     }
 
