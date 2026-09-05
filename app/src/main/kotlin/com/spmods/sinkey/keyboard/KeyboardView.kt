@@ -508,6 +508,9 @@ internal fun KeyboardView(
     bottomSpaceEnabled: Boolean = true,
     bottomSpaceSize: Float = 0f,
     showKeyBorders: Boolean = true,
+    // Small Sinhala-glyph corner hints on each QWERTY key in "si"/"mix"
+    // modes — see sinhalaKeyHints in KeyboardLayouts.kt. Default true.
+    sinhalaKeyHintsEnabled: Boolean = true,
     isDark: Boolean = false,
     // "Hidden message" decode reveal — non-null shows a dismissible banner
     // above the keyboard with the just-decoded text (see
@@ -1515,6 +1518,7 @@ internal fun KeyboardView(
                             keyHeight = keyHeight, keyShape = keyShape,
                             bottomPadding = bottomPadding, colors = colors,
                             showKeyBorders = effectiveShowKeyBorders,
+                            sinhalaKeyHintsEnabled = sinhalaKeyHintsEnabled,
                             onKey = onKey,
                             onSymbols = { pushBoard(Board.SYMBOLS) },
                             onEmojiPicker = { pushBoard(Board.EMOJI) },
@@ -1697,6 +1701,7 @@ internal fun MainKeyboardKeys(
     bottomPadding: Dp,
     colors: KeyboardColors,
     showKeyBorders: Boolean = true,
+    sinhalaKeyHintsEnabled: Boolean = true,
     onKey: (String) -> Unit,
     onSymbols: () -> Unit,
     onEmojiPicker: () -> Unit,
@@ -1716,8 +1721,9 @@ internal fun MainKeyboardKeys(
             .padding(horizontal = 4.dp, vertical = 2.dp)
             .padding(bottom = bottomPadding)
     ) {
-        // Show Sinhala hint glyphs only when Sinhala can actually be typed.
-        val showSinhalaHints = currentLanguage == "si" || currentLanguage == "mix"
+        // Show Sinhala hint glyphs only when Sinhala can actually be typed
+        // AND the user hasn't turned the hint off in Settings.
+        val showSinhalaHints = sinhalaKeyHintsEnabled && (currentLanguage == "si" || currentLanguage == "mix")
         // FIX #5: Pass onShiftChange so letter rows can reset one-shot shift.
         NumberedKeyRow(EnglishRows[0], topRowNumbers, shift, keyHeight, colors, keyShape,
             onKeyPositioned = onKeyPositioned,
