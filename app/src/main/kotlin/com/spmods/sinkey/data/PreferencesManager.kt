@@ -36,6 +36,10 @@ class PreferencesManager(private val context: Context) {
         val BOTTOM_SPACE_ENABLED = booleanPreferencesKey("bottom_space_enabled")
         val BOTTOM_SPACE_SIZE = floatPreferencesKey("bottom_space_size") // 0f=S, 1f=M, 2f=L, 3f=XL
         val SHOW_KEY_BORDERS = booleanPreferencesKey("show_key_borders")
+        // Small Sinhala-glyph hint shown in the corner of each QWERTY key
+        // in "si"/"mix" language modes (see sinhalaKeyHints in
+        // KeyboardLayouts.kt). Default true.
+        val SINHALA_KEY_HINTS_ENABLED = booleanPreferencesKey("sinhala_key_hints_enabled")
         // Opacity of individual key surfaces (letter keys, special keys,
         // space bar) — 0f=fully transparent, 1f=fully opaque. Default 1f so
         // existing users/themes render byte-for-byte the same until they
@@ -199,6 +203,11 @@ class PreferencesManager(private val context: Context) {
 
     val showKeyBorders: Flow<Boolean> = context.dataStore.data.map { prefs ->
         prefs[Keys.SHOW_KEY_BORDERS] ?: true
+    }
+
+    /** Sinhala-glyph key hints — see SINHALA_KEY_HINTS_ENABLED. Default true. */
+    val sinhalaKeyHintsEnabled: Flow<Boolean> = context.dataStore.data.map { prefs ->
+        prefs[Keys.SINHALA_KEY_HINTS_ENABLED] ?: true
     }
 
     /**
@@ -373,6 +382,10 @@ class PreferencesManager(private val context: Context) {
         context.dataStore.edit { it[Keys.SHOW_KEY_BORDERS] = enabled }
     }
 
+    suspend fun setSinhalaKeyHintsEnabled(enabled: Boolean) {
+        context.dataStore.edit { it[Keys.SINHALA_KEY_HINTS_ENABLED] = enabled }
+    }
+
     suspend fun setKeyOpacity(value: Float) {
         context.dataStore.edit { it[Keys.KEY_OPACITY] = value.coerceIn(0f, 1f) }
     }
@@ -542,6 +555,7 @@ class PreferencesManager(private val context: Context) {
             prefs[Keys.BOTTOM_SPACE_SIZE] = 0f
             prefs[Keys.SHOW_KEY_BORDERS] = true
             prefs[Keys.KEY_OPACITY] = 1f
+            prefs[Keys.SINHALA_KEY_HINTS_ENABLED] = true
         }
     }
 
