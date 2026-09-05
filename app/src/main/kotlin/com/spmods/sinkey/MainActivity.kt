@@ -63,6 +63,9 @@ import com.spmods.sinkey.ui.screens.SoundVibrationScreen
 import com.spmods.sinkey.ui.screens.QuickTextScreen
 import com.spmods.sinkey.ui.screens.PersonalDictionaryScreen
 import com.spmods.sinkey.ui.screens.OnboardingScreen
+import com.spmods.sinkey.ui.screens.UserGuideScreen
+import com.spmods.sinkey.ui.screens.LegalTextScreen
+import com.spmods.sinkey.ui.screens.AboutDeveloperScreen
 import com.spmods.sinkey.ui.screens.PhotoCropScreen
 import com.spmods.sinkey.ui.screens.PhotoEditThemeScreen
 import com.spmods.sinkey.ui.screens.SettingsScreen
@@ -76,7 +79,10 @@ private val DeshGreen = Color(0xFF1B5E37)
 
 private enum class Tab { HOME, THEMES, SETTINGS }
 
-private enum class SettingsSubScreen { MAIN, KEYBOARD_HEIGHT, SOUND_VIBRATION, QUICK_TEXT, PERSONAL_DICTIONARY }
+private enum class SettingsSubScreen {
+    MAIN, KEYBOARD_HEIGHT, SOUND_VIBRATION, QUICK_TEXT, PERSONAL_DICTIONARY,
+    USER_GUIDE, PRIVACY_POLICY, TERMS, ABOUT_DEVELOPER
+}
 
 /**
  * "My themes" custom-photo flow steps, layered the same way as
@@ -139,6 +145,32 @@ class MainActivity : ComponentActivity() {
     }
 }
 
+/**
+ * Opens the Play Store listing for this app, for About → Rate us. Tries
+ * the market:// scheme first (opens directly in the Play Store app, which
+ * is the better experience when it's installed); if no app can handle
+ * that (Play Store not installed/available — e.g. some emulators, some
+ * regions), falls back to the https:// Play Store web URL instead of
+ * silently doing nothing.
+ */
+private fun openRateUs(context: android.content.Context) {
+    val marketIntent = android.content.Intent(
+        android.content.Intent.ACTION_VIEW,
+        android.net.Uri.parse("market://details?id=${context.packageName}")
+    )
+    val opened = runCatching { context.startActivity(marketIntent) }.isSuccess
+    if (!opened) {
+        runCatching {
+            context.startActivity(
+                android.content.Intent(
+                    android.content.Intent.ACTION_VIEW,
+                    android.net.Uri.parse("https://play.google.com/store/apps/details?id=${context.packageName}")
+                )
+            )
+        }
+    }
+}
+
 @Composable
 private fun SinKeyApp(prefs: PreferencesManager, initialTab: Tab = Tab.HOME) {
     var tab by remember { mutableStateOf(initialTab) }
@@ -188,6 +220,17 @@ private fun SinKeyApp(prefs: PreferencesManager, initialTab: Tab = Tab.HOME) {
 
     // ── "My themes" custom background: photo picker + preview decode ──────
     val context = LocalContext.current
+
+    // App version shown at the bottom of About — read from the installed
+    // package's own versionName rather than hardcoding it a second time
+    // here, so it can never drift out of sync with build.gradle.kts'
+    // versionName. remember(context) since PackageManager lookups aren't
+    // free and this never changes during the activity's lifetime.
+    val appVersionName = remember(context) {
+        runCatching {
+            context.packageManager.getPackageInfo(context.packageName, 0).versionName ?: "1.0.0"
+        }.getOrDefault("1.0.0")
+    }
 
     // ── Quick text shortcuts (Settings > Quick text) ───────────────────────
     // ── First-launch onboarding tutorial (see OnboardingScreen.kt) ─────────
@@ -330,6 +373,21 @@ private fun SinKeyApp(prefs: PreferencesManager, initialTab: Tab = Tab.HOME) {
         BackHandler { settingsSubScreen = SettingsSubScreen.MAIN }
     }
     if (settingsSubScreen == SettingsSubScreen.PERSONAL_DICTIONARY) {
+        BackHandler { settingsSubScreen = SettingsSubScreen.MAIN }
+    }
+    // These four rows live directly in the ABOUT section of the main
+    // Settings list (not behind a separate "About" sub-page), so back
+    // from any of them returns straight to MAIN.
+    if (settingsSubScreen == SettingsSubScreen.USER_GUIDE) {
+        BackHandler { settingsSubScreen = SettingsSubScreen.MAIN }
+    }
+    if (settingsSubScreen == SettingsSubScreen.PRIVACY_POLICY) {
+        BackHandler { settingsSubScreen = SettingsSubScreen.MAIN }
+    }
+    if (settingsSubScreen == SettingsSubScreen.TERMS) {
+        BackHandler { settingsSubScreen = SettingsSubScreen.MAIN }
+    }
+    if (settingsSubScreen == SettingsSubScreen.ABOUT_DEVELOPER) {
         BackHandler { settingsSubScreen = SettingsSubScreen.MAIN }
     }
 
@@ -534,6 +592,35 @@ private fun SinKeyApp(prefs: PreferencesManager, initialTab: Tab = Tab.HOME) {
                             onBack = { settingsSubScreen = SettingsSubScreen.MAIN }
                         )
                     }
+                    settingsSubScreen == SettingsSubScreen.USER_GUIDE -> {
+                        UserGuideScreen(onBack = { settingsSubScreen = SettingsSubScreen.MAIN })
+                    }
+                    settingsSubScreen == SettingsSubScreen.PRIVACY_POLICY -> {
+                        LegalTextScreen(
+                            title = "Privacy policy",
+                            body = com.spmods.sinkey.ui.screens.AboutContent.PRIVACY_POLICY,
+                            onBack = { settingsSubScreen = SettingsSubScreen.MAIN }
+                        )
+                    }
+                    settingsSubScreen == SettingsSubScreen.TERMS -> {
+                        LegalTextScreen(
+                            title = "Terms & conditions",
+                            body = com.spmods.sinkey.ui.screens.AboutContent.TERMS_AND_CONDITIONS,
+                            onBack = { settingsSubScreen = SettingsSubScreen.MAIN }
+                        )
+                    }
+                    settingsSubScreen == SettingsSubScreen.ABOUT_DEVELOPER -> {
+                        AboutDeveloperScreen(
+                            onOpenLink = { url ->
+                                runCatching {
+                                    context.startActivity(
+                                        android.content.Intent(android.content.Intent.ACTION_VIEW, android.net.Uri.parse(url))
+                                    )
+                                }
+                            },
+                            onBack = { settingsSubScreen = SettingsSubScreen.MAIN }
+                        )
+                    }
                     tab == Tab.HOME -> HomeScreen(isDark = isDark)
                     tab == Tab.THEMES -> ThemesScreen(
                         currentMode = themeMode,
@@ -596,7 +683,13 @@ private fun SinKeyApp(prefs: PreferencesManager, initialTab: Tab = Tab.HOME) {
                         onOpenSoundVibration = { settingsSubScreen = SettingsSubScreen.SOUND_VIBRATION },
                         onOpenQuickText = { settingsSubScreen = SettingsSubScreen.QUICK_TEXT },
                         onOpenPersonalDictionary = { settingsSubScreen = SettingsSubScreen.PERSONAL_DICTIONARY },
-                        onShowTutorial = { scope.launch { prefs.setHasSeenOnboarding(false) } }
+                        appVersion = appVersionName,
+                        onOpenUserGuide = { settingsSubScreen = SettingsSubScreen.USER_GUIDE },
+                        onShowTutorial = { scope.launch { prefs.setHasSeenOnboarding(false) } },
+                        onOpenPrivacyPolicy = { settingsSubScreen = SettingsSubScreen.PRIVACY_POLICY },
+                        onOpenTerms = { settingsSubScreen = SettingsSubScreen.TERMS },
+                        onOpenAboutDeveloper = { settingsSubScreen = SettingsSubScreen.ABOUT_DEVELOPER },
+                        onRateUs = { openRateUs(context) }
                     )
                         }
                     }
