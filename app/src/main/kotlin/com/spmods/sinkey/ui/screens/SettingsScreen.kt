@@ -49,7 +49,9 @@ fun SettingsScreen(
     // used to be inline switches right in this screen; they're a dedicated
     // page now (matching the reference screenshots), same pattern as
     // "Keyboard height" below.
-    onOpenSoundVibration: () -> Unit = {}
+    onOpenSoundVibration: () -> Unit = {},
+    // Navigates to the Quick text sub-screen — see QuickTextScreen.kt.
+    onOpenQuickText: () -> Unit = {}
 ) {
     // Bug fix: this Column had no verticalScroll at all, so once the
     // switches list + Theme Mode section together exceeded one screen's
@@ -124,6 +126,18 @@ fun SettingsScreen(
                 title = "Sound & vibration",
                 subtitle = "Key sound, vibrate, vibration level",
                 modifier = Modifier.clickable { onOpenSoundVibration() }
+            ) {
+                Text(
+                    "›",
+                    fontSize = 20.sp,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+            SettingRow(
+                icon = "⚡",
+                title = "Quick text",
+                subtitle = "Type a shortcut like \"gm\" and expand it to a full phrase",
+                modifier = Modifier.clickable { onOpenQuickText() }
             ) {
                 Text(
                     "›",
