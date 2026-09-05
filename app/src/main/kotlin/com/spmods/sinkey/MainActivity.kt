@@ -62,6 +62,7 @@ import com.spmods.sinkey.ui.screens.KeyboardHeightScreen
 import com.spmods.sinkey.ui.screens.SoundVibrationScreen
 import com.spmods.sinkey.ui.screens.QuickTextScreen
 import com.spmods.sinkey.ui.screens.PersonalDictionaryScreen
+import com.spmods.sinkey.ui.screens.OnboardingScreen
 import com.spmods.sinkey.ui.screens.PhotoCropScreen
 import com.spmods.sinkey.ui.screens.PhotoEditThemeScreen
 import com.spmods.sinkey.ui.screens.SettingsScreen
@@ -189,6 +190,18 @@ private fun SinKeyApp(prefs: PreferencesManager, initialTab: Tab = Tab.HOME) {
     val context = LocalContext.current
 
     // ── Quick text shortcuts (Settings > Quick text) ───────────────────────
+    // ── First-launch onboarding tutorial (see OnboardingScreen.kt) ─────────
+    // Read as nullable rather than collectAsState(initial = false): a
+    // returning user's real DataStore value is "true" but hasn't loaded
+    // yet on the very first composition, and defaulting to false there
+    // would flash the tutorial for one frame before the true value
+    // arrives. null means "not loaded yet" and renders nothing (just the
+    // background), true/false render normally once known — see the gate
+    // further down where this is consumed.
+    val hasSeenOnboardingState: androidx.compose.runtime.State<Boolean?> =
+        prefs.hasSeenOnboarding.collectAsState(initial = null)
+    val hasSeenOnboarding = hasSeenOnboardingState.value
+
     val quickTextEnabled by prefs.quickTextEnabled.collectAsState(initial = false)
     val shortcutRepo = remember(context) { com.spmods.sinkey.data.shortcut.ShortcutRepository(context) }
     val shortcuts by shortcutRepo.all.collectAsState(initial = emptyList())
@@ -322,6 +335,31 @@ private fun SinKeyApp(prefs: PreferencesManager, initialTab: Tab = Tab.HOME) {
 
     if (tab != Tab.HOME && !showKeyboardPreview) {
         BackHandler { tab = Tab.HOME }
+    }
+
+    // ── First-launch onboarding gate ────────────────────────────────────────
+    // null  -> DataStore hasn't emitted yet; render nothing this frame
+    //          rather than flashing the tutorial for a returning user (see
+    //          hasSeenOnboardingState's doc comment above).
+    // false -> never seen it; show OnboardingScreen instead of the app.
+    // true  -> already seen it (or just finished/skipped it this session);
+    //          fall through to the normal app below.
+    if (hasSeenOnboarding == null) {
+        return
+    }
+    if (hasSeenOnboarding == false) {
+        OnboardingScreen(
+            onFinish = { scope.launch { prefs.setHasSeenOnboarding(true) } },
+            onEnableKeyboard = {
+                scope.launch { prefs.setHasSeenOnboarding(true) }
+                // Same flow HomeScreen's own "Enable keyboard" prompt uses —
+                // opens the system's input method list rather than trying to
+                // enable SinKey directly, since apps can't toggle another
+                // app's IME enablement themselves.
+                context.startActivity(android.content.Intent(android.provider.Settings.ACTION_INPUT_METHOD_SETTINGS))
+            }
+        )
+        return
     }
 
     // ─────────────────────────────────────────────────────────────────────────
@@ -565,7 +603,8 @@ private fun SinKeyApp(prefs: PreferencesManager, initialTab: Tab = Tab.HOME) {
                         onOpenKeyboardHeight = { settingsSubScreen = SettingsSubScreen.KEYBOARD_HEIGHT },
                         onOpenSoundVibration = { settingsSubScreen = SettingsSubScreen.SOUND_VIBRATION },
                         onOpenQuickText = { settingsSubScreen = SettingsSubScreen.QUICK_TEXT },
-                        onOpenPersonalDictionary = { settingsSubScreen = SettingsSubScreen.PERSONAL_DICTIONARY }
+                        onOpenPersonalDictionary = { settingsSubScreen = SettingsSubScreen.PERSONAL_DICTIONARY },
+                        onShowTutorial = { scope.launch { prefs.setHasSeenOnboarding(false) } }
                     )
                         }
                     }
