@@ -151,6 +151,64 @@ class WordRepository(context: Context) {
         dao.getAllForLanguage(language).map { it.word }
 
     /**
+     * Live-updating word lists for the Personal Dictionary screen — one per
+     * language, so the two tabs can each collectAsState() independently.
+     * Mirrors ShortcutRepository.all's Flow-backed pattern for Quick text's
+     * list; unlike that one there are two here (language isn't a column the
+     * UI ever needs to see all values of at once, so no single unified
+     * Flow is exposed).
+     */
+    val sinhalaWords: kotlinx.coroutines.flow.Flow<List<WordEntity>> = dao.observeAllForLanguage("si")
+    val englishWords: kotlinx.coroutines.flow.Flow<List<WordEntity>> = dao.observeAllForLanguage("en")
+
+    /**
+     * Every learned word for [language], newest/most-used first — for the
+     * Personal Dictionary screen's browse list. See WordDao.getAllForLanguageBrowse
+     * for why this orders differently than allWords (which serves gesture
+     * typing's scoring instead).
+     */
+    suspend fun browseAll(language: String): List<WordEntity> =
+        dao.getAllForLanguageBrowse(language)
+
+    /**
+     * Removes [word] from the personal dictionary for [language], as
+     * chosen by the user on the Personal Dictionary screen. Does nothing
+     * to the bundled base dictionary beyond this one row — if [word]
+     * happens to also be a seeded base-dictionary word, deleting it here
+     * simply forgets the user's own usage of it; DictionarySeeder won't
+     * re-seed it (seeding only ever runs once per SEED_VERSION, and
+     * re-adding a word the user just deleted would be surprising).
+     */
+    suspend fun delete(word: String, language: String) {
+        dao.delete(word.trim(), language)
+    }
+
+    /**
+     * Adds [word] to the personal dictionary by hand, from the Personal
+     * Dictionary screen's "add word" flow — as opposed to [learn], which
+     * only ever fires from words actually typed and committed.
+     *
+     * Manually added words start at a frequency matching a word already
+     * typed a few times (rather than [learn]'s frequency=1 for a brand
+     * new word), so a word the user cared enough about to add by hand
+     * starts showing up in suggestions right away instead of needing
+     * several more real uses to out-rank other candidates first — same
+     * reasoning as DictionarySeeder's SEED_FREQUENCY baseline for the
+     * bundled word lists.
+     *
+     * Uses the same learnWord() upsert the typing path uses, so adding a
+     * word that's already present bumps its existing frequency/lastUsed
+     * rather than erroring or creating a duplicate row.
+     */
+    suspend fun manualAdd(word: String, language: String) {
+        val trimmed = word.trim()
+        if (trimmed.isEmpty() || trimmed.length > 40) return
+        if (trimmed.none { it.isLetter() }) return
+        dao.learnWord(trimmed, language, now = System.currentTimeMillis())
+        repeat(MANUAL_ADD_FREQUENCY_BOOST) { dao.learnWord(trimmed, language, now = System.currentTimeMillis()) }
+    }
+
+    /**
      * Loads the bundled base word lists (assets/wordlist_en.txt,
      * assets/wordlist_si.txt — see DictionarySeeder) into the personal
      * dictionary at a low starting frequency, once. Exists mainly so
@@ -167,5 +225,17 @@ class WordRepository(context: Context) {
      */
     suspend fun seedBaseDictionaryIfNeeded() {
         DictionarySeeder.seedIfNeeded(appContext, dao)
+    }
+
+    companion object {
+        /**
+         * How many extra learnWord() bumps a manually added word gets
+         * beyond its first insert, so it starts at a frequency comparable
+         * to a word typed several times already (see manualAdd's doc
+         * comment) rather than frequency=1, which ordinary prefix/fuzzy
+         * ranking would place behind almost everything else in the
+         * dictionary.
+         */
+        private const val MANUAL_ADD_FREQUENCY_BOOST = 4
     }
 }
