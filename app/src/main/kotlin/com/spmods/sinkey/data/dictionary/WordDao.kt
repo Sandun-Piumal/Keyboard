@@ -64,6 +64,36 @@ interface WordDao {
     suspend fun upsert(entity: WordEntity)
 
     /**
+     * All learned words for [language], newest/most-used first, for the
+     * Personal Dictionary screen's browse list. Distinct from
+     * getAllForLanguage (which orders by frequency only, for gesture
+     * typing's scoring) — this orders by lastUsed first so recently
+     * added/used words surface at the top of the list the user sees and
+     * manages, which matters more for browsing than for swipe-matching.
+     *
+     * observeAllForLanguage below returns the same rows as a live Flow,
+     * used by the Personal Dictionary screen so it updates immediately
+     * after a delete or manual add — the same way ShortcutDao.observeAll
+     * does for Quick text's shortcut list. getAllForLanguageBrowse is kept
+     * as a plain suspend query alongside it for any one-off read that
+     * doesn't need to observe changes.
+     */
+    @Query("SELECT * FROM words WHERE language = :language ORDER BY lastUsed DESC, frequency DESC")
+    fun observeAllForLanguage(language: String): kotlinx.coroutines.flow.Flow<List<WordEntity>>
+
+    @Query("SELECT * FROM words WHERE language = :language ORDER BY lastUsed DESC, frequency DESC")
+    suspend fun getAllForLanguageBrowse(language: String): List<WordEntity>
+
+    /**
+     * Deletes one word the user chose to remove from their personal
+     * dictionary (via the Personal Dictionary screen). Scoped to both
+     * [word] and [language] together since the primary key is the pair —
+     * the same word can exist as separate Sinhala and English entries.
+     */
+    @Query("DELETE FROM words WHERE word = :word AND language = :language")
+    suspend fun delete(word: String, language: String)
+
+    /**
      * Learns [word]: inserts it if new, or bumps its frequency/lastUsed if it
      * already exists. This is how the keyboard "remembers" words the user
      * has typed so they can be suggested again later.
