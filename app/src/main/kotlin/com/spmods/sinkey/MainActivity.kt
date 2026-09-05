@@ -165,6 +165,7 @@ private fun SinKeyApp(prefs: PreferencesManager, initialTab: Tab = Tab.HOME) {
     val bottomSpaceEnabled by prefs.bottomSpaceEnabled.collectAsState(initial = true)
     val bottomSpaceSize by prefs.bottomSpaceSize.collectAsState(initial = 0f)
     val showKeyBorders by prefs.showKeyBorders.collectAsState(initial = true)
+    val sinhalaKeyHintsEnabled by prefs.sinhalaKeyHintsEnabled.collectAsState(initial = true)
     val keyOpacity by prefs.keyOpacity.collectAsState(initial = 1f)
     val mixAutoSinhala by prefs.mixAutoSinhala.collectAsState(initial = false)
     val swipeTypingEnabled by prefs.swipeTypingEnabled.collectAsState(initial = false)
@@ -511,11 +512,13 @@ private fun SinKeyApp(prefs: PreferencesManager, initialTab: Tab = Tab.HOME) {
                         mixAutoSinhala = mixAutoSinhala,
                         swipeTypingEnabled = swipeTypingEnabled,
                         smoothImeTransition = smoothImeTransition,
+                        sinhalaKeyHintsEnabled = sinhalaKeyHintsEnabled,
                         onLanguageChange = { lang -> scope.launch { prefs.setDefaultLanguage(lang) } },
                         onThemeModeChange = { mode -> scope.launch { prefs.setThemeMode(mode) } },
                         onMixAutoSinhalaChange = { enabled -> scope.launch { prefs.setMixAutoSinhala(enabled) } },
                         onSwipeTypingChange = { enabled -> scope.launch { prefs.setSwipeTypingEnabled(enabled) } },
                         onSmoothImeTransitionChange = { enabled -> scope.launch { prefs.setSmoothImeTransition(enabled) } },
+                        onSinhalaKeyHintsChange = { enabled -> scope.launch { prefs.setSinhalaKeyHintsEnabled(enabled) } },
                         onOpenKeyboardHeight = { settingsSubScreen = SettingsSubScreen.KEYBOARD_HEIGHT },
                         onOpenSoundVibration = { settingsSubScreen = SettingsSubScreen.SOUND_VIBRATION }
                     )
@@ -548,6 +551,7 @@ private fun SinKeyApp(prefs: PreferencesManager, initialTab: Tab = Tab.HOME) {
                     bottomSpaceEnabled = bottomSpaceEnabled,
                     bottomSpaceSize = bottomSpaceSize,
                     showKeyBorders = showKeyBorders,
+                    sinhalaKeyHintsEnabled = sinhalaKeyHintsEnabled,
                     isDark = isDark,
                     suggestions = emptyList(),
                     onSuggestionSelected = { _, _ -> /* preview — no input dispatch */ },
