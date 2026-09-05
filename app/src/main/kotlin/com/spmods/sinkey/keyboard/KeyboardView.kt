@@ -1716,12 +1716,16 @@ internal fun MainKeyboardKeys(
             .padding(horizontal = 4.dp, vertical = 2.dp)
             .padding(bottom = bottomPadding)
     ) {
+        // Show Sinhala hint glyphs only when Sinhala can actually be typed.
+        val showSinhalaHints = currentLanguage == "si" || currentLanguage == "mix"
         // FIX #5: Pass onShiftChange so letter rows can reset one-shot shift.
         NumberedKeyRow(EnglishRows[0], topRowNumbers, shift, keyHeight, colors, keyShape,
             onKeyPositioned = onKeyPositioned,
+            showSinhalaHints = showSinhalaHints,
             onKey = { onKey(it); if (shift && !shiftLocked) onShiftStateChange(SinKeyInputMethodService.ShiftState.OFF) })
         KeyRow(EnglishRows[1], shift, keyHeight, colors, keyShape,
             onKeyPositioned = onKeyPositioned,
+            showSinhalaHints = showSinhalaHints,
             onKey = { onKey(it); if (shift && !shiftLocked) onShiftStateChange(SinKeyInputMethodService.ShiftState.OFF) })
         Row(
             modifier = Modifier.fillMaxWidth().padding(vertical = 3.dp),
@@ -1745,10 +1749,12 @@ internal fun MainKeyboardKeys(
             )
             EnglishRows[2].forEach { k ->
                 val display = if (shift) k.uppercase() else k
+                val hint = if (showSinhalaHints) sinhalaKeyHints[k.lowercase().firstOrNull() ?: ' '] else null
                 // FIX #5: Reset shift after each letter (one-shot shift behaviour).
                 LetterKey(
                     label = display, weight = 1f, keyHeight = keyHeight, colors = colors, keyShape = keyShape,
                     onPositioned = onKeyPositioned?.let { cb -> { coords: androidx.compose.ui.layout.LayoutCoordinates -> cb(k.lowercase().firstOrNull() ?: ' ', coords) } },
+                    hint = hint,
                     onTap = {
                         onKey(display)
                         if (shift && !shiftLocked) onShiftStateChange(SinKeyInputMethodService.ShiftState.OFF)
@@ -2812,6 +2818,9 @@ private fun NumberedKeyRow(
     // keyChar is the *unshifted* lowercase char, since GestureWordMatcher
     // always matches against lowercase candidate words.
     onKeyPositioned: ((Char, androidx.compose.ui.layout.LayoutCoordinates) -> Unit)? = null,
+    // Show each key's Sinhala-hint glyph (top-left corner) — true only in
+    // "si"/"mix" language modes; see MainKeyboardKeys' currentLanguage.
+    showSinhalaHints: Boolean = false,
     onKey: (String) -> Unit
 ) {
     Row(
@@ -2821,10 +2830,12 @@ private fun NumberedKeyRow(
         keys.forEachIndexed { index, k ->
             val display = if (shift) k.uppercase() else k
             val num = numbers.getOrNull(index) ?: ""
+            val hint = if (showSinhalaHints) sinhalaKeyHints[k.lowercase().firstOrNull() ?: ' '] else null
             NumberedLetterKey(
                 label = display, number = num, weight = 1f,
                 keyHeight = keyHeight, colors = colors, keyShape = keyShape,
                 onPositioned = onKeyPositioned?.let { cb -> { coords: androidx.compose.ui.layout.LayoutCoordinates -> cb(k.lowercase().firstOrNull() ?: ' ', coords) } },
+                hint = hint,
                 onTap = { onKey(display) },
                 onLongPress = { onKey(num) },
                 onAlternateSelected = { alt -> onKey(alt) }
@@ -2841,6 +2852,9 @@ private fun KeyRow(
     colors: KeyboardColors,
     keyShape: RoundedCornerShape,
     onKeyPositioned: ((Char, androidx.compose.ui.layout.LayoutCoordinates) -> Unit)? = null,
+    // Show each key's Sinhala-hint glyph (top-right corner) — true only in
+    // "si"/"mix" language modes; see MainKeyboardKeys' currentLanguage.
+    showSinhalaHints: Boolean = false,
     onKey: (String) -> Unit
 ) {
     Row(
@@ -2850,9 +2864,11 @@ private fun KeyRow(
         Box(modifier = Modifier.weight(0.5f))
         keys.forEach { k ->
             val display = if (shift) k.uppercase() else k
+            val hint = if (showSinhalaHints) sinhalaKeyHints[k.lowercase().firstOrNull() ?: ' '] else null
             LetterKey(
                 label = display, weight = 1f, keyHeight = keyHeight, colors = colors, keyShape = keyShape,
                 onPositioned = onKeyPositioned?.let { cb -> { coords: androidx.compose.ui.layout.LayoutCoordinates -> cb(k.lowercase().firstOrNull() ?: ' ', coords) } },
+                hint = hint,
                 onTap = { onKey(display) },
                 onAlternateSelected = { alt -> onKey(alt) }
             )
@@ -3132,6 +3148,9 @@ private fun RowScope.NumberedLetterKey(
     label: String, number: String, weight: Float,
     keyHeight: Dp, colors: KeyboardColors, keyShape: RoundedCornerShape,
     onPositioned: ((androidx.compose.ui.layout.LayoutCoordinates) -> Unit)? = null,
+    // Small Sinhala-glyph hint shown top-LEFT (the number hint already
+    // occupies top-right on this row) — empty/null shows nothing.
+    hint: String? = null,
     onTap: () -> Unit, onLongPress: () -> Unit,
     // Called instead of onLongPress when the user drags to one of the
     // popup alternates and releases over it — same contract as LetterKey's
@@ -3295,6 +3314,10 @@ private fun RowScope.NumberedLetterKey(
     ) {
         Text(text = number, fontSize = keyNumberFontSize(keyHeight), color = colors.subText,
             modifier = Modifier.align(Alignment.TopEnd).padding(top = 3.dp, end = 4.dp))
+        if (!hint.isNullOrEmpty()) {
+            Text(text = hint, fontSize = keyNumberFontSize(keyHeight), color = colors.subText,
+                modifier = Modifier.align(Alignment.TopStart).padding(top = 3.dp, start = 4.dp))
+        }
         Text(text = label, fontSize = keyLabelFontSize(keyHeight), color = colors.keyText,
             fontWeight = FontWeight.Normal,
             modifier = Modifier.align(Alignment.Center))
@@ -3331,6 +3354,11 @@ private fun RowScope.LetterKey(
     // isn't relevant (symbol/numpad keys, previews) so this stays a no-op
     // there instead of needing every LetterKey call site updated.
     onPositioned: ((androidx.compose.ui.layout.LayoutCoordinates) -> Unit)? = null,
+    // Small Sinhala-glyph hint shown top-right (mirrors the top row's
+    // number hints) — empty/null shows nothing, unchanged from before
+    // this feature existed. Passed in already-resolved (per currentLanguage)
+    // by the caller so this composable stays language-agnostic.
+    hint: String? = null,
     onTap: () -> Unit,
     // Called instead of onTap when the user long-presses this key, drags
     // to one of the popup alternates, and releases over it. Left null at
@@ -3538,6 +3566,10 @@ private fun RowScope.LetterKey(
             },
         contentAlignment = Alignment.Center
     ) {
+        if (!hint.isNullOrEmpty()) {
+            Text(text = hint, fontSize = keyNumberFontSize(keyHeight), color = colors.subText,
+                modifier = Modifier.align(Alignment.TopEnd).padding(top = 3.dp, end = 4.dp))
+        }
         Text(text = label, fontSize = keyLabelFontSize(keyHeight), color = colors.keyText,
             fontWeight = FontWeight.Normal)
         if (popupVisible && alternates.isNotEmpty()) {
