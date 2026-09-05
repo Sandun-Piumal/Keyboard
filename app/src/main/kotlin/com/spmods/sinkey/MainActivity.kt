@@ -61,6 +61,7 @@ import com.spmods.sinkey.ui.screens.HomeScreen
 import com.spmods.sinkey.ui.screens.KeyboardHeightScreen
 import com.spmods.sinkey.ui.screens.SoundVibrationScreen
 import com.spmods.sinkey.ui.screens.QuickTextScreen
+import com.spmods.sinkey.ui.screens.PersonalDictionaryScreen
 import com.spmods.sinkey.ui.screens.PhotoCropScreen
 import com.spmods.sinkey.ui.screens.PhotoEditThemeScreen
 import com.spmods.sinkey.ui.screens.SettingsScreen
@@ -74,7 +75,7 @@ private val DeshGreen = Color(0xFF1B5E37)
 
 private enum class Tab { HOME, THEMES, SETTINGS }
 
-private enum class SettingsSubScreen { MAIN, KEYBOARD_HEIGHT, SOUND_VIBRATION, QUICK_TEXT }
+private enum class SettingsSubScreen { MAIN, KEYBOARD_HEIGHT, SOUND_VIBRATION, QUICK_TEXT, PERSONAL_DICTIONARY }
 
 /**
  * "My themes" custom-photo flow steps, layered the same way as
@@ -191,6 +192,9 @@ private fun SinKeyApp(prefs: PreferencesManager, initialTab: Tab = Tab.HOME) {
     val quickTextEnabled by prefs.quickTextEnabled.collectAsState(initial = false)
     val shortcutRepo = remember(context) { com.spmods.sinkey.data.shortcut.ShortcutRepository(context) }
     val shortcuts by shortcutRepo.all.collectAsState(initial = emptyList())
+    val wordRepo = remember(context) { com.spmods.sinkey.data.dictionary.WordRepository(context) }
+    val sinhalaWords by wordRepo.sinhalaWords.collectAsState(initial = emptyList())
+    val englishWords by wordRepo.englishWords.collectAsState(initial = emptyList())
 
     // Small in-memory preview bitmap for the Themes screen's "My themes"
     // tile — decoded off the main thread whenever customBackgroundUri
@@ -312,6 +316,9 @@ private fun SinKeyApp(prefs: PreferencesManager, initialTab: Tab = Tab.HOME) {
     if (settingsSubScreen == SettingsSubScreen.QUICK_TEXT) {
         BackHandler { settingsSubScreen = SettingsSubScreen.MAIN }
     }
+    if (settingsSubScreen == SettingsSubScreen.PERSONAL_DICTIONARY) {
+        BackHandler { settingsSubScreen = SettingsSubScreen.MAIN }
+    }
 
     if (tab != Tab.HOME && !showKeyboardPreview) {
         BackHandler { tab = Tab.HOME }
@@ -325,10 +332,7 @@ private fun SinKeyApp(prefs: PreferencesManager, initialTab: Tab = Tab.HOME) {
             // the preview itself there is no need for it), and not during
             // the Add Photo crop/edit flow (full-screen editors, same
             // reasoning as bottomBar's condition above).
-            if (!showKeyboardPreview &&
-                photoEditStep == PhotoEditStep.NONE &&
-                settingsSubScreen != SettingsSubScreen.QUICK_TEXT
-            ) {
+            if (!showKeyboardPreview && photoEditStep == PhotoEditStep.NONE) {
                 FloatingActionButton(
                     onClick = { showKeyboardPreview = true },
                     containerColor = DeshGreen,
@@ -485,6 +489,15 @@ private fun SinKeyApp(prefs: PreferencesManager, initialTab: Tab = Tab.HOME) {
                             onBack = { settingsSubScreen = SettingsSubScreen.MAIN }
                         )
                     }
+                    settingsSubScreen == SettingsSubScreen.PERSONAL_DICTIONARY -> {
+                        PersonalDictionaryScreen(
+                            sinhalaWords = sinhalaWords,
+                            englishWords = englishWords,
+                            onDelete = { word, language -> scope.launch { wordRepo.delete(word, language) } },
+                            onAdd = { word, language -> scope.launch { wordRepo.manualAdd(word, language) } },
+                            onBack = { settingsSubScreen = SettingsSubScreen.MAIN }
+                        )
+                    }
                     tab == Tab.HOME -> HomeScreen(isDark = isDark)
                     tab == Tab.THEMES -> ThemesScreen(
                         currentMode = themeMode,
@@ -545,7 +558,8 @@ private fun SinKeyApp(prefs: PreferencesManager, initialTab: Tab = Tab.HOME) {
                         onSinhalaKeyHintsChange = { enabled -> scope.launch { prefs.setSinhalaKeyHintsEnabled(enabled) } },
                         onOpenKeyboardHeight = { settingsSubScreen = SettingsSubScreen.KEYBOARD_HEIGHT },
                         onOpenSoundVibration = { settingsSubScreen = SettingsSubScreen.SOUND_VIBRATION },
-                        onOpenQuickText = { settingsSubScreen = SettingsSubScreen.QUICK_TEXT }
+                        onOpenQuickText = { settingsSubScreen = SettingsSubScreen.QUICK_TEXT },
+                        onOpenPersonalDictionary = { settingsSubScreen = SettingsSubScreen.PERSONAL_DICTIONARY }
                     )
                         }
                     }
