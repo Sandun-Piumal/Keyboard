@@ -138,6 +138,23 @@ object FancyTextMapper {
     }
 }
 
+/**
+ * Small Sinhala-glyph hint shown in each QWERTY key's top-right corner
+ * (mirrors the top row's number hints) so the user can see at a glance
+ * which Sinhala letter a key produces in "si"/"mix" mode. Mirrors the
+ * single-letter base mapping in [SinhalaTransliterator] — kept as its own
+ * small table here (rather than reusing that object's private lists)
+ * since this is purely a display hint, not part of transliteration.
+ */
+val sinhalaKeyHints: Map<Char, String> = mapOf(
+    'q' to "ද", 'w' to "ව", 'e' to "එ", 'r' to "ර", 't' to "ට",
+    'y' to "ය", 'u' to "උ", 'i' to "ඉ", 'o' to "ඔ", 'p' to "ප",
+    'a' to "අ", 's' to "ස", 'd' to "ඩ", 'f' to "ෆ", 'g' to "ග",
+    'h' to "හ", 'j' to "ජ", 'k' to "ක", 'l' to "ල",
+    'z' to "ෂ", 'x' to "ං", 'c' to "ච", 'v' to "ව", 'b' to "බ",
+    'n' to "න", 'm' to "ම"
+)
+
 /** Standard English QWERTY rows shown by the keyboard view. */
 val EnglishRows: List<List<String>> = listOf(
     listOf("q", "w", "e", "r", "t", "y", "u", "i", "o", "p"),
