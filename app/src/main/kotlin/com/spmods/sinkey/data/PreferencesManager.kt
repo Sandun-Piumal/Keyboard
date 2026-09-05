@@ -47,6 +47,7 @@ class PreferencesManager(private val context: Context) {
         // is surprising behavior until they've deliberately turned it on
         // and added their own shortcuts.
         val QUICK_TEXT_ENABLED = booleanPreferencesKey("quick_text_enabled")
+        val HAS_SEEN_ONBOARDING = booleanPreferencesKey("has_seen_onboarding")
         // Opacity of individual key surfaces (letter keys, special keys,
         // space bar) — 0f=fully transparent, 1f=fully opaque. Default 1f so
         // existing users/themes render byte-for-byte the same until they
@@ -220,6 +221,19 @@ class PreferencesManager(private val context: Context) {
     /** "Quick text" shortcut expansion — see QUICK_TEXT_ENABLED. Default false. */
     val quickTextEnabled: Flow<Boolean> = context.dataStore.data.map { prefs ->
         prefs[Keys.QUICK_TEXT_ENABLED] ?: false
+    }
+
+    /**
+     * Whether the first-launch onboarding tutorial has already been shown
+     * and dismissed. Default false, so a fresh install always sees it once;
+     * MainActivity flips this to true the moment the tutorial is dismissed
+     * (via [setHasSeenOnboarding]), and Settings' "Show tutorial again"
+     * entry flips it back to false to replay it on demand without needing
+     * a separate "replay" code path — the gate in MainActivity is the only
+     * place that decides whether to show it, driven purely by this flag.
+     */
+    val hasSeenOnboarding: Flow<Boolean> = context.dataStore.data.map { prefs ->
+        prefs[Keys.HAS_SEEN_ONBOARDING] ?: false
     }
 
     /**
@@ -400,6 +414,10 @@ class PreferencesManager(private val context: Context) {
 
     suspend fun setQuickTextEnabled(enabled: Boolean) {
         context.dataStore.edit { it[Keys.QUICK_TEXT_ENABLED] = enabled }
+    }
+
+    suspend fun setHasSeenOnboarding(seen: Boolean) {
+        context.dataStore.edit { it[Keys.HAS_SEEN_ONBOARDING] = seen }
     }
 
     suspend fun setKeyOpacity(value: Float) {
