@@ -1,5 +1,12 @@
 package com.spmods.sinkey.ui.screens
 
+import android.content.Context
+import android.content.Intent
+import android.os.Handler
+import android.os.Looper
+import android.provider.Settings
+import android.database.ContentObserver
+import android.view.inputmethod.InputMethodManager
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -18,22 +25,52 @@ import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Check
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
 import kotlinx.coroutines.launch
+
+/**
+ * Same checks HomeScreen's setup card uses (see isImeEnabled/isImeDefault
+ * there) — duplicated locally rather than shared, since neither is more
+ * than a couple of lines and pulling them into a shared file for two
+ * call sites isn't worth the indirection.
+ */
+private fun isImeEnabled(context: Context): Boolean {
+    val imm = context.getSystemService(InputMethodManager::class.java)
+    return imm.enabledInputMethodList.any { it.packageName == context.packageName }
+}
+
+private fun isImeDefault(context: Context): Boolean {
+    val defaultIme = Settings.Secure.getString(
+        context.contentResolver, Settings.Secure.DEFAULT_INPUT_METHOD
+    )
+    return defaultIme?.startsWith(context.packageName) == true
+}
 
 /**
  * One tutorial slide: a big emoji/icon, a title, and a short explanation.
@@ -71,7 +108,7 @@ private val slides = listOf(
     OnboardingSlide(
         emoji = "⌨️",
         title = "One last step",
-        description = "To start typing with SinKey, it needs to be enabled and selected as your keyboard. Tap below to turn it on."
+        description = "To start typing with SinKey, enable it and set it as your default keyboard."
     )
 )
 
@@ -84,23 +121,66 @@ private val slides = listOf(
  * which is a maintenance trap for a tutorial that's easy to forget about;
  * a description in plain words stays accurate on its own.
  *
- * The last slide's primary action is "Enable keyboard" rather than
- * "Finish", since the tutorial's real goal is a working, selected
- * keyboard, not just having been shown some slides — [onEnableKeyboard]
- * opens the system's input method settings (same
- * Settings.ACTION_INPUT_METHOD_SETTINGS flow HomeScreen's own "Enable
- * keyboard" prompt uses) rather than completing the tutorial by itself, so
- * [onFinish] is called separately once the user comes back. "Skip" (top
- * right, all slides) and "Maybe later" (bottom of the last slide) both
- * call [onFinish] directly without enabling anything — the tutorial
- * shouldn't block someone who already knows how to enable a keyboard, or
- * wants to do it later from Home instead.
+ * The last slide mirrors HomeScreen's own two-step "Enable SinKey" / "Set
+ * as Default Keyboard" setup card exactly — same isImeEnabled/isImeDefault
+ * checks, same live refresh via a ContentObserver on
+ * Settings.Secure.DEFAULT_INPUT_METHOD/ENABLED_INPUT_METHODS plus an
+ * ON_RESUME lifecycle callback, so returning here from the system
+ * Settings/IME picker immediately reflects what the user just did rather
+ * than showing a stale "not done yet" state. Both steps have to actually
+ * be reachable independently (enabling and setting default are two
+ * different system flows android exposes separately, per HomeScreen), so
+ * this is two buttons rather than one — the same two the "Let's get you
+ * started" card on Home already offers, just repeated here so a brand new
+ * user isn't left to go find that card on their own right after finishing
+ * the tutorial. "Skip" (top right, all slides) and "Finish" (bottom of the
+ * last slide, always enabled regardless of setup progress) both call
+ * [onFinish] directly — the tutorial shouldn't block someone who wants to
+ * finish setup later from Home instead.
  */
 @Composable
 fun OnboardingScreen(
-    onFinish: () -> Unit,
-    onEnableKeyboard: () -> Unit
+    onFinish: () -> Unit
 ) {
+    val context = LocalContext.current
+    val lifecycleOwner = LocalLifecycleOwner.current
+    var enabled by remember { mutableStateOf(isImeEnabled(context)) }
+    var isDefault by remember { mutableStateOf(isImeDefault(context)) }
+
+    // Identical refresh wiring to HomeScreen's setup card — see that
+    // composable for the full reasoning; duplicated here rather than
+    // shared since it's tightly coupled to the enabled/isDefault state
+    // hoisted in each composable's own scope.
+    DisposableEffect(lifecycleOwner) {
+        fun refresh() {
+            enabled = isImeEnabled(context)
+            isDefault = isImeDefault(context)
+        }
+
+        val handler = Handler(Looper.getMainLooper())
+        val contentObserver = object : ContentObserver(handler) {
+            override fun onChange(selfChange: Boolean) = refresh()
+        }
+        context.contentResolver.registerContentObserver(
+            Settings.Secure.getUriFor(Settings.Secure.DEFAULT_INPUT_METHOD),
+            false, contentObserver
+        )
+        context.contentResolver.registerContentObserver(
+            Settings.Secure.getUriFor(Settings.Secure.ENABLED_INPUT_METHODS),
+            false, contentObserver
+        )
+
+        val lifecycleObserver = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_RESUME) refresh()
+        }
+        lifecycleOwner.lifecycle.addObserver(lifecycleObserver)
+
+        onDispose {
+            context.contentResolver.unregisterContentObserver(contentObserver)
+            lifecycleOwner.lifecycle.removeObserver(lifecycleObserver)
+        }
+    }
+
     val pagerState = rememberPagerState(pageCount = { slides.size })
     val scope = rememberCoroutineScope()
     val isLastSlide = pagerState.currentPage == slides.lastIndex
@@ -145,20 +225,29 @@ fun OnboardingScreen(
                 .padding(horizontal = 24.dp, vertical = 16.dp)
         ) {
             if (isLastSlide) {
-                Button(
-                    onClick = onEnableKeyboard,
-                    modifier = Modifier.fillMaxWidth().height(52.dp),
-                    shape = RoundedCornerShape(16.dp),
-                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary)
-                ) {
-                    Text("Enable keyboard", fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
-                }
-                Spacer(modifier = Modifier.height(8.dp))
+                SetupStepButton(
+                    label = "Enable SinKey",
+                    done = enabled,
+                    onClick = { context.startActivity(Intent(Settings.ACTION_INPUT_METHOD_SETTINGS)) }
+                )
+                Spacer(modifier = Modifier.height(10.dp))
+                SetupStepButton(
+                    label = "Set as default keyboard",
+                    done = isDefault,
+                    onClick = {
+                        val imm = context.getSystemService(InputMethodManager::class.java)
+                        imm.showInputMethodPicker()
+                    }
+                )
+                Spacer(modifier = Modifier.height(12.dp))
                 TextButton(
                     onClick = onFinish,
                     modifier = Modifier.fillMaxWidth()
                 ) {
-                    Text("Maybe later", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text(
+                        if (enabled && isDefault) "Finish" else "Finish setup later",
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
                 }
             } else {
                 Button(
@@ -174,6 +263,45 @@ fun OnboardingScreen(
                     Text("Next", fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
                 }
             }
+        }
+    }
+}
+
+/**
+ * One setup-step action on the last slide (Enable SinKey / Set as
+ * default). Solid + clickable while [done] is false; once true, becomes a
+ * disabled outlined button with a checkmark — visually confirming the
+ * step without inviting another tap at a system dialog that's already
+ * satisfied. [onClick] itself never flips [done] directly; it only
+ * launches the relevant system flow (Settings screen or IME picker) — the
+ * caller's ContentObserver-driven refresh is what actually updates [done]
+ * once the user completes that flow and returns.
+ */
+@Composable
+private fun SetupStepButton(label: String, done: Boolean, onClick: () -> Unit) {
+    if (done) {
+        OutlinedButton(
+            onClick = {},
+            enabled = false,
+            modifier = Modifier.fillMaxWidth().height(52.dp),
+            shape = RoundedCornerShape(16.dp),
+            colors = ButtonDefaults.outlinedButtonColors(
+                disabledContentColor = MaterialTheme.colorScheme.primary
+            ),
+            border = androidx.compose.material3.ButtonDefaults.outlinedButtonBorder(enabled = false)
+        ) {
+            Icon(Icons.Filled.Check, contentDescription = null, modifier = Modifier.size(18.dp))
+            Spacer(modifier = Modifier.width(8.dp))
+            Text(label, fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
+        }
+    } else {
+        Button(
+            onClick = onClick,
+            modifier = Modifier.fillMaxWidth().height(52.dp),
+            shape = RoundedCornerShape(16.dp),
+            colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary)
+        ) {
+            Text(label, fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
         }
     }
 }
