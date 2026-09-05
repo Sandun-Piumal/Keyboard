@@ -325,7 +325,10 @@ private fun SinKeyApp(prefs: PreferencesManager, initialTab: Tab = Tab.HOME) {
             // the preview itself there is no need for it), and not during
             // the Add Photo crop/edit flow (full-screen editors, same
             // reasoning as bottomBar's condition above).
-            if (!showKeyboardPreview && photoEditStep == PhotoEditStep.NONE) {
+            if (!showKeyboardPreview &&
+                photoEditStep == PhotoEditStep.NONE &&
+                settingsSubScreen != SettingsSubScreen.QUICK_TEXT
+            ) {
                 FloatingActionButton(
                     onClick = { showKeyboardPreview = true },
                     containerColor = DeshGreen,
