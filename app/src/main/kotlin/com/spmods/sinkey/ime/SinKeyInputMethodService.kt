@@ -82,6 +82,19 @@ class SinKeyInputMethodService : InputMethodService() {
     // DataStore on every keystroke.
     @Volatile
     private var cachedQuickTextEnabled: Boolean = false
+
+    // BUG FIX (shortcut text doubling in the Quick Text add/edit dialog):
+    // the "Shortcut"/"Expands to" fields in Settings > Quick text are
+    // ordinary text fields the Sinkey keyboard also serves. If the user
+    // types a string there that happens to match an already-saved
+    // shortcut and presses space/enter, maybeAutocorrectAndCommitSpace /
+    // the ENTER branch below would expand it right there — deleting what
+    // was typed and re-committing the expansion into the very field used
+    // to define shortcuts, which reads as the typed text "doubling" or
+    // mutating unexpectedly. Quick text expansion only ever makes sense
+    // in a host app's own text fields, never inside our own settings UI,
+    // so it's suppressed whenever the focused field belongs to this app.
+    private var isOwnAppEditorFocused: Boolean = false
     private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
 
     // Listens system-wide for clipboard changes (not just copies made inside
@@ -1263,6 +1276,11 @@ class SinKeyInputMethodService : InputMethodService() {
         android.util.Log.d("SinKeyDebug", "onStartInputView called, restarting=$restarting, packageName=${info?.packageName}")
         // lifecycle ON_RESUME is driven by onWindowShown()
 
+        // See isOwnAppEditorFocused's field comment: quick text expansion
+        // must never fire inside our own Settings screens (e.g. the Quick
+        // text add/edit dialog's own "Shortcut"/"Expands to" fields).
+        isOwnAppEditorFocused = info?.packageName == packageName
+
         // BUG FIX (keyboard sometimes never appears): hostWindowFocused is
         // otherwise ONLY ever written by the decorView's
         // OnWindowFocusChangeListener (registered once, in
@@ -1725,7 +1743,7 @@ class SinKeyInputMethodService : InputMethodService() {
                     // happen before performEditorAction below, since a
                     // "Send"/"Search" action submits whatever is on screen
                     // right now; expanding after the fact would be too late.
-                    val expansion = if (cachedQuickTextEnabled && typed.isNotBlank()) {
+                    val expansion = if (cachedQuickTextEnabled && !isOwnAppEditorFocused && typed.isNotBlank()) {
                         com.spmods.sinkey.data.shortcut.ShortcutRepository.expand(typed, shortcutCache)
                     } else null
                     if (expansion != null) {
@@ -2835,7 +2853,7 @@ class SinKeyInputMethodService : InputMethodService() {
         // below: if typed matches a saved shortcut, replace what's already
         // on screen (exactly `typed`, per the doc comment above) with the
         // expansion instead of committing the shortcut text itself.
-        if (cachedQuickTextEnabled && typed.isNotBlank()) {
+        if (cachedQuickTextEnabled && !isOwnAppEditorFocused && typed.isNotBlank()) {
             val expansion = com.spmods.sinkey.data.shortcut.ShortcutRepository.expand(typed, shortcutCache)
             if (expansion != null) {
                 ic.deleteSurroundingText(typed.length, 0)
