@@ -82,19 +82,6 @@ class SinKeyInputMethodService : InputMethodService() {
     // DataStore on every keystroke.
     @Volatile
     private var cachedQuickTextEnabled: Boolean = false
-
-    // BUG FIX (shortcut text doubling in the Quick Text add/edit dialog):
-    // the "Shortcut"/"Expands to" fields in Settings > Quick text are
-    // ordinary text fields the Sinkey keyboard also serves. If the user
-    // types a string there that happens to match an already-saved
-    // shortcut and presses space/enter, maybeAutocorrectAndCommitSpace /
-    // the ENTER branch below would expand it right there — deleting what
-    // was typed and re-committing the expansion into the very field used
-    // to define shortcuts, which reads as the typed text "doubling" or
-    // mutating unexpectedly. Quick text expansion only ever makes sense
-    // in a host app's own text fields, never inside our own settings UI,
-    // so it's suppressed whenever the focused field belongs to this app.
-    private var isOwnAppEditorFocused: Boolean = false
     private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
 
     // Listens system-wide for clipboard changes (not just copies made inside
@@ -1276,11 +1263,6 @@ class SinKeyInputMethodService : InputMethodService() {
         android.util.Log.d("SinKeyDebug", "onStartInputView called, restarting=$restarting, packageName=${info?.packageName}")
         // lifecycle ON_RESUME is driven by onWindowShown()
 
-        // See isOwnAppEditorFocused's field comment: quick text expansion
-        // must never fire inside our own Settings screens (e.g. the Quick
-        // text add/edit dialog's own "Shortcut"/"Expands to" fields).
-        isOwnAppEditorFocused = info?.packageName == packageName
-
         // BUG FIX (keyboard sometimes never appears): hostWindowFocused is
         // otherwise ONLY ever written by the decorView's
         // OnWindowFocusChangeListener (registered once, in
@@ -1743,12 +1725,20 @@ class SinKeyInputMethodService : InputMethodService() {
                     // happen before performEditorAction below, since a
                     // "Send"/"Search" action submits whatever is on screen
                     // right now; expanding after the fact would be too late.
-                    val expansion = if (cachedQuickTextEnabled && !isOwnAppEditorFocused && typed.isNotBlank()) {
+                    val expansion = if (cachedQuickTextEnabled && typed.isNotBlank()) {
                         com.spmods.sinkey.data.shortcut.ShortcutRepository.expand(typed, shortcutCache)
                     } else null
                     if (expansion != null) {
                         ic.deleteSurroundingText(typed.length, 0)
                         ic.commitText(expansion, 1)
+                        // See the matching comment in
+                        // maybeAutocorrectAndCommitSpace's SPACE-path fix —
+                        // without this, the cursor move from this
+                        // delete+commit gets misread as an external jump,
+                        // causing the just-committed expansion to be
+                        // resumed into englishBuffer and duplicated on the
+                        // next word boundary.
+                        syncExpectedCursorPosition(ic)
                     } else {
                         learnWord(typed, "en")
                     }
@@ -2853,7 +2843,7 @@ class SinKeyInputMethodService : InputMethodService() {
         // below: if typed matches a saved shortcut, replace what's already
         // on screen (exactly `typed`, per the doc comment above) with the
         // expansion instead of committing the shortcut text itself.
-        if (cachedQuickTextEnabled && !isOwnAppEditorFocused && typed.isNotBlank()) {
+        if (cachedQuickTextEnabled && typed.isNotBlank()) {
             val expansion = com.spmods.sinkey.data.shortcut.ShortcutRepository.expand(typed, shortcutCache)
             if (expansion != null) {
                 ic.deleteSurroundingText(typed.length, 0)
@@ -2862,6 +2852,16 @@ class SinKeyInputMethodService : InputMethodService() {
                 clearAutocorrectUndoIfAny()
                 englishBuffer.clear()
                 lastSpellCheckVerdict = null
+                // Without this, the onUpdateSelection() callback for the
+                // cursor move this delete+commit just caused arrives with
+                // pendingSelfEdits == 0, gets compared against the stale
+                // pre-expansion expectedCursorPosition, and is wrongly
+                // classified as an external cursor jump. That re-runs
+                // reseedSuggestionsForWordAtCursor, which reads the
+                // expansion word right before the cursor and re-appends it
+                // into englishBuffer — so the *next* space/enter re-commits
+                // it again, making the expansion appear doubled.
+                syncExpectedCursorPosition(ic)
                 return
             }
         }
