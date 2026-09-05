@@ -55,9 +55,16 @@ fun SettingsScreen(
     // Navigates to the Personal dictionary sub-screen — see
     // PersonalDictionaryScreen.kt.
     onOpenPersonalDictionary: () -> Unit = {},
-    // Replays the first-launch onboarding tutorial — see
-    // OnboardingScreen.kt / MainActivity's hasSeenOnboarding gate.
-    onShowTutorial: () -> Unit = {}
+    // The "ABOUT" section below is a flat set of rows directly in this
+    // screen (not a separate "About" sub-page) — each opens its own
+    // destination or performs its own action straight from here.
+    appVersion: String = "1.0.0",
+    onOpenUserGuide: () -> Unit = {},
+    onShowTutorial: () -> Unit = {},
+    onOpenPrivacyPolicy: () -> Unit = {},
+    onOpenTerms: () -> Unit = {},
+    onOpenAboutDeveloper: () -> Unit = {},
+    onRateUs: () -> Unit = {}
 ) {
     // Bug fix: this Column had no verticalScroll at all, so once the
     // switches list + Theme Mode section together exceeded one screen's
@@ -164,18 +171,6 @@ fun SettingsScreen(
                 )
             }
             SettingRow(
-                icon = "🎓",
-                title = "Show tutorial again",
-                subtitle = "Replay the getting-started guide",
-                modifier = Modifier.clickable { onShowTutorial() }
-            ) {
-                Text(
-                    "›",
-                    fontSize = 20.sp,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-            }
-            SettingRow(
                 icon = "✨",
                 title = "Smooth keyboard transition",
                 subtitle = "Gentle fade + slide when the keyboard appears"
@@ -203,6 +198,67 @@ fun SettingsScreen(
             ThemeRadioRow("Always light", ThemeMode.LIGHT, themeMode, onThemeModeChange)
             ThemeRadioRow("Always dark", ThemeMode.DARK, themeMode, onThemeModeChange)
         }
+
+        SectionHeader("ABOUT", null)
+        SettingsGroup {
+            SettingRow(
+                icon = "📘",
+                title = "User guide",
+                subtitle = "How to use SinKey",
+                modifier = Modifier.clickable { onOpenUserGuide() }
+            ) {
+                Text("›", fontSize = 20.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+            SettingRow(
+                icon = "🎓",
+                title = "Show tutorial again",
+                subtitle = "Replay the getting-started guide",
+                modifier = Modifier.clickable { onShowTutorial() }
+            ) {
+                Text("›", fontSize = 20.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+            SettingRow(
+                icon = "🔒",
+                title = "Privacy policy",
+                subtitle = "How your data is handled",
+                modifier = Modifier.clickable { onOpenPrivacyPolicy() }
+            ) {
+                Text("›", fontSize = 20.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+            SettingRow(
+                icon = "📄",
+                title = "Terms & conditions",
+                subtitle = "Terms of using this app",
+                modifier = Modifier.clickable { onOpenTerms() }
+            ) {
+                Text("›", fontSize = 20.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+            SettingRow(
+                icon = "👨‍💻",
+                title = "About developer",
+                subtitle = "Who made SinKey, and how to reach out",
+                modifier = Modifier.clickable { onOpenAboutDeveloper() }
+            ) {
+                Text("›", fontSize = 20.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+            SettingRow(
+                icon = "⭐",
+                title = "Rate us",
+                subtitle = "Enjoying SinKey? Leave a review",
+                modifier = Modifier.clickable { onRateUs() }
+            ) {
+                Text("›", fontSize = 20.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+        }
+        Text(
+            "SinKey v$appVersion",
+            fontSize = 12.sp,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(top = 16.dp, bottom = 8.dp),
+            textAlign = androidx.compose.ui.text.style.TextAlign.Center
+        )
     }
 }
 
