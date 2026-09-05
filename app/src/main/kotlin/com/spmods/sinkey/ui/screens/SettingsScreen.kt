@@ -51,7 +51,10 @@ fun SettingsScreen(
     // "Keyboard height" below.
     onOpenSoundVibration: () -> Unit = {},
     // Navigates to the Quick text sub-screen — see QuickTextScreen.kt.
-    onOpenQuickText: () -> Unit = {}
+    onOpenQuickText: () -> Unit = {},
+    // Navigates to the Personal dictionary sub-screen — see
+    // PersonalDictionaryScreen.kt.
+    onOpenPersonalDictionary: () -> Unit = {}
 ) {
     // Bug fix: this Column had no verticalScroll at all, so once the
     // switches list + Theme Mode section together exceeded one screen's
@@ -138,6 +141,18 @@ fun SettingsScreen(
                 title = "Quick text",
                 subtitle = "Type a shortcut like \"gm\" and expand it to a full phrase",
                 modifier = Modifier.clickable { onOpenQuickText() }
+            ) {
+                Text(
+                    "›",
+                    fontSize = 20.sp,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+            SettingRow(
+                icon = "📖",
+                title = "Personal dictionary",
+                subtitle = "Words you've typed — view, add, or remove them",
+                modifier = Modifier.clickable { onOpenPersonalDictionary() }
             ) {
                 Text(
                     "›",
