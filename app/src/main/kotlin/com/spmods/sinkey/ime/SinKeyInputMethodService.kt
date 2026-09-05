@@ -921,6 +921,7 @@ class SinKeyInputMethodService : InputMethodService() {
                 val bottomSpaceEnabled by prefs.bottomSpaceEnabled.collectAsState(initial = true)
                 val bottomSpaceSize by prefs.bottomSpaceSize.collectAsState(initial = 0f)
                 val showKeyBorders by prefs.showKeyBorders.collectAsState(initial = true)
+                val sinhalaKeyHintsEnabled by prefs.sinhalaKeyHintsEnabled.collectAsState(initial = true)
                 val swipeTypingEnabled by prefs.swipeTypingEnabled.collectAsState(initial = false)
                 val smoothImeTransition by prefs.smoothImeTransition.collectAsState(initial = true)
                 SinKeyTheme(themeMode = themeMode) {
@@ -1005,6 +1006,7 @@ class SinKeyInputMethodService : InputMethodService() {
                         bottomSpaceEnabled = bottomSpaceEnabled,
                         bottomSpaceSize = bottomSpaceSize,
                         showKeyBorders = showKeyBorders,
+                        sinhalaKeyHintsEnabled = sinhalaKeyHintsEnabled,
                         isDark = isDark,
                         hiddenMessageDecodedText = hiddenMessageDecodedText.value,
                         onDismissHiddenMessageBanner = { hiddenMessageDecodedText.value = null },
