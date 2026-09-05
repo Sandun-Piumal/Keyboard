@@ -68,6 +68,20 @@ class SinKeyInputMethodService : InputMethodService() {
     private lateinit var wordRepo: WordRepository
     private lateinit var clipRepo: ClipRepository
     private lateinit var stickerRepo: com.spmods.sinkey.data.sticker.StickerRepository
+    private lateinit var shortcutRepo: com.spmods.sinkey.data.shortcut.ShortcutRepository
+    // In-memory cache of shortcut -> expansion (lowercase keys), refreshed
+    // whenever shortcutRepo.all emits a change (see the serviceScope.launch
+    // collector set up in onCreate). Checking a keystroke against Room on
+    // every SPACE/ENTER would be wasteful; this map is rebuilt only when
+    // the list actually changes, which is rare compared to how often
+    // SPACE/ENTER fire.
+    @Volatile
+    private var shortcutCache: Map<String, String> = emptyMap()
+    // Mirrors PreferencesManager.quickTextEnabled — collected once in
+    // onCreate (see registerShortcutObserver) rather than re-read from
+    // DataStore on every keystroke.
+    @Volatile
+    private var cachedQuickTextEnabled: Boolean = false
     private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
 
     // Listens system-wide for clipboard changes (not just copies made inside
@@ -466,6 +480,7 @@ class SinKeyInputMethodService : InputMethodService() {
         wordRepo = WordRepository(this)
         clipRepo = ClipRepository(this)
         stickerRepo = com.spmods.sinkey.data.sticker.StickerRepository(this)
+        shortcutRepo = com.spmods.sinkey.data.shortcut.ShortcutRepository(this)
         registerClipboardListener()
 
         // Loads the bundled base word lists (common English/Sinhala
@@ -535,6 +550,18 @@ class SinKeyInputMethodService : InputMethodService() {
         }
         serviceScope.launch {
             prefs.incognitoEnabled.collect { cachedIncognitoEnabled = it }
+        }
+        serviceScope.launch {
+            prefs.quickTextEnabled.collect { cachedQuickTextEnabled = it }
+        }
+        // Keeps shortcutCache in sync with Settings > Quick text — every
+        // add/edit/delete there re-emits the full list here, so a shortcut
+        // just added takes effect on the very next keystroke without
+        // needing the IME to restart.
+        serviceScope.launch {
+            shortcutRepo.all.collect { list ->
+                shortcutCache = list.associate { it.shortcut to it.expansion }
+            }
         }
 
         // FIX #2: Create spell-checker session once for the lifetime of the service.
@@ -1689,8 +1716,28 @@ class SinKeyInputMethodService : InputMethodService() {
                 updateSuggestions()
             }
             "ENTER" -> {
-                if (isSinhalaTyping()) commitPendingWord()
-                else { learnWord(englishBuffer.toString(), "en"); englishBuffer.clear(); resumedWordBeforeCursor = null; clearSuggestions() }
+                if (isSinhalaTyping()) {
+                    commitPendingWord()
+                } else {
+                    val typed = englishBuffer.toString()
+                    // Same "Quick text" shortcut expansion as SPACE (see
+                    // maybeAutocorrectAndCommitSpace's doc comment) — must
+                    // happen before performEditorAction below, since a
+                    // "Send"/"Search" action submits whatever is on screen
+                    // right now; expanding after the fact would be too late.
+                    val expansion = if (cachedQuickTextEnabled && typed.isNotBlank()) {
+                        com.spmods.sinkey.data.shortcut.ShortcutRepository.expand(typed, shortcutCache)
+                    } else null
+                    if (expansion != null) {
+                        ic.deleteSurroundingText(typed.length, 0)
+                        ic.commitText(expansion, 1)
+                    } else {
+                        learnWord(typed, "en")
+                    }
+                    englishBuffer.clear()
+                    resumedWordBeforeCursor = null
+                    clearSuggestions()
+                }
 
                 val editorInfo = currentInputEditorInfo
                 val action = editorInfo?.imeOptions?.and(EditorInfo.IME_MASK_ACTION) ?: EditorInfo.IME_ACTION_NONE
@@ -2782,6 +2829,25 @@ class SinKeyInputMethodService : InputMethodService() {
         // resumedWordBeforeCursor just needs clearing so it can't linger
         // into a later, unrelated commit.
         resumedWordBeforeCursor = null
+
+        // "Quick text" shortcut expansion (Settings > Quick text) — e.g.
+        // "gm" -> "Good morning". Checked before the plain-space path
+        // below: if typed matches a saved shortcut, replace what's already
+        // on screen (exactly `typed`, per the doc comment above) with the
+        // expansion instead of committing the shortcut text itself.
+        if (cachedQuickTextEnabled && typed.isNotBlank()) {
+            val expansion = com.spmods.sinkey.data.shortcut.ShortcutRepository.expand(typed, shortcutCache)
+            if (expansion != null) {
+                ic.deleteSurroundingText(typed.length, 0)
+                ic.commitText(expansion, 1)
+                ic.commitText(" ", 1)
+                clearAutocorrectUndoIfAny()
+                englishBuffer.clear()
+                lastSpellCheckVerdict = null
+                return
+            }
+        }
+
         ic.commitText(" ", 1)
         clearAutocorrectUndoIfAny()
         if (typed.isNotBlank()) {
