@@ -2790,7 +2790,14 @@ class SinKeyInputMethodService : InputMethodService() {
         // sitting in the field as plain text and must be deleted first, or
         // the expansion would land beside it instead of replacing it.
         if (ic != null) consumeResumedWordIfStillPresent(ic) else resumedWordBeforeCursor = null
-        ic?.setComposingText("", 1)
+        // See the matching comment in commitPendingWord's fix for why this
+        // doesn't rely on setComposingText("", 1) to clear the on-screen
+        // preview — some hosts (e.g. this dialog's Compose TextField) don't
+        // reliably replace the composing span that way, which left the
+        // typed shortcut on screen with the expansion committed beside it
+        // instead of over it.
+        ic?.finishComposingText()
+        if (raw.isNotEmpty()) ic?.deleteSurroundingText(raw.length, 0)
         ic?.commitText(expansion, 1)
         if (trailing.isNotEmpty()) ic?.commitText(trailing, 1)
         wordBuffer.clear()
@@ -2808,6 +2815,13 @@ class SinKeyInputMethodService : InputMethodService() {
         if (wordBuffer.isEmpty()) return
         val ic = currentInputConnection
         val raw = wordBuffer.toString()
+        // What's actually showing on screen right now as composing text —
+        // captured before anything below touches wordBuffer. For mix mode
+        // this equals raw (see renderStyledBuffer's doc comment); for pure
+        // Sinhala mode it's the *transliterated* preview (e.g. "ද" for "d"),
+        // a different length than raw, which is why the delete below needs
+        // this and not raw.length.
+        val onScreenPreview = renderStyledBuffer()
         // Mix mode: commit the raw Latin text as typed unless the user has
         // turned on "auto-convert to Sinhala" in settings — pure "si" mode
         // always converts, same as before.
@@ -2821,7 +2835,30 @@ class SinKeyInputMethodService : InputMethodService() {
         // applyHiddenMessage's doc comment for why the real undecorated
         // word (not the decorated form) is always what's actually hidden.
         val finalWord = applyHiddenMessage(plainWord = if (convertToSinhala) plainWord else raw, styledWord = decorated)
-        ic?.setComposingText("", 1)
+        // Clear the composing span before committing finalWord.
+        //
+        // setComposingText("", 1) is the "textbook" way to do this — on a
+        // standard Android InputConnection it replaces the existing
+        // composing span's contents with nothing. But some InputConnection
+        // implementations don't reliably perform that replace; Compose's
+        // TextField/OutlinedTextField (which is what Settings > Quick
+        // text's "Add shortcut" dialog uses) is one of them — calling it
+        // there could leave onScreenPreview's characters (the just-typed
+        // preview, e.g. "dd") still sitting on screen, with finalWord then
+        // committed right beside it instead of over it, i.e. exactly the
+        // doubling reported when hitting space/enter after typing in
+        // Sinhala/mix mode inside that dialog.
+        //
+        // finishComposingText() first converts the span into plain
+        // committed text (a no-op if there's no active span), so its
+        // length is then always safe to delete unconditionally via
+        // deleteSurroundingText — this doesn't depend on setComposingText's
+        // replace behaviour at all, the same defensive approach the
+        // quick-text expansion paths above already use (explicit
+        // deleteSurroundingText rather than trusting a composing-span
+        // replace).
+        ic?.finishComposingText()
+        if (onScreenPreview.isNotEmpty()) ic?.deleteSurroundingText(onScreenPreview.length, 0)
         // If this word was resumed from an existing on-screen word (cursor
         // tapped back into it — see reseedSuggestionsForWordAtCursor), that
         // original text is still sitting in the field as plain committed
@@ -3143,7 +3180,17 @@ class SinKeyInputMethodService : InputMethodService() {
                 decorate(com.spmods.sinkey.keyboard.FancyTextMapper.apply(word, cachedFancyTextStyle), suggestionIndex)
             else decorate(word, suggestionIndex)
             val toCommit = applyHiddenMessage(plainWord = word, styledWord = decorated)
-            ic.setComposingText("", 1)
+            // See commitPendingWord's fix comment for why this doesn't rely
+            // on setComposingText("", 1) alone to clear the on-screen
+            // preview — some hosts (e.g. Settings > Quick text's "Add
+            // shortcut" dialog, a Compose TextField) don't reliably replace
+            // the composing span that way, which left the raw typed text
+            // on screen with the picked suggestion committed beside it
+            // instead of over it. onScreenPreview is captured before this
+            // clears anything, so it reflects exactly what's displayed.
+            val onScreenPreview = renderStyledBuffer()
+            ic.finishComposingText()
+            if (onScreenPreview.isNotEmpty()) ic.deleteSurroundingText(onScreenPreview.length, 0)
             if (cachedHiddenMessageEnabled) {
                 // The auto-space below (after this if/else) is folded in
                 // here as trailingText instead — see replaceHiddenMessageSpan's
