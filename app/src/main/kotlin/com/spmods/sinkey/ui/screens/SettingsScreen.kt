@@ -36,11 +36,13 @@ fun SettingsScreen(
     mixAutoSinhala: Boolean,
     swipeTypingEnabled: Boolean,
     smoothImeTransition: Boolean = true,
+    sinhalaKeyHintsEnabled: Boolean = true,
     onLanguageChange: (String) -> Unit,
     onThemeModeChange: (ThemeMode) -> Unit,
     onMixAutoSinhalaChange: (Boolean) -> Unit,
     onSwipeTypingChange: (Boolean) -> Unit,
     onSmoothImeTransitionChange: (Boolean) -> Unit = {},
+    onSinhalaKeyHintsChange: (Boolean) -> Unit = {},
     onOpenKeyboardHeight: () -> Unit = {},
     // Navigates to the new Sound & vibration sub-screen — see
     // SoundVibrationScreen.kt. Key sound / Vibrate on tap / Vibration level
@@ -102,6 +104,13 @@ fun SettingsScreen(
                 subtitle = "On space/enter, turn the typed word into Sinhala"
             ) {
                 Switch(checked = mixAutoSinhala, onCheckedChange = onMixAutoSinhalaChange)
+            }
+            SettingRow(
+                icon = "අ",
+                title = "Sinhala letter hints",
+                subtitle = "Show the matching සිංහල letter on each key"
+            ) {
+                Switch(checked = sinhalaKeyHintsEnabled, onCheckedChange = onSinhalaKeyHintsChange)
             }
             SettingRow(
                 icon = "👆",
