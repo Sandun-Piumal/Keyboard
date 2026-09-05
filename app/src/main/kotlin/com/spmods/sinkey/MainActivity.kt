@@ -60,6 +60,7 @@ import com.spmods.sinkey.ui.screens.HeaderMenuMode
 import com.spmods.sinkey.ui.screens.HomeScreen
 import com.spmods.sinkey.ui.screens.KeyboardHeightScreen
 import com.spmods.sinkey.ui.screens.SoundVibrationScreen
+import com.spmods.sinkey.ui.screens.QuickTextScreen
 import com.spmods.sinkey.ui.screens.PhotoCropScreen
 import com.spmods.sinkey.ui.screens.PhotoEditThemeScreen
 import com.spmods.sinkey.ui.screens.SettingsScreen
@@ -73,7 +74,7 @@ private val DeshGreen = Color(0xFF1B5E37)
 
 private enum class Tab { HOME, THEMES, SETTINGS }
 
-private enum class SettingsSubScreen { MAIN, KEYBOARD_HEIGHT, SOUND_VIBRATION }
+private enum class SettingsSubScreen { MAIN, KEYBOARD_HEIGHT, SOUND_VIBRATION, QUICK_TEXT }
 
 /**
  * "My themes" custom-photo flow steps, layered the same way as
@@ -185,6 +186,12 @@ private fun SinKeyApp(prefs: PreferencesManager, initialTab: Tab = Tab.HOME) {
 
     // ── "My themes" custom background: photo picker + preview decode ──────
     val context = LocalContext.current
+
+    // ── Quick text shortcuts (Settings > Quick text) ───────────────────────
+    val quickTextEnabled by prefs.quickTextEnabled.collectAsState(initial = false)
+    val shortcutRepo = remember(context) { com.spmods.sinkey.data.shortcut.ShortcutRepository(context) }
+    val shortcuts by shortcutRepo.all.collectAsState(initial = emptyList())
+
     // Small in-memory preview bitmap for the Themes screen's "My themes"
     // tile — decoded off the main thread whenever customBackgroundUri
     // changes (including on first load, so the previously-picked photo
@@ -299,6 +306,10 @@ private fun SinKeyApp(prefs: PreferencesManager, initialTab: Tab = Tab.HOME) {
     }
 
     if (settingsSubScreen == SettingsSubScreen.SOUND_VIBRATION) {
+        BackHandler { settingsSubScreen = SettingsSubScreen.MAIN }
+    }
+
+    if (settingsSubScreen == SettingsSubScreen.QUICK_TEXT) {
         BackHandler { settingsSubScreen = SettingsSubScreen.MAIN }
     }
 
@@ -461,6 +472,16 @@ private fun SinKeyApp(prefs: PreferencesManager, initialTab: Tab = Tab.HOME) {
                             onBack = { settingsSubScreen = SettingsSubScreen.MAIN }
                         )
                     }
+                    settingsSubScreen == SettingsSubScreen.QUICK_TEXT -> {
+                        QuickTextScreen(
+                            enabled = quickTextEnabled,
+                            shortcuts = shortcuts,
+                            onEnabledChange = { enabled -> scope.launch { prefs.setQuickTextEnabled(enabled) } },
+                            onSave = { shortcut, expansion -> scope.launch { shortcutRepo.save(shortcut, expansion) } },
+                            onDelete = { shortcut -> scope.launch { shortcutRepo.delete(shortcut) } },
+                            onBack = { settingsSubScreen = SettingsSubScreen.MAIN }
+                        )
+                    }
                     tab == Tab.HOME -> HomeScreen(isDark = isDark)
                     tab == Tab.THEMES -> ThemesScreen(
                         currentMode = themeMode,
@@ -520,7 +541,8 @@ private fun SinKeyApp(prefs: PreferencesManager, initialTab: Tab = Tab.HOME) {
                         onSmoothImeTransitionChange = { enabled -> scope.launch { prefs.setSmoothImeTransition(enabled) } },
                         onSinhalaKeyHintsChange = { enabled -> scope.launch { prefs.setSinhalaKeyHintsEnabled(enabled) } },
                         onOpenKeyboardHeight = { settingsSubScreen = SettingsSubScreen.KEYBOARD_HEIGHT },
-                        onOpenSoundVibration = { settingsSubScreen = SettingsSubScreen.SOUND_VIBRATION }
+                        onOpenSoundVibration = { settingsSubScreen = SettingsSubScreen.SOUND_VIBRATION },
+                        onOpenQuickText = { settingsSubScreen = SettingsSubScreen.QUICK_TEXT }
                     )
                         }
                     }
