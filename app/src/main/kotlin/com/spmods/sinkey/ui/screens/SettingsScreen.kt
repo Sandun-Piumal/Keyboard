@@ -54,7 +54,10 @@ fun SettingsScreen(
     onOpenQuickText: () -> Unit = {},
     // Navigates to the Personal dictionary sub-screen — see
     // PersonalDictionaryScreen.kt.
-    onOpenPersonalDictionary: () -> Unit = {}
+    onOpenPersonalDictionary: () -> Unit = {},
+    // Replays the first-launch onboarding tutorial — see
+    // OnboardingScreen.kt / MainActivity's hasSeenOnboarding gate.
+    onShowTutorial: () -> Unit = {}
 ) {
     // Bug fix: this Column had no verticalScroll at all, so once the
     // switches list + Theme Mode section together exceeded one screen's
@@ -153,6 +156,18 @@ fun SettingsScreen(
                 title = "Personal dictionary",
                 subtitle = "Words you've typed — view, add, or remove them",
                 modifier = Modifier.clickable { onOpenPersonalDictionary() }
+            ) {
+                Text(
+                    "›",
+                    fontSize = 20.sp,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+            SettingRow(
+                icon = "🎓",
+                title = "Show tutorial again",
+                subtitle = "Replay the getting-started guide",
+                modifier = Modifier.clickable { onShowTutorial() }
             ) {
                 Text(
                     "›",
