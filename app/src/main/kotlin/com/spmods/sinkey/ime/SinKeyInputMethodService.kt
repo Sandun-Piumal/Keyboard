@@ -1698,14 +1698,21 @@ class SinKeyInputMethodService : InputMethodService() {
             }
             "SPACE" -> {
                 if (isSinhalaTyping()) {
-                    commitPendingWord()
-                    // Uses the tracking-aware helper (not a bare
-                    // ic.commitText(" ", 1)) so this space stays included in
-                    // hiddenMessageLastEncodedLength when Hidden message
-                    // mode is on — see that helper's doc comment for why an
-                    // uncounted space here would corrupt the next word's
-                    // replace-the-span delete.
-                    appendTrailingAfterHiddenMessageCommit(ic, " ")
+                    // Mix mode only (see tryExpandMixQuickText) — checked
+                    // before commitPendingWord() since that call
+                    // transliterates+commits wordBuffer's raw Latin text,
+                    // which is exactly what a shortcut needs to match
+                    // against before it's converted away.
+                    if (!tryExpandMixQuickText(ic, " ")) {
+                        commitPendingWord()
+                        // Uses the tracking-aware helper (not a bare
+                        // ic.commitText(" ", 1)) so this space stays included in
+                        // hiddenMessageLastEncodedLength when Hidden message
+                        // mode is on — see that helper's doc comment for why an
+                        // uncounted space here would corrupt the next word's
+                        // replace-the-span delete.
+                        appendTrailingAfterHiddenMessageCommit(ic, " ")
+                    }
                 } else {
                     maybeAutocorrectAndCommitSpace(ic)
                 }
@@ -1717,7 +1724,17 @@ class SinKeyInputMethodService : InputMethodService() {
             }
             "ENTER" -> {
                 if (isSinhalaTyping()) {
-                    commitPendingWord()
+                    // Mix mode only (see tryExpandMixQuickText) — must
+                    // happen before commitPendingWord() for the same reason
+                    // as the SPACE branch above, and before
+                    // performEditorAction below, since a "Send"/"Search"
+                    // action submits whatever is on screen right now.
+                    // No trailing text here (unlike SPACE) — ENTER's own
+                    // newline/action handling below runs regardless of
+                    // which path committed the word.
+                    if (!tryExpandMixQuickText(ic, "")) {
+                        commitPendingWord()
+                    }
                 } else {
                     val typed = englishBuffer.toString()
                     // Same "Quick text" shortcut expansion as SPACE (see
@@ -2743,6 +2760,48 @@ class SinKeyInputMethodService : InputMethodService() {
         ic?.commitText(newEncodedText, 1)
         if (trailingText.isNotEmpty()) ic?.commitText(trailingText, 1)
         hiddenMessageLastEncodedLength = newEncodedText.length + trailingText.length
+    }
+
+    /**
+     * Mix-mode counterpart to maybeAutocorrectAndCommitSpace's / ENTER's
+     * quick-text expansion. Mix mode doesn't commit anything to the field
+     * live per letter the way English mode does — the raw Latin typed so
+     * far sits only in wordBuffer until commitPendingWord() transliterates
+     * and commits it at the word boundary (see that function's doc
+     * comment) — so unlike the English path, there's nothing already on
+     * screen to delete here; this only needs to check wordBuffer's raw
+     * text against the shortcut cache and, on a match, commit the
+     * expansion directly instead of calling commitPendingWord() at all.
+     *
+     * Returns true if a shortcut matched and was committed (caller should
+     * skip its normal commitPendingWord() call and append [trailing]
+     * itself was already handled here), false if there was no match
+     * (caller should fall through to its normal commitPendingWord() path).
+     */
+    private fun tryExpandMixQuickText(ic: android.view.inputmethod.InputConnection?, trailing: String): Boolean {
+        if (!cachedQuickTextEnabled) return false
+        if (currentLanguage.value != "mix") return false
+        val raw = wordBuffer.toString()
+        if (raw.isBlank()) return false
+        val expansion = com.spmods.sinkey.data.shortcut.ShortcutRepository.expand(raw, shortcutCache) ?: return false
+        // Same resumed-word handling as commitPendingWord — if wordBuffer's
+        // contents came from tapping back into an existing on-screen word
+        // rather than being typed fresh, that original text is still
+        // sitting in the field as plain text and must be deleted first, or
+        // the expansion would land beside it instead of replacing it.
+        if (ic != null) consumeResumedWordIfStillPresent(ic) else resumedWordBeforeCursor = null
+        ic?.setComposingText("", 1)
+        ic?.commitText(expansion, 1)
+        if (trailing.isNotEmpty()) ic?.commitText(trailing, 1)
+        wordBuffer.clear()
+        clearSuggestions()
+        // Without this, the cursor move this commit just caused gets
+        // misread by onUpdateSelection as an external jump — see the
+        // matching fix/comment in maybeAutocorrectAndCommitSpace — which
+        // would resume the just-committed expansion back into wordBuffer
+        // and duplicate it on the next word boundary.
+        if (ic != null) syncExpectedCursorPosition(ic)
+        return true
     }
 
     private fun commitPendingWord() {
