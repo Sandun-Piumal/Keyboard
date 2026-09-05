@@ -416,17 +416,22 @@ private fun SinKeyApp(prefs: PreferencesManager, initialTab: Tab = Tab.HOME) {
 
     Scaffold(
         floatingActionButton = {
-            // FAB only visible when keyboard preview is NOT shown (inside
-            // the preview itself there is no need for it), not during the
-            // Add Photo crop/edit flow (full-screen editors, same
-            // reasoning as bottomBar's condition above), and not while a
-            // settings sub-screen that has its own "+" FAB is open (Quick
-            // text, Personal dictionary) — otherwise this preview FAB sat
-            // directly on top of that screen's own FAB, showing as a
-            // second/duplicate button floating above "+".
-            val hasOwnFab = settingsSubScreen == SettingsSubScreen.QUICK_TEXT ||
-                settingsSubScreen == SettingsSubScreen.PERSONAL_DICTIONARY
-            if (!showKeyboardPreview && photoEditStep == PhotoEditStep.NONE && !hasOwnFab) {
+            // Preview FAB is now an allow-list rather than a deny-list: it
+            // only ever shows on the Themes tab and the Keyboard height
+            // sub-screen (both are places where seeing a live keyboard
+            // preview while adjusting colors/height genuinely helps).
+            // Everywhere else — Home, Settings' main list, Sound &
+            // vibration, Quick text, Personal dictionary, and every About
+            // row (User guide, Privacy policy, Terms, About developer) —
+            // it's hidden; those screens either have their own "+" FAB
+            // (Quick text, Personal dictionary) or simply have no reason
+            // to jump into a keyboard preview, and the extra floating
+            // button was just visual clutter on top of their own content.
+            // Still hidden inside the preview overlay itself and during
+            // the Add Photo crop/edit flow, same as before.
+            val showPreviewFab = (settingsSubScreen == SettingsSubScreen.MAIN && tab == Tab.THEMES) ||
+                settingsSubScreen == SettingsSubScreen.KEYBOARD_HEIGHT
+            if (!showKeyboardPreview && photoEditStep == PhotoEditStep.NONE && showPreviewFab) {
                 FloatingActionButton(
                     onClick = { showKeyboardPreview = true },
                     containerColor = DeshGreen,
