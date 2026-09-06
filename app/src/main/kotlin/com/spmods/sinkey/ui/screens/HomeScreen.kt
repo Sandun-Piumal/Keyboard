@@ -224,7 +224,11 @@ private fun isImeDefault(context: Context): Boolean {
 }
 
 @Composable
-fun HomeScreen(isDark: Boolean = isSystemInDarkTheme(), onStartTest: () -> Unit = {}) {
+fun HomeScreen(
+    isDark: Boolean = isSystemInDarkTheme(),
+    onStartTest: () -> Unit = {},
+    onViewProfile: () -> Unit = {}
+) {
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
 
@@ -330,23 +334,21 @@ fun HomeScreen(isDark: Boolean = isSystemInDarkTheme(), onStartTest: () -> Unit 
                         )
                         Spacer(Modifier.height(18.dp))
 
-                        // CTA button
+                        // CTA button — was "Start Typing" (opened IME
+                        // settings); now routes to the Profile screen,
+                        // which shows this device's real typing stats.
                         Row(
                             modifier = Modifier
                                 .clip(RoundedCornerShape(50))
                                 .background(
                                     Brush.horizontalGradient(listOf(IndigoDeep, IndigoMid))
                                 )
-                                .clickable {
-                                    context.startActivity(
-                                        Intent(Settings.ACTION_INPUT_METHOD_SETTINGS)
-                                    )
-                                }
+                                .clickable { onViewProfile() }
                                 .padding(horizontal = 22.dp, vertical = 13.dp),
                             verticalAlignment = Alignment.CenterVertically
                         ) {
                             Text(
-                                "Start Typing",
+                                "View Profile",
                                 color = Color.White,
                                 fontSize = 14.sp,
                                 fontWeight = FontWeight.Bold
