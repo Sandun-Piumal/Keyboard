@@ -1,6 +1,7 @@
 package com.spmods.sinkey.ui.screens
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Arrangement
@@ -138,34 +139,60 @@ fun ProfileScreen(
             .background(MaterialTheme.colorScheme.background)
             .padding(bottom = 24.dp)
     ) {
-        // ── Top bar ──────────────────────────────────────────────────────
+        // ── Header (matches TypingTestScreen's header) ──────────────────────
         Row(
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(20.dp, 18.dp, 20.dp, 6.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            androidx.compose.material3.Icon(
-                Icons.Filled.ArrowBack,
-                contentDescription = "Back",
-                tint = MaterialTheme.colorScheme.onBackground,
+            Box(
                 modifier = Modifier
-                    .size(26.dp)
-                    .clickable { onBack() }
-            )
-            Row(
-                modifier = Modifier.weight(1f),
-                horizontalArrangement = Arrangement.Center
+                    .size(40.dp)
+                    .clip(CircleShape)
+                    .background(if (isDark) Color(0xFF2C2145) else Color(0xFFEDE7FB))
+                    .clickable { onBack() },
+                contentAlignment = Alignment.Center
             ) {
-                Text("My ", fontSize = 20.sp, fontWeight = FontWeight.ExtraBold, color = ProfileIndigo)
-                Text("Profile", fontSize = 20.sp, fontWeight = FontWeight.ExtraBold, color = ProfilePink)
+                androidx.compose.material3.Icon(
+                    Icons.Filled.ArrowBack,
+                    contentDescription = "Back",
+                    tint = ProfileIndigo,
+                    modifier = Modifier.size(20.dp)
+                )
             }
-            androidx.compose.material3.Icon(
-                Icons.Filled.ModeEdit,
-                contentDescription = "Edit",
-                tint = ProfileIndigo,
-                modifier = Modifier.size(22.dp)
-            )
+
+            Column(
+                modifier = Modifier.weight(1f),
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                Row {
+                    Text("My ", fontSize = 22.sp, fontWeight = FontWeight.ExtraBold, color = ProfileIndigo)
+                    Text("Profile", fontSize = 22.sp, fontWeight = FontWeight.ExtraBold, color = ProfilePink)
+                }
+                Text(
+                    "Type Smart. Type Easy. Type SinKey.",
+                    fontSize = 11.sp,
+                    color = if (isDark) Color(0xFFB6AEC9) else Color(0xFF6B7280),
+                    modifier = Modifier.padding(top = 2.dp)
+                )
+            }
+
+            Box(
+                modifier = Modifier
+                    .size(36.dp)
+                    .clip(CircleShape)
+                    .background(if (isDark) Color(0xFF2C2145) else Color.White)
+                    .clickable { /* TODO: hook up edit-profile action */ },
+                contentAlignment = Alignment.Center
+            ) {
+                androidx.compose.material3.Icon(
+                    Icons.Filled.ModeEdit,
+                    contentDescription = "Edit profile",
+                    tint = ProfileIndigo,
+                    modifier = Modifier.size(18.dp)
+                )
+            }
         }
 
         // ── Identity card ────────────────────────────────────────────────
@@ -176,7 +203,11 @@ fun ProfileScreen(
                 .clip(RoundedCornerShape(24.dp))
                 .background(
                     Brush.linearGradient(
-                        listOf(Color(0xFFE9E1FB), Color(0xFFFBE4EF))
+                        if (isDark) {
+                            listOf(Color(0xFF241C3A), Color(0xFF3A2436))
+                        } else {
+                            listOf(Color(0xFFE9E1FB), Color(0xFFFBE4EF))
+                        }
                     )
                 )
                 .padding(20.dp)
@@ -184,31 +215,36 @@ fun ProfileScreen(
             Column {
                 Row(verticalAlignment = Alignment.Top) {
                     Box(
-                        modifier = Modifier
-                            .size(88.dp)
-                            .clip(CircleShape)
-                            .background(Color(0xFFD8CCF7)),
-                        contentAlignment = Alignment.Center
+                        modifier = Modifier.size(88.dp)
                     ) {
-                        androidx.compose.material3.Icon(
-                            Icons.Filled.Person,
-                            contentDescription = null,
-                            tint = ProfileIndigo,
-                            modifier = Modifier.size(48.dp)
-                        )
+                        Box(
+                            modifier = Modifier
+                                .size(88.dp)
+                                .clip(CircleShape)
+                                .background(if (isDark) Color(0xFF3A2E5C) else Color(0xFFD8CCF7)),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            androidx.compose.material3.Icon(
+                                Icons.Filled.Person,
+                                contentDescription = null,
+                                tint = ProfileIndigo,
+                                modifier = Modifier.size(48.dp)
+                            )
+                        }
                         Box(
                             modifier = Modifier
                                 .align(Alignment.BottomEnd)
                                 .size(28.dp)
                                 .clip(CircleShape)
-                                .background(ProfileIndigo),
+                                .background(ProfileIndigo)
+                                .border(2.dp, if (isDark) Color(0xFF241C3A) else Color(0xFFFBE4EF), CircleShape),
                             contentAlignment = Alignment.Center
                         ) {
                             androidx.compose.material3.Icon(
                                 Icons.Filled.CameraAlt,
                                 contentDescription = "Change photo",
                                 tint = Color.White,
-                                modifier = Modifier.size(14.dp)
+                                modifier = Modifier.size(13.dp)
                             )
                         }
                     }
