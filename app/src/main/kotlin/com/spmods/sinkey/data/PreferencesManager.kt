@@ -9,7 +9,10 @@ import androidx.datastore.preferences.preferencesDataStore
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
 
-private val Context.dataStore by preferencesDataStore(name = "sinkey_settings")
+// internal (not private): TypingStatsRepository shares this same DataStore
+// file for its own keys, so stats live alongside settings without a second
+// DataStore instance being created for the same file name.
+internal val Context.dataStore by preferencesDataStore(name = "sinkey_settings")
 
 enum class ThemeMode { SYSTEM, LIGHT, DARK }
 
