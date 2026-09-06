@@ -479,20 +479,20 @@ fun HomeScreen(isDark: Boolean = isSystemInDarkTheme(), onStartTest: () -> Unit 
             elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
         ) {
             Box(modifier = Modifier.fillMaxWidth()) {
-                // Decorative dots — sit just above/around the Start Test
-                // button on the right side of the card, matching reference.
+                // Decorative dots pinned to the card's top-right corner,
+                // sitting above the Start Test button — matches reference.
                 Box(
                     modifier = Modifier
                         .align(Alignment.TopEnd)
-                        .offset(x = (-58).dp, y = 14.dp)
-                        .size(6.dp)
+                        .offset(x = (-54).dp, y = 10.dp)
+                        .size(7.dp)
                         .clip(CircleShape)
                         .background(Color(0xFFB8A0EC))
                 )
                 Box(
                     modifier = Modifier
                         .align(Alignment.TopEnd)
-                        .offset(x = (-32).dp, y = 22.dp)
+                        .offset(x = (-28).dp, y = 20.dp)
                         .size(5.dp)
                         .clip(CircleShape)
                         .background(Color(0xFFB8A0EC))
@@ -500,8 +500,8 @@ fun HomeScreen(isDark: Boolean = isSystemInDarkTheme(), onStartTest: () -> Unit 
                 Box(
                     modifier = Modifier
                         .align(Alignment.TopEnd)
-                        .offset(x = (-14).dp, y = 34.dp)
-                        .size(4.dp)
+                        .offset(x = (-14).dp, y = 30.dp)
+                        .size(5.dp)
                         .clip(CircleShape)
                         .background(Color(0xFFB8A0EC))
                 )
@@ -509,7 +509,7 @@ fun HomeScreen(isDark: Boolean = isSystemInDarkTheme(), onStartTest: () -> Unit 
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(16.dp, 16.dp, 16.dp, 16.dp),
+                        .padding(16.dp, 18.dp, 16.dp, 18.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Image(
@@ -543,32 +543,33 @@ fun HomeScreen(isDark: Boolean = isSystemInDarkTheme(), onStartTest: () -> Unit 
                             color = BodyGrey,
                             lineHeight = 13.sp
                         )
-                        Spacer(Modifier.height(10.dp))
+                    }
 
-                        Row(
-                            modifier = Modifier
-                                .clip(RoundedCornerShape(50))
-                                .background(
-                                    Brush.horizontalGradient(listOf(IndigoDeep, IndigoMid))
-                                )
-                                .clickable { onStartTest() }
-                                .padding(horizontal = 18.dp, vertical = 10.dp),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Text(
-                                "Start Test",
-                                color = Color.White,
-                                fontSize = 13.sp,
-                                fontWeight = FontWeight.Bold
+                    Spacer(Modifier.width(8.dp))
+
+                    Row(
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(50))
+                            .background(
+                                Brush.horizontalGradient(listOf(IndigoDeep, IndigoMid))
                             )
-                            Spacer(Modifier.width(4.dp))
-                            Icon(
-                                Icons.Filled.ChevronRight,
-                                contentDescription = null,
-                                tint = Color.White,
-                                modifier = Modifier.size(14.dp)
-                            )
-                        }
+                            .clickable { onStartTest() }
+                            .padding(horizontal = 16.dp, vertical = 11.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            "Start Test",
+                            color = Color.White,
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.Bold
+                        )
+                        Spacer(Modifier.width(4.dp))
+                        Icon(
+                            Icons.Filled.ChevronRight,
+                            contentDescription = null,
+                            tint = Color.White,
+                            modifier = Modifier.size(14.dp)
+                        )
                     }
                 }
             }
