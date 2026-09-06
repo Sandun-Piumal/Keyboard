@@ -70,6 +70,7 @@ import com.spmods.sinkey.ui.screens.PhotoCropScreen
 import com.spmods.sinkey.ui.screens.PhotoEditThemeScreen
 import com.spmods.sinkey.ui.screens.SettingsScreen
 import com.spmods.sinkey.ui.screens.ThemesScreen
+import com.spmods.sinkey.ui.screens.TypingTestScreen
 import com.spmods.sinkey.ui.theme.SinKeyTheme
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -184,6 +185,7 @@ private fun SinKeyApp(prefs: PreferencesManager, initialTab: Tab = Tab.HOME) {
     var rawPickedBitmap by remember { mutableStateOf<Bitmap?>(null) }
     var croppedBitmap by remember { mutableStateOf<Bitmap?>(null) }
     var showKeyboardPreview by remember { mutableStateOf(false) }
+    var showTypingTest by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
 
     val themeMode by prefs.themeMode.collectAsState(initial = ThemeMode.SYSTEM)
@@ -394,6 +396,9 @@ private fun SinKeyApp(prefs: PreferencesManager, initialTab: Tab = Tab.HOME) {
     if (tab != Tab.HOME && !showKeyboardPreview) {
         BackHandler { tab = Tab.HOME }
     }
+    if (showTypingTest) {
+        BackHandler { showTypingTest = false }
+    }
 
     // ── First-launch onboarding gate ────────────────────────────────────────
     // null  -> DataStore hasn't emitted yet; render nothing this frame
@@ -443,7 +448,7 @@ private fun SinKeyApp(prefs: PreferencesManager, initialTab: Tab = Tab.HOME) {
             }
         },
         bottomBar = {
-            if (settingsSubScreen == SettingsSubScreen.MAIN && photoEditStep == PhotoEditStep.NONE && !showKeyboardPreview) {
+            if (settingsSubScreen == SettingsSubScreen.MAIN && photoEditStep == PhotoEditStep.NONE && !showKeyboardPreview && !showTypingTest) {
                 NavigationBar {
                     NavigationBarItem(
                         selected = tab == Tab.HOME,
@@ -488,7 +493,8 @@ private fun SinKeyApp(prefs: PreferencesManager, initialTab: Tab = Tab.HOME) {
                 // underneath it.
                 val showHeader = photoEditStep == PhotoEditStep.NONE &&
                     settingsSubScreen == SettingsSubScreen.MAIN &&
-                    !showKeyboardPreview
+                    !showKeyboardPreview &&
+                    !showTypingTest
 
                 Column(modifier = Modifier.fillMaxSize()) {
                     if (showHeader) {
@@ -626,9 +632,13 @@ private fun SinKeyApp(prefs: PreferencesManager, initialTab: Tab = Tab.HOME) {
                             onBack = { settingsSubScreen = SettingsSubScreen.MAIN }
                         )
                     }
+                    showTypingTest -> TypingTestScreen(
+                        onBack = { showTypingTest = false },
+                        isDark = isDark
+                    )
                     tab == Tab.HOME -> HomeScreen(
                         isDark = isDark,
-                        onStartTest = { showKeyboardPreview = true }
+                        onStartTest = { showTypingTest = true }
                     )
                     tab == Tab.THEMES -> ThemesScreen(
                         currentMode = themeMode,
