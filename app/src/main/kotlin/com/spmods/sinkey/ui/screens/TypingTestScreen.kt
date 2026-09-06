@@ -43,6 +43,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -59,8 +60,11 @@ import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.platform.LocalContext
 import com.spmods.sinkey.R
+import com.spmods.sinkey.data.TypingStatsRepository
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 
 /** Which passage language the person is being tested on. */
 enum class TypingTestMode { ENGLISH, SINHALA, MIX }
@@ -98,6 +102,9 @@ fun TypingTestScreen(
 
     val keyboardController = LocalSoftwareKeyboardController.current
     val focusManager = LocalFocusManager.current
+    val context = LocalContext.current
+    val coroutineScope = rememberCoroutineScope()
+    val statsRepo = remember(context) { TypingStatsRepository(context) }
 
     // Typing state
     var input by remember { mutableStateOf(TextFieldValue("")) }
@@ -159,6 +166,11 @@ fun TypingTestScreen(
             computeResults()
             focusManager.clearFocus()
             keyboardController?.hide()
+            // Save this real result (not a placeholder) so the Profile
+            // screen's Best WPM / Last result / streak reflect actual
+            // completed tests. Fired once per finish, same as the
+            // computation above.
+            coroutineScope.launch { statsRepo.recordTestResult(finalWpm, finalAccuracy) }
         }
     }
 
