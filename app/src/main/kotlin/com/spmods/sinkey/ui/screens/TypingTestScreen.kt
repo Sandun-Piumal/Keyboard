@@ -63,12 +63,14 @@ import com.spmods.sinkey.R
 import kotlinx.coroutines.delay
 
 /** Which passage language the person is being tested on. */
-enum class TypingTestMode { ENGLISH, SINHALA }
+enum class TypingTestMode { ENGLISH, SINHALA, MIX }
 
 private val EnglishPassage =
     "The quick brown fox jumps over the lazy dog. Practice makes progress. Keep going and improve your typing skills."
 private val SinhalaPassage =
     "අද දවස ලස්සනයි. පුහුණුව මගින් දක්ෂතාවය වර්ධනය වේ. දිගටම උත්සාහ කර ඔබේ ටයිප් කිරීමේ හැකියාව දියුණු කරගන්න."
+private val MixPassage =
+    "අද මම office එකට යනවා. Practice makes progress කියන එක හරි talk එකක්. ඔයාගේ typing skill එක දියුණු කරගන්න දිගටම try කරන්න."
 
 private const val TEST_DURATION_SECONDS = 60
 
@@ -86,9 +88,13 @@ fun TypingTestScreen(
     isDark: Boolean = isSystemInDarkTheme(),
     onSettingsClick: () -> Unit = {}
 ) {
-    var mode by remember { mutableStateOf(TypingTestMode.ENGLISH) }
+    var mode by remember { mutableStateOf(TypingTestMode.MIX) }
     var modeMenuExpanded by remember { mutableStateOf(false) }
-    val passage = if (mode == TypingTestMode.ENGLISH) EnglishPassage else SinhalaPassage
+    val passage = when (mode) {
+        TypingTestMode.ENGLISH -> EnglishPassage
+        TypingTestMode.SINHALA -> SinhalaPassage
+        TypingTestMode.MIX -> MixPassage
+    }
 
     val keyboardController = LocalSoftwareKeyboardController.current
     val focusManager = LocalFocusManager.current
@@ -327,7 +333,11 @@ fun TypingTestScreen(
                     StatItem(
                         icon = Icons.Filled.GpsFixed,
                         label = "Mode",
-                        value = if (mode == TypingTestMode.ENGLISH) "English" else "Sinhala",
+                        value = when (mode) {
+                            TypingTestMode.ENGLISH -> "English"
+                            TypingTestMode.SINHALA -> "Sinhala"
+                            TypingTestMode.MIX -> "Mix"
+                        },
                         tint = indigo,
                         valueColor = titleColor,
                         labelColor = subColor,
@@ -338,6 +348,13 @@ fun TypingTestScreen(
                         expanded = modeMenuExpanded,
                         onDismissRequest = { modeMenuExpanded = false }
                     ) {
+                        DropdownMenuItem(
+                            text = { Text("Mix") },
+                            onClick = {
+                                mode = TypingTestMode.MIX
+                                modeMenuExpanded = false
+                            }
+                        )
                         DropdownMenuItem(
                             text = { Text("English") },
                             onClick = {
