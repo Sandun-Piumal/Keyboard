@@ -634,7 +634,11 @@ private fun SinKeyApp(prefs: PreferencesManager, initialTab: Tab = Tab.HOME) {
                     }
                     showTypingTest -> TypingTestScreen(
                         onBack = { showTypingTest = false },
-                        isDark = isDark
+                        isDark = isDark,
+                        onSettingsClick = {
+                            showTypingTest = false
+                            tab = Tab.SETTINGS
+                        }
                     )
                     tab == Tab.HOME -> HomeScreen(
                         isDark = isDark,
