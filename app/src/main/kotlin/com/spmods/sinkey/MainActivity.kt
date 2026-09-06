@@ -66,7 +66,6 @@ import com.spmods.sinkey.ui.screens.OnboardingScreen
 import com.spmods.sinkey.ui.screens.UserGuideScreen
 import com.spmods.sinkey.ui.screens.LegalTextScreen
 import com.spmods.sinkey.ui.screens.AboutDeveloperScreen
-import com.spmods.sinkey.ui.screens.NotepadScreen
 import com.spmods.sinkey.ui.screens.PhotoCropScreen
 import com.spmods.sinkey.ui.screens.PhotoEditThemeScreen
 import com.spmods.sinkey.ui.screens.SettingsScreen
@@ -176,13 +175,6 @@ private fun openRateUs(context: android.content.Context) {
 private fun SinKeyApp(prefs: PreferencesManager, initialTab: Tab = Tab.HOME) {
     var tab by remember { mutableStateOf(initialTab) }
     var settingsSubScreen by remember { mutableStateOf(SettingsSubScreen.MAIN) }
-    // Full-screen overlay reached from Home's "Start Typing" button — see
-    // NotepadScreen.kt. A plain boolean rather than folding it into
-    // SettingsSubScreen since it isn't part of the Settings tab's
-    // navigation hierarchy at all; it can be opened from Home regardless
-    // of which tab/sub-screen was active, and always returns to exactly
-    // that same spot on back.
-    var showNotepad by remember { mutableStateOf(false) }
     var photoEditStep by remember { mutableStateOf(PhotoEditStep.NONE) }
     // Raw picker Uri decoded to a Bitmap (CROP step's source), then the
     // user-cropped result (EDIT step's source) — both held only for the
@@ -398,9 +390,6 @@ private fun SinKeyApp(prefs: PreferencesManager, initialTab: Tab = Tab.HOME) {
     if (settingsSubScreen == SettingsSubScreen.ABOUT_DEVELOPER) {
         BackHandler { settingsSubScreen = SettingsSubScreen.MAIN }
     }
-    if (showNotepad) {
-        BackHandler { showNotepad = false }
-    }
 
     if (tab != Tab.HOME && !showKeyboardPreview) {
         BackHandler { tab = Tab.HOME }
@@ -420,17 +409,6 @@ private fun SinKeyApp(prefs: PreferencesManager, initialTab: Tab = Tab.HOME) {
         OnboardingScreen(
             onFinish = { scope.launch { prefs.setHasSeenOnboarding(true) } }
         )
-        return
-    }
-
-    // Full-screen Notepad overlay — see showNotepad's declaration above.
-    // Placed as its own early return (same pattern as the onboarding gate
-    // right above) so it fully replaces the app's Scaffold rather than
-    // being nested inside it; whatever tab/sub-screen was active
-    // underneath is untouched and simply reappears once this returns via
-    // onBack.
-    if (showNotepad) {
-        NotepadScreen(onBack = { showNotepad = false })
         return
     }
 
@@ -648,7 +626,10 @@ private fun SinKeyApp(prefs: PreferencesManager, initialTab: Tab = Tab.HOME) {
                             onBack = { settingsSubScreen = SettingsSubScreen.MAIN }
                         )
                     }
-                    tab == Tab.HOME -> HomeScreen(isDark = isDark, onStartTyping = { showNotepad = true })
+                    tab == Tab.HOME -> HomeScreen(
+                        isDark = isDark,
+                        onStartTest = { showKeyboardPreview = true }
+                    )
                     tab == Tab.THEMES -> ThemesScreen(
                         currentMode = themeMode,
                         onSelect = { mode -> scope.launch { prefs.setThemeMode(mode) } },
