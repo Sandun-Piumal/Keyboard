@@ -50,6 +50,8 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
@@ -81,11 +83,15 @@ private const val TEST_DURATION_SECONDS = 60
 @Composable
 fun TypingTestScreen(
     onBack: () -> Unit,
-    isDark: Boolean = isSystemInDarkTheme()
+    isDark: Boolean = isSystemInDarkTheme(),
+    onSettingsClick: () -> Unit = {}
 ) {
     var mode by remember { mutableStateOf(TypingTestMode.ENGLISH) }
     var modeMenuExpanded by remember { mutableStateOf(false) }
     val passage = if (mode == TypingTestMode.ENGLISH) EnglishPassage else SinhalaPassage
+
+    val keyboardController = LocalSoftwareKeyboardController.current
+    val focusManager = LocalFocusManager.current
 
     // Typing state
     var input by remember { mutableStateOf(TextFieldValue("")) }
@@ -141,14 +147,18 @@ fun TypingTestScreen(
         }
     }
 
-    // Compute results the moment the test finishes
+    // Compute results the moment the test finishes, and hide the keyboard
     LaunchedEffect(isFinished) {
-        if (isFinished) computeResults()
+        if (isFinished) {
+            computeResults()
+            focusManager.clearFocus()
+            keyboardController?.hide()
+        }
     }
 
-    val cardBg = if (isDark) Color(0xFF241B3D) else Color(0xFFF6F3FC)
-    val statBarBg = if (isDark) Color(0xFF2C2145) else Color(0xFFEDE7FB)
-    val passageBg = if (isDark) Color(0xFF2C2145) else Color(0xFFEDE7FB)
+    val cardBg = if (isDark) Color(0xFF000000) else Color(0xFFFFFFFF)
+    val statBarBg = if (isDark) Color(0xFF000000) else Color(0xFFFFFFFF)
+    val passageBg = if (isDark) Color(0xFF1A1A1A) else Color(0xFFF5F5F5)
     val titleColor = if (isDark) Color(0xFFF2EEFB) else Color(0xFF1A1A2E)
     val subColor = if (isDark) Color(0xFFB6AEC9) else Color(0xFF6B7280)
     val indigo = Color(0xFF6C4CE0)
@@ -220,9 +230,13 @@ fun TypingTestScreen(
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(20.dp, 12.dp, 20.dp, 0.dp),
-            verticalAlignment = Alignment.Top
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.SpaceBetween
         ) {
-            Column(modifier = Modifier.weight(1f)) {
+            Column(
+                modifier = Modifier.weight(1f),
+                verticalArrangement = Arrangement.Center
+            ) {
                 Box(
                     modifier = Modifier
                         .clip(RoundedCornerShape(50))
@@ -255,14 +269,23 @@ fun TypingTestScreen(
                 )
             }
 
-            Image(
-                painter = painterResource(id = R.drawable.test_typing_stopwatch),
-                contentDescription = "Typing test illustration",
-                contentScale = ContentScale.Fit,
+            Spacer(Modifier.width(12.dp))
+
+            Box(
                 modifier = Modifier
                     .width(120.dp)
-                    .height(120.dp)
-            )
+                    .height(120.dp),
+                contentAlignment = Alignment.Center
+            ) {
+                Image(
+                    painter = painterResource(id = R.drawable.test_typing_stopwatch),
+                    contentDescription = "Typing test illustration",
+                    contentScale = ContentScale.Fit,
+                    modifier = Modifier
+                        .width(110.dp)
+                        .height(110.dp)
+                )
+            }
         }
 
         // ── Stats strip: Time / Goal Speed / Mode ────────────────────────
@@ -462,7 +485,7 @@ fun TypingTestScreen(
                 label = "Settings",
                 tint = subColor,
                 bg = if (isDark) Color(0xFF2C2145) else Color(0xFFEDE7FB),
-                onClick = { /* future: link to Settings tab */ }
+                onClick = onSettingsClick
             )
 
             Spacer(Modifier.width(14.dp))
