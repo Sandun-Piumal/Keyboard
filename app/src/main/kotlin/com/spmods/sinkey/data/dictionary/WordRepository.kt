@@ -12,6 +12,12 @@ class WordRepository(context: Context) {
     private val dao = WordDatabase.getInstance(context).wordDao()
     private val bigramDao = WordDatabase.getInstance(context).bigramDao()
 
+    /**
+     * Total distinct words known (bundled dictionary + user-learned,
+     * across both languages) — see WordDao.countAll's doc comment.
+     */
+    suspend fun totalWordCount(): Int = dao.countAll()
+
     /** Record a use of [word] for [language]. Safe to call for every committed word. */
     suspend fun learn(word: String, language: String) {
         val trimmed = word.trim()
