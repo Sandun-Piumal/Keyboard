@@ -66,6 +66,7 @@ class SinKeyInputMethodService : InputMethodService() {
     private lateinit var lifecycleOwner: ImeLifecycleOwner
     private lateinit var prefs: PreferencesManager
     private lateinit var wordRepo: WordRepository
+    private lateinit var statsRepo: com.spmods.sinkey.data.TypingStatsRepository
     private lateinit var clipRepo: ClipRepository
     private lateinit var stickerRepo: com.spmods.sinkey.data.sticker.StickerRepository
     private lateinit var shortcutRepo: com.spmods.sinkey.data.shortcut.ShortcutRepository
@@ -478,6 +479,7 @@ class SinKeyInputMethodService : InputMethodService() {
         }
         prefs = PreferencesManager(this)
         wordRepo = WordRepository(this)
+        statsRepo = com.spmods.sinkey.data.TypingStatsRepository(this)
         clipRepo = ClipRepository(this)
         stickerRepo = com.spmods.sinkey.data.sticker.StickerRepository(this)
         shortcutRepo = com.spmods.sinkey.data.shortcut.ShortcutRepository(this)
@@ -1643,6 +1645,21 @@ class SinKeyInputMethodService : InputMethodService() {
         // shouldn't linger describing a correction that's no longer the
         // most recent thing that happened.
         clearAutocorrectUndoIfAny()
+
+        // Real typed-character counter for the Profile screen's stats
+        // (see TypingStatsRepository). Every printable key the user
+        // actually presses reaches this single point before any of the
+        // dispatch branches below run, so counting here (once) covers
+        // letters, Sinhala glyphs, punctuation, and space alike without
+        // needing a separate hook at each commitText() call site. Control
+        // keys (BACKSPACE, SHIFT, LANG_TOGGLE, tool buttons, multi-char
+        // internal tokens like "PASTE_TEXT:...") are excluded since they
+        // aren't a character the user composed themselves. Skipped
+        // entirely in Incognito, matching how word-learning/clipboard
+        // history are already skipped there.
+        if (key.length == 1 && !cachedIncognitoEnabled) {
+            serviceScope.launch { statsRepo.recordCharacterTyped() }
+        }
 
         when (key) {
             "BACKSPACE" -> {
@@ -3368,6 +3385,11 @@ class SinKeyInputMethodService : InputMethodService() {
                 if (prev.isNotBlank() && prevLanguage == language) {
                     wordRepo.learnBigram(prev, word, language)
                 }
+                // Real word-count for the Profile screen — learnWord() is
+                // only ever called with words the user actually typed and
+                // finished (see this function's doc comment), never pasted
+                // text, so this is a true "words typed" counter.
+                statsRepo.recordWordTyped()
             }
         }
         lastCommittedWord = word
