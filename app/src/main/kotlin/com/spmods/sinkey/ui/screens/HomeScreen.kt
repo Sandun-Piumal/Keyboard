@@ -7,14 +7,7 @@ import android.os.Handler
 import android.os.Looper
 import android.provider.Settings
 import android.view.inputmethod.InputMethodManager
-import androidx.compose.animation.core.FastOutSlowInEasing
-import androidx.compose.animation.core.RepeatMode
-import androidx.compose.animation.core.animateFloat
-import androidx.compose.animation.core.infiniteRepeatable
-import androidx.compose.animation.core.rememberInfiniteTransition
-import androidx.compose.animation.core.tween
 import androidx.compose.ui.draw.shadow
-import androidx.compose.ui.draw.graphicsLayer
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -231,7 +224,7 @@ private fun isImeDefault(context: Context): Boolean {
 }
 
 @Composable
-fun HomeScreen(isDark: Boolean = isSystemInDarkTheme(), onStartTyping: () -> Unit = {}) {
+fun HomeScreen(isDark: Boolean = isSystemInDarkTheme(), onStartTest: () -> Unit = {}) {
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
 
@@ -337,38 +330,18 @@ fun HomeScreen(isDark: Boolean = isSystemInDarkTheme(), onStartTyping: () -> Uni
                         )
                         Spacer(Modifier.height(18.dp))
 
-                        // Gentle continuous pulse — draws the eye to this
-                        // CTA without needing a tap first, since the ask
-                        // was specifically for an always-animating button
-                        // rather than a tap-triggered ripple/scale (Compose
-                        // buttons already get that for free from the
-                        // clickable ripple, which wasn't considered enough
-                        // here). infiniteRepeatable + reverseMode.Reverse
-                        // gives a smooth breathe-in/breathe-out loop rather
-                        // than a snap-back-to-start pulse.
-                        val pulseTransition = rememberInfiniteTransition(label = "startTypingPulse")
-                        val pulseScale by pulseTransition.animateFloat(
-                            initialValue = 1f,
-                            targetValue = 1.05f,
-                            animationSpec = infiniteRepeatable(
-                                animation = tween(900, easing = FastOutSlowInEasing),
-                                repeatMode = RepeatMode.Reverse
-                            ),
-                            label = "startTypingPulseScale"
-                        )
-
                         // CTA button
                         Row(
                             modifier = Modifier
-                                .graphicsLayer {
-                                    scaleX = pulseScale
-                                    scaleY = pulseScale
-                                }
                                 .clip(RoundedCornerShape(50))
                                 .background(
                                     Brush.horizontalGradient(listOf(IndigoDeep, IndigoMid))
                                 )
-                                .clickable { onStartTyping() }
+                                .clickable {
+                                    context.startActivity(
+                                        Intent(Settings.ACTION_INPUT_METHOD_SETTINGS)
+                                    )
+                                }
                                 .padding(horizontal = 22.dp, vertical = 13.dp),
                             verticalAlignment = Alignment.CenterVertically
                         ) {
@@ -497,103 +470,107 @@ fun HomeScreen(isDark: Boolean = isSystemInDarkTheme(), onStartTyping: () -> Uni
         }
 
         // ── Test Typing ──────────────────────────────────────────────────────
-        // Reuses the exact same destination as the welcome card's "Start
-        // Typing" button (see onStartTyping) — this isn't a separate
-        // scored/timed test, just a second, differently-styled entry point
-        // into the same free-form scratchpad, matching the two-CTA layout
-        // in the reference screenshot. Keeping both point at one
-        // destination avoids maintaining two different "try typing"
-        // experiences for what's conceptually the same action.
-        Box(
+        Card(
             modifier = Modifier
                 .padding(20.dp, 20.dp, 20.dp, 0.dp)
-                .fillMaxWidth()
-                .clip(RoundedCornerShape(20.dp))
-                .background(Color(0xFFEDE6FB))
-                .clickable { onStartTyping() }
+                .fillMaxWidth(),
+            shape = RoundedCornerShape(20.dp),
+            colors = CardDefaults.cardColors(containerColor = Color(0xFFEDE7FB)),
+            elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
         ) {
-            // Decorative floating dots, purely ornamental — matches the
-            // small scattered circles near the top-right of this card in
-            // the reference screenshot (the welcome card above has its own
-            // similar sparkle/dot decorations already).
-            Box(
-                modifier = Modifier
-                    .align(Alignment.TopEnd)
-                    .offset(x = (-28).dp, y = 14.dp)
-                    .size(9.dp)
-                    .clip(CircleShape)
-                    .background(Color(0xFFC4B5F2))
-            )
-            Box(
-                modifier = Modifier
-                    .align(Alignment.TopEnd)
-                    .offset(x = (-14).dp, y = 30.dp)
-                    .size(6.dp)
-                    .clip(CircleShape)
-                    .background(Color(0xFFD4C5F9))
-            )
-            Box(
-                modifier = Modifier
-                    .align(Alignment.TopEnd)
-                    .offset(x = (-42).dp, y = 44.dp)
-                    .size(5.dp)
-                    .clip(CircleShape)
-                    .background(Color(0xFFD4C5F9))
-            )
-
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(20.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Image(
-                    painter = painterResource(id = R.drawable.test_typing_stopwatch),
-                    contentDescription = "Test typing",
-                    contentScale = ContentScale.Fit,
-                    modifier = Modifier.size(72.dp)
+            Box(modifier = Modifier.fillMaxWidth()) {
+                // Decorative dots above the Start Test button, matching the
+                // reference design — one bigger dot and two smaller ones.
+                Box(
+                    modifier = Modifier
+                        .align(Alignment.TopEnd)
+                        .offset(x = (-46).dp, y = 30.dp)
+                        .size(7.dp)
+                        .clip(CircleShape)
+                        .background(Color(0xFFB8A0EC))
                 )
-                Spacer(Modifier.width(14.dp))
-                Column(modifier = Modifier.weight(1f)) {
-                    Text(
-                        "TEST YOUR TYPING",
-                        fontSize = 10.sp,
-                        fontWeight = FontWeight.Bold,
-                        letterSpacing = 1.sp,
-                        color = IndigoDeep
-                    )
-                    Spacer(Modifier.height(2.dp))
-                    Text(
-                        "Test Typing",
-                        fontSize = 17.sp,
-                        fontWeight = FontWeight.ExtraBold,
-                        color = MaterialTheme.colorScheme.onBackground
-                    )
-                    Spacer(Modifier.height(2.dp))
-                    Text(
-                        "Check your typing speed and improve your skills with a quick test.",
-                        fontSize = 12.sp,
-                        color = BodyGrey,
-                        lineHeight = 16.sp
-                    )
-                }
-                Spacer(Modifier.width(10.dp))
+                Box(
+                    modifier = Modifier
+                        .align(Alignment.TopEnd)
+                        .offset(x = (-24).dp, y = 40.dp)
+                        .size(5.dp)
+                        .clip(CircleShape)
+                        .background(Color(0xFFB8A0EC))
+                )
+                Box(
+                    modifier = Modifier
+                        .align(Alignment.TopEnd)
+                        .offset(x = (-8).dp, y = 52.dp)
+                        .size(5.dp)
+                        .clip(CircleShape)
+                        .background(Color(0xFFB8A0EC))
+                )
+
                 Row(
                     modifier = Modifier
-                        .clip(RoundedCornerShape(50))
-                        .background(Brush.horizontalGradient(listOf(IndigoDeep, IndigoMid)))
-                        .clickable { onStartTyping() }
-                        .padding(horizontal = 16.dp, vertical = 10.dp),
+                        .fillMaxWidth()
+                        .padding(18.dp, 18.dp, 18.dp, 18.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Text("Start Test", color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.Bold)
-                    Spacer(Modifier.width(4.dp))
-                    Icon(
-                        Icons.Filled.ChevronRight,
-                        contentDescription = null,
-                        tint = Color.White,
-                        modifier = Modifier.size(14.dp)
+                    Image(
+                        painter = painterResource(id = R.drawable.test_typing_stopwatch),
+                        contentDescription = "Test typing illustration",
+                        contentScale = ContentScale.Fit,
+                        modifier = Modifier.size(72.dp)
                     )
+
+                    Spacer(Modifier.width(12.dp))
+
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            "TEST YOUR TYPING",
+                            fontSize = 10.sp,
+                            fontWeight = FontWeight.Bold,
+                            letterSpacing = 0.8.sp,
+                            color = IndigoDeep
+                        )
+                        Spacer(Modifier.height(2.dp))
+                        Text(
+                            "Test Typing",
+                            fontSize = 17.sp,
+                            fontWeight = FontWeight.ExtraBold,
+                            color = MaterialTheme.colorScheme.onBackground
+                        )
+                        Spacer(Modifier.height(4.dp))
+                        Text(
+                            "Check your typing speed and improve your skills with a quick test.",
+                            fontSize = 11.sp,
+                            color = BodyGrey,
+                            lineHeight = 14.sp
+                        )
+                    }
+
+                    Spacer(Modifier.width(8.dp))
+
+                    Row(
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(50))
+                            .background(
+                                Brush.horizontalGradient(listOf(IndigoDeep, IndigoMid))
+                            )
+                            .clickable { onStartTest() }
+                            .padding(horizontal = 16.dp, vertical = 11.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            "Start Test",
+                            color = Color.White,
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.Bold
+                        )
+                        Spacer(Modifier.width(4.dp))
+                        Icon(
+                            Icons.Filled.ChevronRight,
+                            contentDescription = null,
+                            tint = Color.White,
+                            modifier = Modifier.size(14.dp)
+                        )
+                    }
                 }
             }
         }
