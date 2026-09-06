@@ -64,6 +64,16 @@ interface WordDao {
     suspend fun upsert(entity: WordEntity)
 
     /**
+     * Total distinct words known across both languages — bundled base
+     * dictionary entries plus everything the user has actually typed (see
+     * DictionarySeeder for how the base list gets in here). Used by the
+     * Profile screen's "Words learned" stat; intentionally not filtered by
+     * language since that stat is meant as one overall count.
+     */
+    @Query("SELECT COUNT(*) FROM words")
+    suspend fun countAll(): Int
+
+    /**
      * All learned words for [language], newest/most-used first, for the
      * Personal Dictionary screen's browse list. Distinct from
      * getAllForLanguage (which orders by frequency only, for gesture
