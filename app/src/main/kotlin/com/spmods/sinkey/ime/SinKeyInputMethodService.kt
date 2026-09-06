@@ -1704,14 +1704,14 @@ class SinKeyInputMethodService : InputMethodService() {
                     // which is exactly what a shortcut needs to match
                     // against before it's converted away.
                     if (!tryExpandMixQuickText(ic, " ")) {
-                        commitPendingWord()
-                        // Uses the tracking-aware helper (not a bare
-                        // ic.commitText(" ", 1)) so this space stays included in
-                        // hiddenMessageLastEncodedLength when Hidden message
-                        // mode is on — see that helper's doc comment for why an
-                        // uncounted space here would corrupt the next word's
-                        // replace-the-span delete.
-                        appendTrailingAfterHiddenMessageCommit(ic, " ")
+                        // Passes " " as commitPendingWord's own trailing
+                        // param so the word AND the space it's followed by
+                        // commit inside one batch edit — see that
+                        // function's doc comment for why a separate,
+                        // later commitText(" ", 1) call here was exactly
+                        // the kind of unbatched follow-up edit that could
+                        // race against Compose's BasicTextField buffer.
+                        commitPendingWord(trailing = " ")
                     }
                 } else {
                     maybeAutocorrectAndCommitSpace(ic)
@@ -2815,13 +2815,7 @@ class SinKeyInputMethodService : InputMethodService() {
         // rather than being typed fresh, that original text is still
         // sitting in the field as plain text and must be deleted first, or
         // the expansion would land beside it instead of replacing it.
-        if (ic != null) {
-            val hadResumedWord = resumedWordBeforeCursor != null
-            consumeResumedWordIfStillPresent(ic)
-            if (hadResumedWord) syncExpectedCursorPosition(ic)
-        } else {
-            resumedWordBeforeCursor = null
-        }
+        if (ic != null) consumeResumedWordIfStillPresent(ic) else resumedWordBeforeCursor = null
         // See the matching comment in commitPendingWord's fix for why this
         // doesn't rely on setComposingText("", 1) to clear the on-screen
         // preview — some hosts (e.g. this dialog's Compose TextField) don't
@@ -2829,29 +2823,37 @@ class SinKeyInputMethodService : InputMethodService() {
         // typed shortcut on screen with the expansion committed beside it
         // instead of over it.
         //
-        // Each mutating call below is synced individually (not just once at
-        // the end) for the same reason as commitPendingWord's fix: on hosts
-        // that fire onUpdateSelection once per InputConnection call (e.g.
-        // Compose's BasicTextField), an unsynced intermediate call here
-        // would get misclassified as an external cursor jump mid-commit.
+        // Wrapped in beginBatchEdit/endBatchEdit — same fix and same
+        // reasoning as commitPendingWord: hosts that reconcile their own
+        // text buffer per InputConnection call (Compose's BasicTextField)
+        // can otherwise apply deleteSurroundingText against a buffer that
+        // hasn't caught up with the finishComposingText() just before it,
+        // deleting the wrong span. Batching makes the whole sequence atomic.
+        ic?.beginBatchEdit()
         ic?.finishComposingText()
-        ic?.let { syncExpectedCursorPosition(it) }
-        if (raw.isNotEmpty()) {
-            ic?.deleteSurroundingText(raw.length, 0)
-            ic?.let { syncExpectedCursorPosition(it) }
-        }
+        if (raw.isNotEmpty()) ic?.deleteSurroundingText(raw.length, 0)
         ic?.commitText(expansion, 1)
-        ic?.let { syncExpectedCursorPosition(it) }
-        if (trailing.isNotEmpty()) {
-            ic?.commitText(trailing, 1)
-            ic?.let { syncExpectedCursorPosition(it) }
-        }
+        if (trailing.isNotEmpty()) ic?.commitText(trailing, 1)
+        ic?.endBatchEdit()
         wordBuffer.clear()
         clearSuggestions()
+        // Without this, the cursor move this commit just caused gets
+        // misread by onUpdateSelection as an external jump — see the
+        // matching fix/comment in maybeAutocorrectAndCommitSpace — which
+        // would resume the just-committed expansion back into wordBuffer
+        // and duplicate it on the next word boundary.
+        if (ic != null) syncExpectedCursorPosition(ic)
         return true
     }
 
-    private fun commitPendingWord() {
+    /**
+     * Commits whatever's in wordBuffer to the real field. [trailing] is
+     * extra text (typically a single space) to commit immediately
+     * afterward, inside the SAME batch edit as the word commit itself —
+     * see the beginBatchEdit/endBatchEdit comment below for why this must
+     * not be a separate, later InputConnection call.
+     */
+    private fun commitPendingWord(trailing: String = "") {
         if (wordBuffer.isEmpty()) return
         val ic = currentInputConnection
         val raw = wordBuffer.toString()
@@ -2897,30 +2899,38 @@ class SinKeyInputMethodService : InputMethodService() {
         // quick-text expansion paths above already use (explicit
         // deleteSurroundingText rather than trusting a composing-span
         // replace).
-        // Every InputConnection mutation below can trigger its OWN
-        // onUpdateSelection() callback on some hosts (this is exactly what
-        // Compose's BasicTextField does — e.g. this app's own Typing Test
-        // screen — since each commitText/deleteSurroundingText call
-        // recomposes the field and reports a fresh selection). Previously
-        // only the very end of handleKey called syncExpectedCursorPosition(),
-        // once, after this whole function had already made 2-3 separate
-        // edits (finishComposingText + deleteSurroundingText + commitText).
-        // Any callback landing in between those edits arrived while
-        // pendingSelfEdits was still 0, so onUpdateSelection misclassified
-        // it as an EXTERNAL cursor jump — which cleared wordBuffer and, via
-        // reseedSuggestionsForWordAtCursor, re-resumed whatever partial text
-        // happened to be on screen at that mid-commit instant. The next
-        // commit then landed beside/over that stale resumed state instead
-        // of cleanly replacing it — exactly the "space duplicates the word
-        // in Sinhala mode" / "space deletes the previous word in mix mode"
-        // reports. Fix: call syncExpectedCursorPosition() after every
-        // mutating call here, not just once at the end.
+        //
+        // The whole finishComposingText -> deleteSurroundingText ->
+        // commitText sequence is wrapped in beginBatchEdit/endBatchEdit
+        // (same pattern as syncTranslationToField) so the host sees it as
+        // ONE atomic edit instead of 2-3 separate ones. Without this,
+        // hosts that reconcile their own text buffer against each
+        // InputConnection call independently — Compose's BasicTextField
+        // does this, e.g. this app's own Typing Test screen — could
+        // recompute deleteSurroundingText's cursor-relative range against
+        // a buffer state that hadn't yet caught up with the
+        // finishComposingText() that just ran a moment earlier, deleting
+        // the wrong span (observed as the previous word + its trailing
+        // space vanishing, or the new word landing beside stale text,
+        // right when SPACE is pressed in Sinhala/mix mode). Batching
+        // removes that gap entirely: the host applies all three commands
+        // against one consistent snapshot before reporting anything back.
+        //
+        // [trailing] (e.g. the space that follows a word at SPACE) is
+        // committed inside this SAME batch, right after finalWord — not as
+        // a separate call after endBatchEdit(). Previously the SPACE
+        // handler called commitPendingWord() and then, once it returned
+        // (batch already closed), made its own separate commitText(" ", 1)
+        // call for the trailing space. That second call was exactly as
+        // vulnerable to the stale-buffer race described above as the
+        // original unbatched delete+commit was: Compose's BasicTextField
+        // could reconcile it against a buffer that hadn't caught up with
+        // this function's own batch yet. Folding it into the same batch
+        // removes that gap the same way batching finalWord's own commit
+        // did.
+        ic?.beginBatchEdit()
         ic?.finishComposingText()
-        ic?.let { syncExpectedCursorPosition(it) }
-        if (onScreenPreview.isNotEmpty()) {
-            ic?.deleteSurroundingText(onScreenPreview.length, 0)
-            ic?.let { syncExpectedCursorPosition(it) }
-        }
+        if (onScreenPreview.isNotEmpty()) ic?.deleteSurroundingText(onScreenPreview.length, 0)
         // If this word was resumed from an existing on-screen word (cursor
         // tapped back into it — see reseedSuggestionsForWordAtCursor), that
         // original text is still sitting in the field as plain committed
@@ -2929,13 +2939,7 @@ class SinKeyInputMethodService : InputMethodService() {
         // replacing it. Ordinary fresh-typed words never set this, so this
         // is a no-op for the normal case. Verifies the text is still really
         // there first — see consumeResumedWordIfStillPresent's doc comment.
-        if (ic != null) {
-            val hadResumedWord = resumedWordBeforeCursor != null
-            consumeResumedWordIfStillPresent(ic)
-            if (hadResumedWord) syncExpectedCursorPosition(ic)
-        } else {
-            resumedWordBeforeCursor = null
-        }
+        if (ic != null) consumeResumedWordIfStillPresent(ic) else resumedWordBeforeCursor = null
         // Hidden message: finalWord already contains the WHOLE sentence's
         // encoding (see commitHiddenMessageSession) when the feature is on,
         // so the previous word's span must be deleted first — a plain
@@ -2948,6 +2952,11 @@ class SinKeyInputMethodService : InputMethodService() {
         } else {
             ic?.commitText(finalWord, 1)
         }
+        if (trailing.isNotEmpty()) {
+            ic?.commitText(trailing, 1)
+            if (cachedHiddenMessageEnabled) hiddenMessageLastEncodedLength += trailing.length
+        }
+        ic?.endBatchEdit()
         ic?.let { syncExpectedCursorPosition(it) }
         wordBuffer.clear()
         clearSuggestions()
@@ -2963,25 +2972,15 @@ class SinKeyInputMethodService : InputMethodService() {
     }
 
     /**
-     * Call immediately after commitPendingWord() when the caller is about
-     * to commit more text (typically a single space or newline) right
-     * after the word commitPendingWord() just placed, AND
-     * cachedHiddenMessageEnabled is on. Grows hiddenMessageLastEncodedLength
-     * by [text]'s length so the *next* word's delete-before-replace still
-     * removes exactly "the encoded span + this trailing text" as one unit —
-     * see replaceHiddenMessageSpan's doc comment for why an uncounted
-     * separate commitText call after a hidden-message commit corrupts the
-     * next replace. A plain no-op when the feature is off (nothing to keep
-     * in sync).
+     * Call when committing extra text (typically a newline) as its own,
+     * later InputConnection edit — i.e. NOT immediately adjacent to a
+     * commitPendingWord() call, unlike SPACE's trailing space which is now
+     * folded into commitPendingWord()'s own batch (see that function's doc
+     * comment). Syncs cursor tracking and keeps hiddenMessageLastEncodedLength
+     * accurate the same way that inline batching does for SPACE.
      */
     private fun appendTrailingAfterHiddenMessageCommit(ic: android.view.inputmethod.InputConnection?, text: String) {
         ic?.commitText(text, 1)
-        // See the matching fix in commitPendingWord(): this runs right
-        // after that function's own commitText, so without syncing here
-        // too, this call's onUpdateSelection callback (on hosts that fire
-        // one per InputConnection mutation, e.g. Compose's BasicTextField)
-        // would land with pendingSelfEdits already back at 0 and get
-        // misclassified as an external cursor jump.
         ic?.let { syncExpectedCursorPosition(it) }
         if (cachedHiddenMessageEnabled) hiddenMessageLastEncodedLength += text.length
     }
