@@ -3244,6 +3244,18 @@ class SinKeyInputMethodService : InputMethodService() {
         // last did — same reasoning as the clearAutocorrectUndoIfAny() call
         // at the top of handleKey.
         clearAutocorrectUndoIfAny()
+        // The whole delete-old / commit-new / trailing-space sequence below
+        // is wrapped in one beginBatchEdit/endBatchEdit — same fix and same
+        // reasoning as commitPendingWord's: finishComposingText(),
+        // deleteSurroundingText(), commitText(), and the trailing
+        // commitText(" ", 1) were previously four separate InputConnection
+        // calls. On Compose's BasicTextField (this app's own Typing Test
+        // screen uses it) that gap between calls was exactly where the
+        // previous word could get wiped instead of just the intended
+        // composing text — tapping a suggestion chip goes through this
+        // function, not commitPendingWord(), so it needed the identical fix
+        // separately.
+        ic.beginBatchEdit()
         if (isSinhalaTyping()) {
             // In mix mode the suggestion bar can hold both a Sinhala rendering
             // and the raw-Latin English reading of the same buffer (see
@@ -3318,8 +3330,10 @@ class SinKeyInputMethodService : InputMethodService() {
         // part of replaceHiddenMessageSpan's trailingText above when hidden
         // message mode is on (see that function's doc comment for why it
         // can't be a separate commitText call in that case); only commit it
-        // here for the ordinary, feature-off path.
+        // here for the ordinary, feature-off path. Still inside the same
+        // batch opened above — see this function's own batching comment.
         if (!cachedHiddenMessageEnabled) ic.commitText(" ", 1)
+        ic.endBatchEdit()
         updateAutoShift(ic)
         // Word just finished — offer a next-word prediction instead of
         // leaving the suggestion bar empty.
