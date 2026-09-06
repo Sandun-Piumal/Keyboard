@@ -68,6 +68,7 @@ import com.spmods.sinkey.ui.screens.LegalTextScreen
 import com.spmods.sinkey.ui.screens.AboutDeveloperScreen
 import com.spmods.sinkey.ui.screens.PhotoCropScreen
 import com.spmods.sinkey.ui.screens.PhotoEditThemeScreen
+import com.spmods.sinkey.ui.screens.ProfileScreen
 import com.spmods.sinkey.ui.screens.SettingsScreen
 import com.spmods.sinkey.ui.screens.ThemesScreen
 import com.spmods.sinkey.ui.screens.TypingTestScreen
@@ -186,6 +187,7 @@ private fun SinKeyApp(prefs: PreferencesManager, initialTab: Tab = Tab.HOME) {
     var croppedBitmap by remember { mutableStateOf<Bitmap?>(null) }
     var showKeyboardPreview by remember { mutableStateOf(false) }
     var showTypingTest by remember { mutableStateOf(false) }
+    var showProfile by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
 
     val themeMode by prefs.themeMode.collectAsState(initial = ThemeMode.SYSTEM)
@@ -640,9 +642,16 @@ private fun SinKeyApp(prefs: PreferencesManager, initialTab: Tab = Tab.HOME) {
                             tab = Tab.SETTINGS
                         }
                     )
+                    showProfile -> ProfileScreen(
+                        onBack = { showProfile = false },
+                        isDark = isDark,
+                        currentPalette = keyColorPalette,
+                        defaultLanguage = defaultLanguage
+                    )
                     tab == Tab.HOME -> HomeScreen(
                         isDark = isDark,
-                        onStartTest = { showTypingTest = true }
+                        onStartTest = { showTypingTest = true },
+                        onViewProfile = { showProfile = true }
                     )
                     tab == Tab.THEMES -> ThemesScreen(
                         currentMode = themeMode,
