@@ -402,6 +402,10 @@ private fun SinKeyApp(prefs: PreferencesManager, initialTab: Tab = Tab.HOME) {
         BackHandler { showTypingTest = false }
     }
 
+    if (showProfile) {
+        BackHandler { showProfile = false }
+    }
+
     // ── First-launch onboarding gate ────────────────────────────────────────
     // null  -> DataStore hasn't emitted yet; render nothing this frame
     //          rather than flashing the tutorial for a returning user (see
