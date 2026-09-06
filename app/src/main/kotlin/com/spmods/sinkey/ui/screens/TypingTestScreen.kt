@@ -435,23 +435,21 @@ fun TypingTestScreen(
                     value = input,
                     onValueChange = { new ->
                         if (isFinished) return@BasicTextField
+                        // No length-based truncation/rejection here anymore.
+                        // Sinhala/mix mode composes text via the IME's
+                        // composing span, which can briefly grow longer than
+                        // passage.length mid-word before settling (or exceed
+                        // it right as SPACE finalizes a word) even though the
+                        // person hasn't actually reached the end yet. Cutting
+                        // the string down to passage.length in that moment
+                        // sliced off characters the person had just typed,
+                        // which is exactly the "letters go missing on space"
+                        // bug. The passage-complete LaunchedEffect below
+                        // already ends the test once input.text is at least
+                        // as long as the passage, so there's nothing left for
+                        // a hard cap here to protect.
+                        input = new
                         if (!isRunning && new.text.isNotEmpty()) isRunning = true
-                        input = if (new.text.length > passage.length) {
-                            // Some IMEs (autocorrect/suggestion-strip commits,
-                            // Sinhala/mix composition) can insert more than one
-                            // character at once, e.g. on space. Instead of
-                            // rejecting the whole change (which looked like the
-                            // typed text vanishing), just truncate to the
-                            // passage length so nothing gets lost.
-                            new.copy(
-                                text = new.text.take(passage.length),
-                                selection = androidx.compose.ui.text.TextRange(
-                                    passage.length.coerceAtMost(new.text.length)
-                                )
-                            )
-                        } else {
-                            new
-                        }
                     },
                     textStyle = androidx.compose.ui.text.TextStyle(
                         fontSize = 15.sp,
