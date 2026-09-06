@@ -479,20 +479,20 @@ fun HomeScreen(isDark: Boolean = isSystemInDarkTheme(), onStartTest: () -> Unit 
             elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
         ) {
             Box(modifier = Modifier.fillMaxWidth()) {
-                // Decorative dots above the Start Test button, matching the
-                // reference design — one bigger dot and two smaller ones.
+                // Decorative dots — sit just above/around the Start Test
+                // button on the right side of the card, matching reference.
                 Box(
                     modifier = Modifier
                         .align(Alignment.TopEnd)
-                        .offset(x = (-46).dp, y = 30.dp)
-                        .size(7.dp)
+                        .offset(x = (-58).dp, y = 14.dp)
+                        .size(6.dp)
                         .clip(CircleShape)
                         .background(Color(0xFFB8A0EC))
                 )
                 Box(
                     modifier = Modifier
                         .align(Alignment.TopEnd)
-                        .offset(x = (-24).dp, y = 40.dp)
+                        .offset(x = (-32).dp, y = 22.dp)
                         .size(5.dp)
                         .clip(CircleShape)
                         .background(Color(0xFFB8A0EC))
@@ -500,8 +500,8 @@ fun HomeScreen(isDark: Boolean = isSystemInDarkTheme(), onStartTest: () -> Unit 
                 Box(
                     modifier = Modifier
                         .align(Alignment.TopEnd)
-                        .offset(x = (-8).dp, y = 52.dp)
-                        .size(5.dp)
+                        .offset(x = (-14).dp, y = 34.dp)
+                        .size(4.dp)
                         .clip(CircleShape)
                         .background(Color(0xFFB8A0EC))
                 )
@@ -509,17 +509,17 @@ fun HomeScreen(isDark: Boolean = isSystemInDarkTheme(), onStartTest: () -> Unit 
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(18.dp, 18.dp, 18.dp, 18.dp),
+                        .padding(16.dp, 16.dp, 16.dp, 16.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Image(
                         painter = painterResource(id = R.drawable.test_typing_stopwatch),
                         contentDescription = "Test typing illustration",
                         contentScale = ContentScale.Fit,
-                        modifier = Modifier.size(72.dp)
+                        modifier = Modifier.size(88.dp)
                     )
 
-                    Spacer(Modifier.width(12.dp))
+                    Spacer(Modifier.width(10.dp))
 
                     Column(modifier = Modifier.weight(1f)) {
                         Text(
@@ -532,7 +532,7 @@ fun HomeScreen(isDark: Boolean = isSystemInDarkTheme(), onStartTest: () -> Unit 
                         Spacer(Modifier.height(2.dp))
                         Text(
                             "Test Typing",
-                            fontSize = 17.sp,
+                            fontSize = 18.sp,
                             fontWeight = FontWeight.ExtraBold,
                             color = MaterialTheme.colorScheme.onBackground
                         )
@@ -541,35 +541,34 @@ fun HomeScreen(isDark: Boolean = isSystemInDarkTheme(), onStartTest: () -> Unit 
                             "Check your typing speed and improve your skills with a quick test.",
                             fontSize = 11.sp,
                             color = BodyGrey,
-                            lineHeight = 14.sp
+                            lineHeight = 13.sp
                         )
-                    }
+                        Spacer(Modifier.height(10.dp))
 
-                    Spacer(Modifier.width(8.dp))
-
-                    Row(
-                        modifier = Modifier
-                            .clip(RoundedCornerShape(50))
-                            .background(
-                                Brush.horizontalGradient(listOf(IndigoDeep, IndigoMid))
+                        Row(
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(50))
+                                .background(
+                                    Brush.horizontalGradient(listOf(IndigoDeep, IndigoMid))
+                                )
+                                .clickable { onStartTest() }
+                                .padding(horizontal = 18.dp, vertical = 10.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                "Start Test",
+                                color = Color.White,
+                                fontSize = 13.sp,
+                                fontWeight = FontWeight.Bold
                             )
-                            .clickable { onStartTest() }
-                            .padding(horizontal = 16.dp, vertical = 11.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Text(
-                            "Start Test",
-                            color = Color.White,
-                            fontSize = 12.sp,
-                            fontWeight = FontWeight.Bold
-                        )
-                        Spacer(Modifier.width(4.dp))
-                        Icon(
-                            Icons.Filled.ChevronRight,
-                            contentDescription = null,
-                            tint = Color.White,
-                            modifier = Modifier.size(14.dp)
-                        )
+                            Spacer(Modifier.width(4.dp))
+                            Icon(
+                                Icons.Filled.ChevronRight,
+                                contentDescription = null,
+                                tint = Color.White,
+                                modifier = Modifier.size(14.dp)
+                            )
+                        }
                     }
                 }
             }
