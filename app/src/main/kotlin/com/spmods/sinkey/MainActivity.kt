@@ -450,7 +450,7 @@ private fun SinKeyApp(prefs: PreferencesManager, initialTab: Tab = Tab.HOME) {
             }
         },
         bottomBar = {
-            if (settingsSubScreen == SettingsSubScreen.MAIN && photoEditStep == PhotoEditStep.NONE && !showKeyboardPreview && !showTypingTest) {
+            if (settingsSubScreen == SettingsSubScreen.MAIN && photoEditStep == PhotoEditStep.NONE && !showKeyboardPreview && !showTypingTest && !showProfile) {
                 NavigationBar {
                     NavigationBarItem(
                         selected = tab == Tab.HOME,
@@ -496,7 +496,8 @@ private fun SinKeyApp(prefs: PreferencesManager, initialTab: Tab = Tab.HOME) {
                 val showHeader = photoEditStep == PhotoEditStep.NONE &&
                     settingsSubScreen == SettingsSubScreen.MAIN &&
                     !showKeyboardPreview &&
-                    !showTypingTest
+                    !showTypingTest &&
+                    !showProfile
 
                 Column(modifier = Modifier.fillMaxSize()) {
                     if (showHeader) {
