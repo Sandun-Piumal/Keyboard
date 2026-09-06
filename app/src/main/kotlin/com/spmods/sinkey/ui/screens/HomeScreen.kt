@@ -470,12 +470,22 @@ fun HomeScreen(isDark: Boolean = isSystemInDarkTheme(), onStartTest: () -> Unit 
         }
 
         // ── Test Typing ──────────────────────────────────────────────────────
+        // Card background, title, description, and dots all follow isDark
+        // explicitly (same convention as the Hero card above) since this
+        // card uses custom colors rather than MaterialTheme.colorScheme —
+        // without this, the card stayed fixed light-purple even in Dark
+        // theme, clashing with the rest of the dark UI around it.
+        val testCardBg = if (isDark) Color(0xFF241B3D) else Color(0xFFEDE7FB)
+        val testTitleColor = if (isDark) Color(0xFFF2EEFB) else Color(0xFF1A1A2E)
+        val testDescColor = if (isDark) Color(0xFFB6AEC9) else BodyGrey
+        val testDotColor = if (isDark) Color(0xFF5C4A8A) else Color(0xFFB8A0EC)
+
         Card(
             modifier = Modifier
                 .padding(20.dp, 20.dp, 20.dp, 0.dp)
                 .fillMaxWidth(),
             shape = RoundedCornerShape(20.dp),
-            colors = CardDefaults.cardColors(containerColor = Color(0xFFEDE7FB)),
+            colors = CardDefaults.cardColors(containerColor = testCardBg),
             elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
         ) {
             Box(modifier = Modifier.fillMaxWidth()) {
@@ -487,7 +497,7 @@ fun HomeScreen(isDark: Boolean = isSystemInDarkTheme(), onStartTest: () -> Unit 
                         .offset(x = (-54).dp, y = 10.dp)
                         .size(7.dp)
                         .clip(CircleShape)
-                        .background(Color(0xFFB8A0EC))
+                        .background(testDotColor)
                 )
                 Box(
                     modifier = Modifier
@@ -495,7 +505,7 @@ fun HomeScreen(isDark: Boolean = isSystemInDarkTheme(), onStartTest: () -> Unit 
                         .offset(x = (-28).dp, y = 20.dp)
                         .size(5.dp)
                         .clip(CircleShape)
-                        .background(Color(0xFFB8A0EC))
+                        .background(testDotColor)
                 )
                 Box(
                     modifier = Modifier
@@ -503,7 +513,7 @@ fun HomeScreen(isDark: Boolean = isSystemInDarkTheme(), onStartTest: () -> Unit 
                         .offset(x = (-14).dp, y = 30.dp)
                         .size(5.dp)
                         .clip(CircleShape)
-                        .background(Color(0xFFB8A0EC))
+                        .background(testDotColor)
                 )
 
                 Row(
@@ -527,20 +537,20 @@ fun HomeScreen(isDark: Boolean = isSystemInDarkTheme(), onStartTest: () -> Unit 
                             fontSize = 10.sp,
                             fontWeight = FontWeight.Bold,
                             letterSpacing = 0.8.sp,
-                            color = IndigoDeep
+                            color = if (isDark) Color(0xFFB39DEF) else IndigoDeep
                         )
                         Spacer(Modifier.height(2.dp))
                         Text(
                             "Test Typing",
                             fontSize = 18.sp,
                             fontWeight = FontWeight.ExtraBold,
-                            color = MaterialTheme.colorScheme.onBackground
+                            color = testTitleColor
                         )
                         Spacer(Modifier.height(4.dp))
                         Text(
                             "Check your typing speed and improve your skills with a quick test.",
                             fontSize = 11.sp,
-                            color = BodyGrey,
+                            color = testDescColor,
                             lineHeight = 13.sp
                         )
                     }
