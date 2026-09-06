@@ -1781,11 +1781,37 @@ class SinKeyInputMethodService : InputMethodService() {
                 if (handledAsAction) resetHiddenMessageSession()
 
                 if (!handledAsAction) {
-                    // Uses the tracking-aware helper for the same reason
-                    // SPACE does above — an uncounted commitText("\n", 1)
-                    // here would desync hiddenMessageLastEncodedLength from
-                    // what's actually on screen for the next word's replace.
-                    appendTrailingAfterHiddenMessageCommit(ic, "\n")
+                    if (action == EditorInfo.IME_ACTION_SEARCH ||
+                        action == EditorInfo.IME_ACTION_GO ||
+                        action == EditorInfo.IME_ACTION_SEND ||
+                        action == EditorInfo.IME_ACTION_DONE
+                    ) {
+                        // The field advertises a real single-line action
+                        // (Search/Go/Send/Done) but performEditorAction()
+                        // above didn't handle it — ic.performEditorAction()
+                        // returns false whenever the target app never wired
+                        // up an EditorInfo.onEditorAction callback at all.
+                        // Some search bars and single-line fields (common in
+                        // WebView-based search boxes, and some custom search
+                        // implementations) instead only listen for a raw
+                        // hardware-style Enter key event, exactly the same
+                        // situation Translate mode's ENTER branch already
+                        // works around elsewhere in this file. Falling
+                        // through to a literal "\n" below would be wrong for
+                        // a single-line search field anyway (it would just
+                        // silently do nothing visible, which is the reported
+                        // "Enter doesn't search" bug) — send the raw keycode
+                        // instead, which most such search bars do respond to.
+                        ic.sendKeyEvent(android.view.KeyEvent(android.view.KeyEvent.ACTION_DOWN, android.view.KeyEvent.KEYCODE_ENTER))
+                        ic.sendKeyEvent(android.view.KeyEvent(android.view.KeyEvent.ACTION_UP, android.view.KeyEvent.KEYCODE_ENTER))
+                        resetHiddenMessageSession()
+                    } else {
+                        // Uses the tracking-aware helper for the same reason
+                        // SPACE does above — an uncounted commitText("\n", 1)
+                        // here would desync hiddenMessageLastEncodedLength from
+                        // what's actually on screen for the next word's replace.
+                        appendTrailingAfterHiddenMessageCommit(ic, "\n")
+                    }
                 }
                 // New line = sentence start → auto-shift
                 if (shiftState.value == ShiftState.OFF) shiftState.value = ShiftState.ONE_SHOT
