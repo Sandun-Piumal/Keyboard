@@ -436,7 +436,22 @@ fun TypingTestScreen(
                     onValueChange = { new ->
                         if (isFinished) return@BasicTextField
                         if (!isRunning && new.text.isNotEmpty()) isRunning = true
-                        if (new.text.length <= passage.length) input = new
+                        input = if (new.text.length > passage.length) {
+                            // Some IMEs (autocorrect/suggestion-strip commits,
+                            // Sinhala/mix composition) can insert more than one
+                            // character at once, e.g. on space. Instead of
+                            // rejecting the whole change (which looked like the
+                            // typed text vanishing), just truncate to the
+                            // passage length so nothing gets lost.
+                            new.copy(
+                                text = new.text.take(passage.length),
+                                selection = androidx.compose.ui.text.TextRange(
+                                    passage.length.coerceAtMost(new.text.length)
+                                )
+                            )
+                        } else {
+                            new
+                        }
                     },
                     textStyle = androidx.compose.ui.text.TextStyle(
                         fontSize = 15.sp,
