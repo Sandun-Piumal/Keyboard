@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -56,6 +57,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.spmods.sinkey.data.KeyColorPalette
+import com.spmods.sinkey.data.PreferencesManager
 import com.spmods.sinkey.data.TypingStatsRepository
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -87,12 +89,16 @@ fun ProfileScreen(
 ) {
     val context = LocalContext.current
     val statsRepo = remember(context) { TypingStatsRepository(context) }
+    val prefs = remember(context) { PreferencesManager(context) }
 
     val totalCharacters by statsRepo.totalCharacters.collectAsState(initial = 0L)
     val lastAccuracy by statsRepo.lastAccuracy.collectAsState(initial = 0)
     val testsCompleted by statsRepo.testsCompleted.collectAsState(initial = 0)
     val streakDays by statsRepo.currentStreakDays.collectAsState(initial = 0)
     val firstActiveDate by statsRepo.firstActiveDate.collectAsState(initial = null)
+
+    val firstName by prefs.profileFirstName.collectAsState(initial = "")
+    val lastName by prefs.profileLastName.collectAsState(initial = "")
 
     // 1 point per real character typed through the keyboard — an honest,
     // direct formula (not fabricated progress). Level advances every 1000
@@ -129,17 +135,15 @@ fun ProfileScreen(
         "${hours}h ${minutes}m"
     }
 
-    val userName = "Sandun Piumal"
-    val userHandle = "@sandun_typing"
+    val userName = "$firstName $lastName".trim().ifBlank { "Your Name" }
+    val userHandle = "@" + (firstName.trim().lowercase().ifBlank { "sinkey_user" })
 
     Column(
         modifier = Modifier
-            .fillMaxWidth()
-            .verticalScroll(rememberScrollState())
+            .fillMaxSize()
             .background(MaterialTheme.colorScheme.background)
-            .padding(bottom = 24.dp)
     ) {
-        // ── Header (matches TypingTestScreen's header) ──────────────────────
+        // ── Header (matches TypingTestScreen's header) — fixed, doesn't scroll ──
         Row(
             modifier = Modifier
                 .fillMaxWidth()
@@ -195,6 +199,14 @@ fun ProfileScreen(
             }
         }
 
+        // ── Scrollable content (everything below the header) ───────────────
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .weight(1f)
+                .verticalScroll(rememberScrollState())
+                .padding(bottom = 24.dp)
+        ) {
         // ── Identity card ────────────────────────────────────────────────
         Box(
             modifier = Modifier
@@ -600,6 +612,7 @@ fun ProfileScreen(
                 showDivider = false
             )
         }
+        } // end scrollable content Column
     }
 }
 
