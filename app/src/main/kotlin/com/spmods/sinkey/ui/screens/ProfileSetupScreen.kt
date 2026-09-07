@@ -20,6 +20,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.CalendarMonth
 import androidx.compose.material.icons.filled.Female
 import androidx.compose.material.icons.filled.Male
@@ -124,7 +125,7 @@ fun ProfileSetupScreen(
                 contentAlignment = Alignment.Center
             ) {
                 Icon(
-                    androidx.compose.material.icons.Icons.Filled.ArrowBack,
+                    Icons.Filled.ArrowBack,
                     contentDescription = "Back",
                     tint = SetupIndigo,
                     modifier = Modifier.size(20.dp)
