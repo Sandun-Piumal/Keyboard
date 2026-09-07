@@ -1,5 +1,6 @@
 package com.spmods.sinkey.ui.screens
 
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -52,10 +53,13 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector as ComposeImageVector
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.spmods.sinkey.R
 import com.spmods.sinkey.data.KeyColorPalette
 import com.spmods.sinkey.data.PreferencesManager
 import com.spmods.sinkey.data.TypingStatsRepository
@@ -100,6 +104,7 @@ fun ProfileScreen(
 
     val firstName by prefs.profileFirstName.collectAsState(initial = "")
     val lastName by prefs.profileLastName.collectAsState(initial = "")
+    val gender by prefs.profileGender.collectAsState(initial = "")
 
     // 1 point per real character typed through the keyboard — an honest,
     // direct formula (not fabricated progress). Level advances every 1000
@@ -237,12 +242,30 @@ fun ProfileScreen(
                                 .background(if (isDark) Color(0xFF3A2E5C) else Color(0xFFD8CCF7)),
                             contentAlignment = Alignment.Center
                         ) {
-                            androidx.compose.material3.Icon(
-                                Icons.Filled.Person,
-                                contentDescription = null,
-                                tint = ProfileIndigo,
-                                modifier = Modifier.size(48.dp)
-                            )
+                            when (gender) {
+                                "male" -> Image(
+                                    painter = painterResource(id = R.drawable.avatar_male),
+                                    contentDescription = null,
+                                    contentScale = ContentScale.Crop,
+                                    modifier = Modifier
+                                        .fillMaxSize()
+                                        .clip(CircleShape)
+                                )
+                                "female" -> Image(
+                                    painter = painterResource(id = R.drawable.avatar_female),
+                                    contentDescription = null,
+                                    contentScale = ContentScale.Crop,
+                                    modifier = Modifier
+                                        .fillMaxSize()
+                                        .clip(CircleShape)
+                                )
+                                else -> androidx.compose.material3.Icon(
+                                    Icons.Filled.Person,
+                                    contentDescription = null,
+                                    tint = ProfileIndigo,
+                                    modifier = Modifier.size(48.dp)
+                                )
+                            }
                         }
                         Box(
                             modifier = Modifier
