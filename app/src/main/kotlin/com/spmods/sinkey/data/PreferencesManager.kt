@@ -27,6 +27,22 @@ class PreferencesManager(private val context: Context) {
         val DEFAULT_LANG = stringPreferencesKey("default_lang") // "si", "en", or "mix"
         val KEY_SOUND = booleanPreferencesKey("key_sound")
         val KEY_VIBRATE = booleanPreferencesKey("key_vibrate")
+        // ── Profile setup (My Profile screen) ───────────────────────────
+        // Required fields the user must fill in once before the Profile
+        // screen itself is shown — see PROFILE_SETUP_COMPLETE below and
+        // ProfileSetupScreen. All blank/null until the user actually saves.
+        val PROFILE_FIRST_NAME = stringPreferencesKey("profile_first_name")
+        val PROFILE_LAST_NAME = stringPreferencesKey("profile_last_name")
+        // "male" or "female" — the only two options offered on the setup
+        // screen. Blank until chosen.
+        val PROFILE_GENDER = stringPreferencesKey("profile_gender")
+        // Stored as "yyyy-MM-dd". Blank until chosen.
+        val PROFILE_BIRTHDAY = stringPreferencesKey("profile_birthday")
+        // True only once all four fields above have been saved together —
+        // this is what actually gates whether ProfileScreen or
+        // ProfileSetupScreen is shown, rather than checking each field
+        // individually at every call site.
+        val PROFILE_SETUP_COMPLETE = booleanPreferencesKey("profile_setup_complete")
         // Vibration duration in milliseconds for key-press haptic feedback,
         // shown to the user as "Vibration level" (matches the reference
         // Sound & vibration screen's wording/units — it's actually a
@@ -183,6 +199,34 @@ class PreferencesManager(private val context: Context) {
 
     val defaultLanguage: Flow<String> = context.dataStore.data.map { prefs ->
         prefs[Keys.DEFAULT_LANG] ?: "mix"
+    }
+
+    // ── Profile setup ────────────────────────────────────────────────────
+    val profileFirstName: Flow<String> = context.dataStore.data.map { prefs ->
+        prefs[Keys.PROFILE_FIRST_NAME] ?: ""
+    }
+
+    val profileLastName: Flow<String> = context.dataStore.data.map { prefs ->
+        prefs[Keys.PROFILE_LAST_NAME] ?: ""
+    }
+
+    /** "male" or "female", or "" if not yet chosen. */
+    val profileGender: Flow<String> = context.dataStore.data.map { prefs ->
+        prefs[Keys.PROFILE_GENDER] ?: ""
+    }
+
+    /** Stored as "yyyy-MM-dd", or "" if not yet chosen. */
+    val profileBirthday: Flow<String> = context.dataStore.data.map { prefs ->
+        prefs[Keys.PROFILE_BIRTHDAY] ?: ""
+    }
+
+    /**
+     * Gate for whether ProfileScreen (true) or ProfileSetupScreen (false) is
+     * shown. Only flips to true once [saveProfileSetup] has been called with
+     * all four required fields filled in.
+     */
+    val profileSetupComplete: Flow<Boolean> = context.dataStore.data.map { prefs ->
+        prefs[Keys.PROFILE_SETUP_COMPLETE] ?: false
     }
 
     val keySoundEnabled: Flow<Boolean> = context.dataStore.data.map { prefs ->
@@ -381,6 +425,22 @@ class PreferencesManager(private val context: Context) {
 
     suspend fun setDefaultLanguage(lang: String) {
         context.dataStore.edit { it[Keys.DEFAULT_LANG] = lang }
+    }
+
+    /**
+     * Saves all four required profile fields in one atomic edit and flips
+     * [profileSetupComplete] to true. Only call once every field is
+     * non-blank — ProfileSetupScreen enforces that before enabling its
+     * save button, so this function itself doesn't re-validate.
+     */
+    suspend fun saveProfileSetup(firstName: String, lastName: String, gender: String, birthday: String) {
+        context.dataStore.edit { prefs ->
+            prefs[Keys.PROFILE_FIRST_NAME] = firstName
+            prefs[Keys.PROFILE_LAST_NAME] = lastName
+            prefs[Keys.PROFILE_GENDER] = gender
+            prefs[Keys.PROFILE_BIRTHDAY] = birthday
+            prefs[Keys.PROFILE_SETUP_COMPLETE] = true
+        }
     }
 
     suspend fun setKeySoundEnabled(enabled: Boolean) {
