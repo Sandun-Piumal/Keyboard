@@ -71,7 +71,7 @@ private val SetupGrey = Color(0xFF6B7280)
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ProfileSetupScreen(
-    onComplete: (firstName: String, lastName: String, gender: String, birthday: String) -> Unit,
+    onComplete: suspend (firstName: String, lastName: String, gender: String, birthday: String) -> Unit,
     isEditMode: Boolean = false,
     initialFirstName: String = "",
     initialLastName: String = "",
