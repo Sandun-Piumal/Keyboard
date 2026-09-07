@@ -340,13 +340,14 @@ fun ProfileScreen(
                     modifier = Modifier
                         .fillMaxWidth()
                         .clip(RoundedCornerShape(18.dp))
-                        .background(if (isDark) Color(0x40FFFFFF) else Color(0xB3FFFFFF))
+                        .background(if (isDark) Color(0xFF2E2748) else Color(0xB3FFFFFF))
                         .padding(vertical = 14.dp)
                 ) {
+                    val statIndigo = if (isDark) Color(0xFF9C87F5) else ProfileIndigo
                     Row(modifier = Modifier.fillMaxWidth()) {
                         IdentityStat(
                             icon = Icons.Filled.AutoAwesome,
-                            iconColor = ProfileIndigo,
+                            iconColor = statIndigo,
                             label = "Level",
                             value = level.toString()
                         )
@@ -358,13 +359,13 @@ fun ProfileScreen(
                         )
                         IdentityStat(
                             icon = Icons.Filled.EmojiEvents,
-                            iconColor = ProfileIndigo,
+                            iconColor = statIndigo,
                             label = "Rank",
                             value = rankLabel
                         )
                         IdentityStat(
                             icon = Icons.Filled.Groups,
-                            iconColor = ProfileIndigo,
+                            iconColor = statIndigo,
                             label = "Joined",
                             value = joinedLabel
                         )
@@ -632,7 +633,9 @@ fun ProfileScreen(
 }
 
 @Composable
+@Composable
 private fun RowScope.IdentityStat(icon: ComposeImageVector, iconColor: Color, label: String, value: String) {
+    val isDark = isSystemInDarkTheme()
     Column(
         modifier = Modifier.weight(1f),
         horizontalAlignment = Alignment.CenterHorizontally
@@ -644,9 +647,14 @@ private fun RowScope.IdentityStat(icon: ComposeImageVector, iconColor: Color, la
             modifier = Modifier.size(18.dp)
         )
         Spacer(Modifier.height(4.dp))
-        Text(label, fontSize = 11.sp, color = ProfileGrey)
+        Text(label, fontSize = 11.sp, color = if (isDark) Color(0xFFB6AEC9) else ProfileGrey)
         Spacer(Modifier.height(2.dp))
-        Text(value, fontSize = 14.sp, fontWeight = FontWeight.ExtraBold, color = MaterialTheme.colorScheme.onSurface)
+        Text(
+            value,
+            fontSize = 14.sp,
+            fontWeight = FontWeight.ExtraBold,
+            color = if (isDark) Color.White else MaterialTheme.colorScheme.onSurface
+        )
     }
 }
 
