@@ -648,21 +648,21 @@ private fun SinKeyApp(prefs: PreferencesManager, initialTab: Tab = Tab.HOME) {
                         }
                     )
                     showProfile -> {
-                        val profileSetupComplete by prefs.profileSetupComplete.collectAsState(initial = null)
-                        when (profileSetupComplete) {
-                            null -> Unit // still loading from DataStore — render nothing this frame
-                            false -> ProfileSetupScreen(
-                                onComplete = { firstName, lastName, gender, birthday ->
-                                    scope.launch {
-                                        prefs.saveProfileSetup(firstName, lastName, gender, birthday)
-                                    }
-                                }
-                            )
-                            true -> ProfileScreen(
+                        val profileSetupComplete by prefs.profileSetupComplete.collectAsState(initial = false)
+                        if (profileSetupComplete) {
+                            ProfileScreen(
                                 onBack = { showProfile = false },
                                 isDark = isDark,
                                 currentPalette = keyColorPalette,
                                 defaultLanguage = defaultLanguage
+                            )
+                        } else {
+                            ProfileSetupScreen(
+                                onComplete = { firstName: String, lastName: String, gender: String, birthday: String ->
+                                    scope.launch {
+                                        prefs.saveProfileSetup(firstName, lastName, gender, birthday)
+                                    }
+                                }
                             )
                         }
                     }
