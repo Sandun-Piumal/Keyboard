@@ -673,9 +673,7 @@ private fun SinKeyApp(prefs: PreferencesManager, initialTab: Tab = Tab.HOME) {
                         when {
                             showEditProfile -> ProfileSetupScreen(
                                 onComplete = { firstName: String, lastName: String, gender: String, birthday: String ->
-                                    scope.launch {
-                                        prefs.saveProfileSetup(firstName, lastName, gender, birthday)
-                                    }
+                                    prefs.saveProfileSetup(firstName, lastName, gender, birthday)
                                 },
                                 isEditMode = true,
                                 initialFirstName = profileFirstName,
@@ -696,9 +694,7 @@ private fun SinKeyApp(prefs: PreferencesManager, initialTab: Tab = Tab.HOME) {
                             )
                             profileSetupComplete == false -> ProfileSetupScreen(
                                 onComplete = { firstName: String, lastName: String, gender: String, birthday: String ->
-                                    scope.launch {
-                                        prefs.saveProfileSetup(firstName, lastName, gender, birthday)
-                                    }
+                                    prefs.saveProfileSetup(firstName, lastName, gender, birthday)
                                 }
                             )
                             else -> Unit // DataStore's first value hasn't arrived yet this frame
