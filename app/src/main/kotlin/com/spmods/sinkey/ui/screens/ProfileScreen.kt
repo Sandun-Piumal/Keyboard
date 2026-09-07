@@ -36,11 +36,9 @@ import androidx.compose.material.icons.filled.Groups
 import androidx.compose.material.icons.filled.HelpOutline
 import androidx.compose.material.icons.filled.Keyboard
 import androidx.compose.material.icons.filled.LocalFireDepartment
-import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.ModeEdit
-import androidx.compose.material.icons.filled.Notifications
 import androidx.compose.material.icons.filled.Person
-import androidx.compose.material.icons.filled.WorkspacePremium
+import androidx.compose.material.icons.filled.Verified
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -88,6 +86,7 @@ private val EarnedPink       = Color(0xFFE0498A)
 fun ProfileScreen(
     onBack: () -> Unit,
     onEditProfile: () -> Unit = {},
+    onHelpSupport: () -> Unit = {},
     isDark: Boolean = isSystemInDarkTheme(),
     currentPalette: KeyColorPalette = KeyColorPalette.DEFAULT,
     defaultLanguage: String = "si"
@@ -324,13 +323,13 @@ fun ProfileScreen(
                     ) {
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             androidx.compose.material3.Icon(
-                                Icons.Filled.WorkspacePremium,
+                                Icons.Filled.Verified,
                                 contentDescription = null,
                                 tint = Color.White,
                                 modifier = Modifier.size(13.dp)
                             )
                             Spacer(Modifier.width(4.dp))
-                            Text("Premium", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Color.White)
+                            Text("Verified", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Color.White)
                         }
                     }
                 }
@@ -621,20 +620,11 @@ fun ProfileScreen(
                 onClick = onEditProfile
             )
             MenuRow(
-                icon = Icons.Filled.Lock,
-                iconBg = Color(0xFF3B82F6),
-                title = "Privacy Settings"
-            )
-            MenuRow(
-                icon = Icons.Filled.Notifications,
-                iconBg = Color(0xFFF4B400),
-                title = "Notifications"
-            )
-            MenuRow(
                 icon = Icons.Filled.HelpOutline,
                 iconBg = Color(0xFFE0642B),
                 title = "Help & Support",
-                showDivider = false
+                showDivider = false,
+                onClick = onHelpSupport
             )
         }
         } // end scrollable content Column
