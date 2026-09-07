@@ -190,6 +190,10 @@ private fun SinKeyApp(prefs: PreferencesManager, initialTab: Tab = Tab.HOME) {
     var showTypingTest by remember { mutableStateOf(false) }
     var showProfile by remember { mutableStateOf(false) }
     var showEditProfile by remember { mutableStateOf(false) }
+    // True only while Help & Support (AboutDeveloperScreen) was opened from
+    // the Profile screen's menu, rather than from Settings — controls
+    // whether its back button returns to Profile or to Settings' main list.
+    var helpSupportFromProfile by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
 
     // Hoisted here (not inside the showProfile branch below) so its
@@ -407,7 +411,15 @@ private fun SinKeyApp(prefs: PreferencesManager, initialTab: Tab = Tab.HOME) {
         BackHandler { settingsSubScreen = SettingsSubScreen.MAIN }
     }
     if (settingsSubScreen == SettingsSubScreen.ABOUT_DEVELOPER) {
-        BackHandler { settingsSubScreen = SettingsSubScreen.MAIN }
+        BackHandler {
+            if (helpSupportFromProfile) {
+                helpSupportFromProfile = false
+                settingsSubScreen = SettingsSubScreen.MAIN
+                showProfile = true
+            } else {
+                settingsSubScreen = SettingsSubScreen.MAIN
+            }
+        }
     }
 
     if (tab != Tab.HOME && !showKeyboardPreview) {
@@ -658,7 +670,15 @@ private fun SinKeyApp(prefs: PreferencesManager, initialTab: Tab = Tab.HOME) {
                                     )
                                 }
                             },
-                            onBack = { settingsSubScreen = SettingsSubScreen.MAIN }
+                            onBack = {
+                                if (helpSupportFromProfile) {
+                                    helpSupportFromProfile = false
+                                    settingsSubScreen = SettingsSubScreen.MAIN
+                                    showProfile = true
+                                } else {
+                                    settingsSubScreen = SettingsSubScreen.MAIN
+                                }
+                            }
                         )
                     }
                     showTypingTest -> TypingTestScreen(
@@ -688,6 +708,11 @@ private fun SinKeyApp(prefs: PreferencesManager, initialTab: Tab = Tab.HOME) {
                                     showEditProfile = false
                                 },
                                 onEditProfile = { showEditProfile = true },
+                                onHelpSupport = {
+                                    showProfile = false
+                                    helpSupportFromProfile = true
+                                    settingsSubScreen = SettingsSubScreen.ABOUT_DEVELOPER
+                                },
                                 isDark = isDark,
                                 currentPalette = keyColorPalette,
                                 defaultLanguage = defaultLanguage
