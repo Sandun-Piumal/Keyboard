@@ -647,12 +647,25 @@ private fun SinKeyApp(prefs: PreferencesManager, initialTab: Tab = Tab.HOME) {
                             tab = Tab.SETTINGS
                         }
                     )
-                    showProfile -> ProfileScreen(
-                        onBack = { showProfile = false },
-                        isDark = isDark,
-                        currentPalette = keyColorPalette,
-                        defaultLanguage = defaultLanguage
-                    )
+                    showProfile -> {
+                        val profileSetupComplete by prefs.profileSetupComplete.collectAsState(initial = null)
+                        when (profileSetupComplete) {
+                            null -> Unit // still loading from DataStore — render nothing this frame
+                            false -> ProfileSetupScreen(
+                                onComplete = { firstName, lastName, gender, birthday ->
+                                    scope.launch {
+                                        prefs.saveProfileSetup(firstName, lastName, gender, birthday)
+                                    }
+                                }
+                            )
+                            true -> ProfileScreen(
+                                onBack = { showProfile = false },
+                                isDark = isDark,
+                                currentPalette = keyColorPalette,
+                                defaultLanguage = defaultLanguage
+                            )
+                        }
+                    }
                     tab == Tab.HOME -> HomeScreen(
                         isDark = isDark,
                         onStartTest = { showTypingTest = true },
