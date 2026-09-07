@@ -69,6 +69,7 @@ import com.spmods.sinkey.ui.screens.AboutDeveloperScreen
 import com.spmods.sinkey.ui.screens.PhotoCropScreen
 import com.spmods.sinkey.ui.screens.PhotoEditThemeScreen
 import com.spmods.sinkey.ui.screens.ProfileScreen
+import com.spmods.sinkey.ui.screens.ProfileSetupScreen
 import com.spmods.sinkey.ui.screens.SettingsScreen
 import com.spmods.sinkey.ui.screens.ThemesScreen
 import com.spmods.sinkey.ui.screens.TypingTestScreen
