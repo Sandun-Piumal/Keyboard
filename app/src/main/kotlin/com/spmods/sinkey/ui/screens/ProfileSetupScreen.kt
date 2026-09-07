@@ -22,6 +22,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.CalendarMonth
+import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Female
 import androidx.compose.material.icons.filled.Male
 import androidx.compose.material.icons.filled.Person
@@ -106,74 +107,130 @@ fun ProfileSetupScreen(
         gender.isNotBlank() &&
         birthDay != null && birthMonth != null && birthYear != null
 
+    val handleSave: () -> Unit = handleSave@{
+        if (!isFormValid) return@handleSave
+        val birthday = "%04d-%02d-%02d".format(birthYear, birthMonth, birthDay)
+        scope.launch {
+            onComplete(firstName.trim(), lastName.trim(), gender, birthday)
+            if (isEditMode) {
+                onBack?.invoke()
+            }
+        }
+    }
+
     Column(
         modifier = Modifier
             .fillMaxSize()
             .background(MaterialTheme.colorScheme.background)
-            .verticalScroll(rememberScrollState())
-            .padding(24.dp)
     ) {
-        Spacer(Modifier.height(20.dp))
-
         if (isEditMode && onBack != null) {
+            // ── Header (matches ProfileScreen's header) — fixed, doesn't scroll ──
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(20.dp, 18.dp, 20.dp, 6.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Box(
+                    modifier = Modifier
+                        .size(40.dp)
+                        .clip(CircleShape)
+                        .background(if (isDark) Color(0xFF2C2145) else Color(0xFFEDE7FB))
+                        .clickable { onBack() },
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        Icons.Filled.ArrowBack,
+                        contentDescription = "Back",
+                        tint = SetupIndigo,
+                        modifier = Modifier.size(20.dp)
+                    )
+                }
+
+                Column(
+                    modifier = Modifier.weight(1f),
+                    horizontalAlignment = Alignment.CenterHorizontally
+                ) {
+                    Row {
+                        Text("Edit ", fontSize = 22.sp, fontWeight = FontWeight.ExtraBold, color = SetupIndigo)
+                        Text("Profile", fontSize = 22.sp, fontWeight = FontWeight.ExtraBold, color = SetupPink)
+                    }
+                    Text(
+                        "Type Smart. Type Easy. Type SinKey.",
+                        fontSize = 11.sp,
+                        color = if (isDark) Color(0xFFB6AEC9) else SetupGrey,
+                        modifier = Modifier.padding(top = 2.dp)
+                    )
+                }
+
+                Box(
+                    modifier = Modifier
+                        .size(36.dp)
+                        .clip(CircleShape)
+                        .background(if (isDark) Color(0xFF2C2145) else Color.White)
+                        .clickable(enabled = isFormValid) { handleSave() },
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        Icons.Filled.Check,
+                        contentDescription = "Save",
+                        tint = if (isFormValid) SetupIndigo else SetupGrey,
+                        modifier = Modifier.size(18.dp)
+                    )
+                }
+            }
+        }
+
+        // ── Scrollable form content ──────────────────────────────────────
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .weight(1f)
+                .verticalScroll(rememberScrollState())
+                .padding(24.dp)
+        ) {
+        if (!isEditMode) {
+            Spacer(Modifier.height(20.dp))
+
             Box(
                 modifier = Modifier
-                    .size(40.dp)
+                    .size(72.dp)
                     .clip(CircleShape)
-                    .background(if (isDark) Color(0xFF2C2145) else Color(0xFFEDE7FB))
-                    .clickable { onBack() },
+                    .background(
+                        Brush.linearGradient(listOf(SetupIndigo, SetupPink))
+                    ),
                 contentAlignment = Alignment.Center
             ) {
                 Icon(
-                    Icons.Filled.ArrowBack,
-                    contentDescription = "Back",
-                    tint = SetupIndigo,
-                    modifier = Modifier.size(20.dp)
+                    Icons.Filled.Person,
+                    contentDescription = null,
+                    tint = Color.White,
+                    modifier = Modifier.size(36.dp)
                 )
             }
-            Spacer(Modifier.height(16.dp))
-        }
 
-        Box(
-            modifier = Modifier
-                .size(72.dp)
-                .clip(CircleShape)
-                .background(
-                    Brush.linearGradient(listOf(SetupIndigo, SetupPink))
-                ),
-            contentAlignment = Alignment.Center
-        ) {
-            Icon(
-                Icons.Filled.Person,
-                contentDescription = null,
-                tint = Color.White,
-                modifier = Modifier.size(36.dp)
-            )
-        }
+            Spacer(Modifier.height(20.dp))
 
-        Spacer(Modifier.height(20.dp))
-
-        Row {
+            Row {
+                Text(
+                    "Set up your ",
+                    fontSize = 22.sp,
+                    fontWeight = FontWeight.ExtraBold,
+                    color = MaterialTheme.colorScheme.onBackground
+                )
+                Text("Profile", fontSize = 22.sp, fontWeight = FontWeight.ExtraBold, color = SetupPink)
+            }
+            Spacer(Modifier.height(6.dp))
             Text(
-                if (isEditMode) "Edit your " else "Set up your ",
-                fontSize = 22.sp,
-                fontWeight = FontWeight.ExtraBold,
-                color = MaterialTheme.colorScheme.onBackground
+                "Just a few details before you get started — this only takes a moment.",
+                fontSize = 13.sp,
+                color = SetupGrey
             )
-            Text("Profile", fontSize = 22.sp, fontWeight = FontWeight.ExtraBold, color = SetupPink)
-        }
-        Spacer(Modifier.height(6.dp))
-        Text(
-            if (isEditMode) {
-                "Update your details below."
-            } else {
-                "Just a few details before you get started — this only takes a moment."
-            },
-            fontSize = 13.sp,
-            color = SetupGrey
-        )
 
-        Spacer(Modifier.height(28.dp))
+            Spacer(Modifier.height(28.dp))
+        } else {
+            Spacer(Modifier.height(20.dp))
+        }
 
         FieldLabel("First name")
         OutlinedTextField(
@@ -272,15 +329,7 @@ fun ProfileSetupScreen(
                         )
                     }
                 )
-                .clickable(enabled = isFormValid) {
-                    val birthday = "%04d-%02d-%02d".format(birthYear, birthMonth, birthDay)
-                    scope.launch {
-                        onComplete(firstName.trim(), lastName.trim(), gender, birthday)
-                        if (isEditMode) {
-                            onBack?.invoke()
-                        }
-                    }
-                }
+                .clickable(enabled = isFormValid) { handleSave() }
                 .padding(vertical = 16.dp),
             contentAlignment = Alignment.Center
         ) {
@@ -303,6 +352,7 @@ fun ProfileSetupScreen(
         }
 
         Spacer(Modifier.height(24.dp))
+        } // end scrollable form Column
     }
 }
 
