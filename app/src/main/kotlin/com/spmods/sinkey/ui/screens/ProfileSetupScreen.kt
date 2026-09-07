@@ -55,28 +55,45 @@ private val SetupPink = Color(0xFFE0498A)
 private val SetupGrey = Color(0xFF6B7280)
 
 /**
- * One-time required setup shown the first time the user opens My Profile,
- * before ProfileScreen itself. Blocks progress until first name, last
- * name, gender, and birthday are all filled in — see
- * PreferencesManager.profileSetupComplete, which is what actually decides
- * whether MainActivity shows this screen or ProfileScreen.
+ * Shown two ways:
+ * 1. First-time required setup (isEditMode = false) — before ProfileScreen
+ *    itself, the first time the user opens My Profile. Blocks progress
+ *    until first name, last name, gender, and birthday are all filled in —
+ *    see PreferencesManager.profileSetupComplete, which is what actually
+ *    decides whether MainActivity shows this screen or ProfileScreen.
+ * 2. Editing an existing profile (isEditMode = true) — reached from
+ *    ProfileScreen's header pencil icon or its "Edit Profile" menu row.
+ *    Same form, pre-filled with the saved values, with "Save Changes"
+ *    instead of "Save & Continue" and a back button instead of being a
+ *    one-way gate.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ProfileSetupScreen(
-    onComplete: (firstName: String, lastName: String, gender: String, birthday: String) -> Unit
+    onComplete: (firstName: String, lastName: String, gender: String, birthday: String) -> Unit,
+    isEditMode: Boolean = false,
+    initialFirstName: String = "",
+    initialLastName: String = "",
+    initialGender: String = "",
+    initialBirthday: String = "", // "yyyy-MM-dd", matches PreferencesManager.profileBirthday
+    onBack: (() -> Unit)? = null
 ) {
     val isDark = isSystemInDarkTheme()
     val scope = rememberCoroutineScope()
 
-    var firstName by remember { mutableStateOf("") }
-    var lastName by remember { mutableStateOf("") }
-    var gender by remember { mutableStateOf("") } // "male" or "female"
+    var firstName by remember { mutableStateOf(initialFirstName) }
+    var lastName by remember { mutableStateOf(initialLastName) }
+    var gender by remember { mutableStateOf(initialGender) } // "male" or "female"
 
     val calendar = remember { Calendar.getInstance() }
-    var birthDay by remember { mutableStateOf<Int?>(null) }
-    var birthMonth by remember { mutableStateOf<Int?>(null) } // 1..12
-    var birthYear by remember { mutableStateOf<Int?>(null) }
+    val parsedInitialBirthday = remember(initialBirthday) {
+        initialBirthday.split("-").takeIf { it.size == 3 }?.let { (y, m, d) ->
+            Triple(y.toIntOrNull(), m.toIntOrNull(), d.toIntOrNull())
+        }
+    }
+    var birthDay by remember { mutableStateOf(parsedInitialBirthday?.third) }
+    var birthMonth by remember { mutableStateOf(parsedInitialBirthday?.second) } // 1..12
+    var birthYear by remember { mutableStateOf(parsedInitialBirthday?.first) }
 
     val monthNames = listOf(
         "January", "February", "March", "April", "May", "June",
@@ -96,6 +113,25 @@ fun ProfileSetupScreen(
             .padding(24.dp)
     ) {
         Spacer(Modifier.height(20.dp))
+
+        if (isEditMode && onBack != null) {
+            Box(
+                modifier = Modifier
+                    .size(40.dp)
+                    .clip(CircleShape)
+                    .background(if (isDark) Color(0xFF2C2145) else Color(0xFFEDE7FB))
+                    .clickable { onBack() },
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    androidx.compose.material.icons.Icons.Filled.ArrowBack,
+                    contentDescription = "Back",
+                    tint = SetupIndigo,
+                    modifier = Modifier.size(20.dp)
+                )
+            }
+            Spacer(Modifier.height(16.dp))
+        }
 
         Box(
             modifier = Modifier
@@ -117,12 +153,21 @@ fun ProfileSetupScreen(
         Spacer(Modifier.height(20.dp))
 
         Row {
-            Text("Set up your ", fontSize = 22.sp, fontWeight = FontWeight.ExtraBold, color = MaterialTheme.colorScheme.onBackground)
+            Text(
+                if (isEditMode) "Edit your " else "Set up your ",
+                fontSize = 22.sp,
+                fontWeight = FontWeight.ExtraBold,
+                color = MaterialTheme.colorScheme.onBackground
+            )
             Text("Profile", fontSize = 22.sp, fontWeight = FontWeight.ExtraBold, color = SetupPink)
         }
         Spacer(Modifier.height(6.dp))
         Text(
-            "Just a few details before you get started — this only takes a moment.",
+            if (isEditMode) {
+                "Update your details below."
+            } else {
+                "Just a few details before you get started — this only takes a moment."
+            },
             fontSize = 13.sp,
             color = SetupGrey
         )
@@ -230,13 +275,16 @@ fun ProfileSetupScreen(
                     val birthday = "%04d-%02d-%02d".format(birthYear, birthMonth, birthDay)
                     scope.launch {
                         onComplete(firstName.trim(), lastName.trim(), gender, birthday)
+                        if (isEditMode) {
+                            onBack?.invoke()
+                        }
                     }
                 }
                 .padding(vertical = 16.dp),
             contentAlignment = Alignment.Center
         ) {
             Text(
-                "Save & Continue",
+                if (isEditMode) "Save Changes" else "Save & Continue",
                 fontSize = 15.sp,
                 fontWeight = FontWeight.Bold,
                 color = if (isFormValid) Color.White else SetupGrey
