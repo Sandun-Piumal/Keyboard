@@ -633,7 +633,6 @@ fun ProfileScreen(
 }
 
 @Composable
-@Composable
 private fun RowScope.IdentityStat(icon: ComposeImageVector, iconColor: Color, label: String, value: String) {
     val isDark = isSystemInDarkTheme()
     Column(
