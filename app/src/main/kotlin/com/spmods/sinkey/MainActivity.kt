@@ -189,7 +189,21 @@ private fun SinKeyApp(prefs: PreferencesManager, initialTab: Tab = Tab.HOME) {
     var showKeyboardPreview by remember { mutableStateOf(false) }
     var showTypingTest by remember { mutableStateOf(false) }
     var showProfile by remember { mutableStateOf(false) }
+    var showEditProfile by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
+
+    // Hoisted here (not inside the showProfile branch below) so its
+    // collectAsState doesn't restart from `initial` every time showProfile
+    // is toggled — that restart was causing ProfileSetupScreen to flash
+    // briefly even for users who'd already completed setup, before the
+    // real DataStore value arrived.
+    val profileSetupComplete: Boolean? by prefs.profileSetupComplete.collectAsState(initial = null)
+    // Pre-fill values for the Edit Profile flow — same hoisting reasoning
+    // as profileSetupComplete above.
+    val profileFirstName by prefs.profileFirstName.collectAsState(initial = "")
+    val profileLastName by prefs.profileLastName.collectAsState(initial = "")
+    val profileGender by prefs.profileGender.collectAsState(initial = "")
+    val profileBirthday by prefs.profileBirthday.collectAsState(initial = "")
 
     val themeMode by prefs.themeMode.collectAsState(initial = ThemeMode.SYSTEM)
     val isDark = when (themeMode) {
@@ -207,8 +221,7 @@ private fun SinKeyApp(prefs: PreferencesManager, initialTab: Tab = Tab.HOME) {
     val showKeyBorders by prefs.showKeyBorders.collectAsState(initial = true)
     val sinhalaKeyHintsEnabled by prefs.sinhalaKeyHintsEnabled.collectAsState(initial = true)
     val keyOpacity by prefs.keyOpacity.collectAsState(initial = 1f)
-    val mixAutoSinhala by prefs.mixAutoSinhala.collectAsState(initial = false)
-    val swipeTypingEnabled by prefs.swipeTypingEnabled.collectAsState(initial = false)
+    val mixAutoSinhala by prefs.mixAutoSinhala.collectAsState(initial = false)    val swipeTypingEnabled by prefs.swipeTypingEnabled.collectAsState(initial = false)
     val smoothImeTransition by prefs.smoothImeTransition.collectAsState(initial = true)
     val keyColorPalette by prefs.keyColorPalette.collectAsState(initial = KeyColorPalette.DEFAULT)
     val keyEffect by prefs.keyEffect.collectAsState(initial = KeyEffect.NONE)
@@ -404,7 +417,14 @@ private fun SinKeyApp(prefs: PreferencesManager, initialTab: Tab = Tab.HOME) {
     }
 
     if (showProfile) {
-        BackHandler { showProfile = false }
+        BackHandler {
+            showProfile = false
+            showEditProfile = false
+        }
+    }
+
+    if (showEditProfile) {
+        BackHandler { showEditProfile = false }
     }
 
     // ── First-launch onboarding gate ────────────────────────────────────────
@@ -649,22 +669,38 @@ private fun SinKeyApp(prefs: PreferencesManager, initialTab: Tab = Tab.HOME) {
                         }
                     )
                     showProfile -> {
-                        val profileSetupComplete by prefs.profileSetupComplete.collectAsState(initial = false)
-                        if (profileSetupComplete) {
-                            ProfileScreen(
-                                onBack = { showProfile = false },
+                        when {
+                            showEditProfile -> ProfileSetupScreen(
+                                onComplete = { firstName: String, lastName: String, gender: String, birthday: String ->
+                                    scope.launch {
+                                        prefs.saveProfileSetup(firstName, lastName, gender, birthday)
+                                    }
+                                },
+                                isEditMode = true,
+                                initialFirstName = profileFirstName,
+                                initialLastName = profileLastName,
+                                initialGender = profileGender,
+                                initialBirthday = profileBirthday,
+                                onBack = { showEditProfile = false }
+                            )
+                            profileSetupComplete == true -> ProfileScreen(
+                                onBack = {
+                                    showProfile = false
+                                    showEditProfile = false
+                                },
+                                onEditProfile = { showEditProfile = true },
                                 isDark = isDark,
                                 currentPalette = keyColorPalette,
                                 defaultLanguage = defaultLanguage
                             )
-                        } else {
-                            ProfileSetupScreen(
+                            profileSetupComplete == false -> ProfileSetupScreen(
                                 onComplete = { firstName: String, lastName: String, gender: String, birthday: String ->
                                     scope.launch {
                                         prefs.saveProfileSetup(firstName, lastName, gender, birthday)
                                     }
                                 }
                             )
+                            else -> Unit // DataStore's first value hasn't arrived yet this frame
                         }
                     }
                     tab == Tab.HOME -> HomeScreen(
