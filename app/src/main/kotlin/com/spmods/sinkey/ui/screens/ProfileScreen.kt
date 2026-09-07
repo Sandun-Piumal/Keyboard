@@ -83,6 +83,7 @@ private val EarnedPink       = Color(0xFFE0498A)
 @Composable
 fun ProfileScreen(
     onBack: () -> Unit,
+    onEditProfile: () -> Unit = {},
     isDark: Boolean = isSystemInDarkTheme(),
     currentPalette: KeyColorPalette = KeyColorPalette.DEFAULT,
     defaultLanguage: String = "si"
@@ -187,7 +188,7 @@ fun ProfileScreen(
                     .size(36.dp)
                     .clip(CircleShape)
                     .background(if (isDark) Color(0xFF2C2145) else Color.White)
-                    .clickable { /* TODO: hook up edit-profile action */ },
+                    .clickable { onEditProfile() },
                 contentAlignment = Alignment.Center
             ) {
                 androidx.compose.material3.Icon(
@@ -593,7 +594,8 @@ fun ProfileScreen(
             MenuRow(
                 icon = Icons.Filled.Person,
                 iconBg = ProfileIndigo,
-                title = "Edit Profile"
+                title = "Edit Profile",
+                onClick = onEditProfile
             )
             MenuRow(
                 icon = Icons.Filled.Lock,
@@ -730,12 +732,14 @@ private fun MenuRow(
     icon: ComposeImageVector,
     iconBg: Color,
     title: String,
-    showDivider: Boolean = true
+    showDivider: Boolean = true,
+    onClick: () -> Unit = {}
 ) {
     Column {
         Row(
             modifier = Modifier
                 .fillMaxWidth()
+                .clickable { onClick() }
                 .padding(16.dp, 14.dp, 16.dp, 14.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
