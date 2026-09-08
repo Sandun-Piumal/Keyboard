@@ -143,13 +143,26 @@ fun AboutDeveloperScreen(
                 )
                 Spacer(Modifier.width(16.dp))
                 Column(modifier = Modifier.weight(1f)) {
-                    Text("Sandun Piumal", fontSize = 20.sp, fontWeight = FontWeight.Bold)
-                    Text(
-                        "Developer & UI/UX Designer",
-                        fontSize = 13.sp,
-                        fontWeight = FontWeight.Medium,
-                        color = DevIndigo
-                    )
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.Top
+                    ) {
+                        Column {
+                            Text("Sandun Piumal", fontSize = 20.sp, fontWeight = FontWeight.Bold)
+                            Text(
+                                "Developer & UI/UX Designer",
+                                fontSize = 13.sp,
+                                fontWeight = FontWeight.Medium,
+                                color = DevIndigo
+                            )
+                        }
+                        Image(
+                            painter = painterResource(id = R.drawable.badge_code),
+                            contentDescription = null,
+                            modifier = Modifier.size(44.dp)
+                        )
+                    }
                     Spacer(Modifier.height(8.dp))
                     Text(
                         "\u201C Turning ideas into real apps \u201D",
