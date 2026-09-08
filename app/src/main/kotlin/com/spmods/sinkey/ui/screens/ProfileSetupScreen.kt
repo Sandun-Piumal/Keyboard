@@ -82,9 +82,9 @@ fun ProfileSetupScreen(
     initialLastName: String = "",
     initialGender: String = "",
     initialBirthday: String = "", // "yyyy-MM-dd", matches PreferencesManager.profileBirthday
-    onBack: (() -> Unit)? = null
+    onBack: (() -> Unit)? = null,
+    isDark: Boolean = isSystemInDarkTheme()
 ) {
-    val isDark = isSystemInDarkTheme()
     val scope = rememberCoroutineScope()
 
     var firstName by remember { mutableStateOf(initialFirstName) }
