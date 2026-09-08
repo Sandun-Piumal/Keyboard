@@ -54,6 +54,7 @@ import com.spmods.sinkey.data.KeyColorPalette
 import com.spmods.sinkey.data.KeyEffect
 import com.spmods.sinkey.data.PreferencesManager
 import com.spmods.sinkey.data.ThemeMode
+import com.spmods.sinkey.data.TypingStatsRepository
 import com.spmods.sinkey.keyboard.KeyboardView
 import com.spmods.sinkey.ui.screens.AppHeader
 import com.spmods.sinkey.ui.screens.HeaderMenuMode
@@ -73,6 +74,7 @@ import com.spmods.sinkey.ui.screens.ProfileSetupScreen
 import com.spmods.sinkey.ui.screens.SettingsScreen
 import com.spmods.sinkey.ui.screens.ThemesScreen
 import com.spmods.sinkey.ui.screens.TypingTestScreen
+import com.spmods.sinkey.ui.screens.medalTierForPoints
 import com.spmods.sinkey.ui.theme.SinKeyTheme
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -214,8 +216,7 @@ private fun SinKeyApp(prefs: PreferencesManager, initialTab: Tab = Tab.HOME) {
         ThemeMode.LIGHT  -> false
         ThemeMode.DARK   -> true
         ThemeMode.SYSTEM -> isSystemInDarkTheme()
-    }
-    val defaultLanguage by prefs.defaultLanguage.collectAsState(initial = "si")
+    }    val defaultLanguage by prefs.defaultLanguage.collectAsState(initial = "si")
     val keySoundEnabled by prefs.keySoundEnabled.collectAsState(initial = true)
     val keyVibrateEnabled by prefs.keyVibrateEnabled.collectAsState(initial = true)
     val keyVibrationMs by prefs.keyVibrationMs.collectAsState(initial = 14f)
@@ -254,6 +255,14 @@ private fun SinKeyApp(prefs: PreferencesManager, initialTab: Tab = Tab.HOME) {
             context.packageManager.getPackageInfo(context.packageName, 0).versionName ?: "1.0.0"
         }.getOrDefault("1.0.0")
     }
+
+    // ── Home header badge medal tier ────────────────────────────────────────
+    // Same points source/thresholds as ProfileScreen's Medals card (1 point
+    // per character typed; 500/1500/2500 = Bronze/Silver/Gold) so the header
+    // badge always matches whatever tier is shown there.
+    val statsRepo = remember(context) { TypingStatsRepository(context) }
+    val totalCharactersForMedal by statsRepo.totalCharacters.collectAsState(initial = 0L)
+    val headerMedalTier = medalTierForPoints(totalCharactersForMedal)
 
     // ── Quick text shortcuts (Settings > Quick text) ───────────────────────
     // ── First-launch onboarding tutorial (see OnboardingScreen.kt) ─────────
@@ -546,6 +555,7 @@ private fun SinKeyApp(prefs: PreferencesManager, initialTab: Tab = Tab.HOME) {
                         }
                         AppHeader(
                             menuMode = headerMenuMode,
+                            medalTier = headerMedalTier,
                             onResetClick = {
                                 scope.launch {
                                     when (tab) {
