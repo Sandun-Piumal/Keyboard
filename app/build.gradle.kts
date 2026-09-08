@@ -79,6 +79,12 @@ dependencies {
     implementation("androidx.emoji2:emoji2:1.4.0")
     implementation("androidx.emoji2:emoji2-bundled:1.4.0")
     implementation("androidx.emoji2:emoji2-views:1.4.0")
+    // Required alongside emoji2-views for EmojiTextView/EmojiEditText to
+    // actually swap in EmojiCompat's glyphs — without it those widgets
+    // compile fine but silently render plain system-font emoji, which is
+    // why the emoji grid never picked up the bundled Noto Color Emoji font
+    // even though emoji2-bundled was already present.
+    implementation("androidx.emoji2:emoji2-views-helper:1.4.0")
 
     // Room: local database used to store the user's personal word dictionary
     // (learned words from typing) so they can be suggested again later.
