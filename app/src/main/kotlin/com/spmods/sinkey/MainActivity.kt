@@ -216,7 +216,8 @@ private fun SinKeyApp(prefs: PreferencesManager, initialTab: Tab = Tab.HOME) {
         ThemeMode.LIGHT  -> false
         ThemeMode.DARK   -> true
         ThemeMode.SYSTEM -> isSystemInDarkTheme()
-    }    val defaultLanguage by prefs.defaultLanguage.collectAsState(initial = "si")
+    }
+    val defaultLanguage by prefs.defaultLanguage.collectAsState(initial = "si")
     val keySoundEnabled by prefs.keySoundEnabled.collectAsState(initial = true)
     val keyVibrateEnabled by prefs.keyVibrateEnabled.collectAsState(initial = true)
     val keyVibrationMs by prefs.keyVibrationMs.collectAsState(initial = 14f)
