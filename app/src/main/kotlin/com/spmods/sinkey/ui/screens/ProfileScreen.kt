@@ -349,25 +349,29 @@ fun ProfileScreen(
                             icon = Icons.Filled.AutoAwesome,
                             iconColor = statIndigo,
                             label = "Level",
-                            value = level.toString()
+                            value = level.toString(),
+                            isDark = isDark
                         )
                         IdentityStat(
                             icon = Icons.Filled.LocalFireDepartment,
                             iconColor = Color(0xFFE0642B),
                             label = "Streak",
-                            value = "$streakDays Days"
+                            value = "$streakDays Days",
+                            isDark = isDark
                         )
                         IdentityStat(
                             icon = Icons.Filled.EmojiEvents,
                             iconColor = statIndigo,
                             label = "Rank",
-                            value = rankLabel
+                            value = rankLabel,
+                            isDark = isDark
                         )
                         IdentityStat(
                             icon = Icons.Filled.Groups,
                             iconColor = statIndigo,
                             label = "Joined",
-                            value = joinedLabel
+                            value = joinedLabel,
+                            isDark = isDark
                         )
                     }
                 }
@@ -633,8 +637,7 @@ fun ProfileScreen(
 }
 
 @Composable
-private fun RowScope.IdentityStat(icon: ComposeImageVector, iconColor: Color, label: String, value: String) {
-    val isDark = isSystemInDarkTheme()
+private fun RowScope.IdentityStat(icon: ComposeImageVector, iconColor: Color, label: String, value: String, isDark: Boolean) {
     Column(
         modifier = Modifier.weight(1f),
         horizontalAlignment = Alignment.CenterHorizontally
