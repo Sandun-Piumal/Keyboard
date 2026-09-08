@@ -105,13 +105,15 @@ fun ProfileScreen(
     val lastName by prefs.profileLastName.collectAsState(initial = "")
     val gender by prefs.profileGender.collectAsState(initial = "")
 
-    // 1 point per real character typed through the keyboard — an honest,
-    // direct formula (not fabricated progress). Level advances every 1000
-    // points, matching the "Next Level" progress bar shown below.
-    val totalPoints = totalCharacters
-    val level = (totalPoints / 1000L).toInt() + 1
-    val pointsIntoLevel = (totalPoints % 1000L).toInt()
-    val pointsToNextLevel = 1000 - pointsIntoLevel
+    // Level still advances every 1000 characters typed (unchanged
+    // thresholds) — only the *displayed* "points" value changes: it now
+    // shows 1 point per 1000 characters (integer division) instead of
+    // 1 point per character, so the number itself reads like a real
+    // point total rather than a raw character count.
+    val level = (totalCharacters / 1000L).toInt() + 1
+    val totalPoints = totalCharacters / 1000L
+    val charsIntoLevel = (totalCharacters % 1000L).toInt()
+    val charsToNextLevel = 1000 - charsIntoLevel
 
     val joinedLabel = remember(firstActiveDate) {
         firstActiveDate?.let { raw ->
@@ -462,7 +464,7 @@ fun ProfileScreen(
                         ) {
                             Box(
                                 modifier = Modifier
-                                    .fillMaxWidth(fraction = (pointsIntoLevel / 1000f).coerceIn(0f, 1f))
+                                    .fillMaxWidth(fraction = (charsIntoLevel / 1000f).coerceIn(0f, 1f))
                                     .height(7.dp)
                                     .clip(RoundedCornerShape(50))
                                     .background(Brush.horizontalGradient(listOf(ProfileIndigo, ProfilePink)))
@@ -470,7 +472,7 @@ fun ProfileScreen(
                         }
                         Spacer(Modifier.height(6.dp))
                         Text(
-                            "$pointsToNextLevel more points to Level ${level + 1}",
+                            "$charsToNextLevel more characters to Level ${level + 1}",
                             fontSize = 10.sp,
                             color = ProfileGrey
                         )
@@ -529,21 +531,21 @@ fun ProfileScreen(
                 medalColor = MedalGold,
                 title = "Gold Medal",
                 subtitle = "2500+ Points",
-                earned = totalPoints >= 2500
+                earned = totalCharacters >= 2500
             )
             MedalCard(
                 modifier = Modifier.weight(1f),
                 medalColor = MedalSilver,
                 title = "Silver Medal",
                 subtitle = "1500+ Points",
-                earned = totalPoints >= 1500
+                earned = totalCharacters >= 1500
             )
             MedalCard(
                 modifier = Modifier.weight(1f),
                 medalColor = MedalBronze,
                 title = "Bronze Medal",
                 subtitle = "500+ Points",
-                earned = totalPoints >= 500
+                earned = totalCharacters >= 500
             )
         }
 
