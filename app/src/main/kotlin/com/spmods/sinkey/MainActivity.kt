@@ -700,7 +700,8 @@ private fun SinKeyApp(prefs: PreferencesManager, initialTab: Tab = Tab.HOME) {
                                 initialLastName = profileLastName,
                                 initialGender = profileGender,
                                 initialBirthday = profileBirthday,
-                                onBack = { showEditProfile = false }
+                                onBack = { showEditProfile = false },
+                                isDark = isDark
                             )
                             profileSetupComplete == true -> ProfileScreen(
                                 onBack = {
@@ -720,7 +721,8 @@ private fun SinKeyApp(prefs: PreferencesManager, initialTab: Tab = Tab.HOME) {
                             profileSetupComplete == false -> ProfileSetupScreen(
                                 onComplete = { firstName: String, lastName: String, gender: String, birthday: String ->
                                     prefs.saveProfileSetup(firstName, lastName, gender, birthday)
-                                }
+                                },
+                                isDark = isDark
                             )
                             else -> Unit // DataStore's first value hasn't arrived yet this frame
                         }
