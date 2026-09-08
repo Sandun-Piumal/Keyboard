@@ -17,6 +17,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -53,6 +54,42 @@ private fun String.isSupported(): Boolean {
     if (codePoints.any { it in 0x1FAB7..0x1FAC2 } && sdk < 31) return false
 
     return true
+}
+
+/**
+ * Renders a single emoji glyph through EmojiCompat's bundled Noto Color
+ * Emoji font (see the emoji2-bundled dependency + initEmojiCompat() in
+ * SinKeyInputMethodService) instead of whatever plain/outdated emoji font
+ * happens to ship on the device's own firmware.
+ *
+ * This can't just be a Compose Text(emoji) call: EmojiCompat works by
+ * finding emoji in a CharSequence and replacing them with EmojiSpans,
+ * which only the classic Android text-rendering pipeline
+ * (TextView/EmojiTextView) knows how to draw — Compose's own Text()
+ * doesn't process spans that way and silently ignores them, which is why
+ * the grid was previously always falling back to the device's system
+ * emoji font no matter what. Routing through EmojiCompat's own
+ * EmojiTextView via AndroidView is the supported way to get its glyphs
+ * inside a Compose tree.
+ */
+@Composable
+private fun EmojiGlyphText(emoji: String, fontSize: androidx.compose.ui.unit.TextUnit, textColor: Color) {
+    val sizePx = with(androidx.compose.ui.platform.LocalDensity.current) { fontSize.toPx() }
+    val colorInt = textColor.toArgb()
+    androidx.compose.ui.viewinterop.AndroidView(
+        factory = { ctx ->
+            androidx.emoji2.widget.EmojiTextView(ctx).apply {
+                gravity = android.view.Gravity.CENTER
+                includeFontPadding = false
+            }
+        },
+        update = { view ->
+            view.text = emoji
+            view.textSize = sizePx / view.resources.displayMetrics.density
+            view.setTextColor(colorInt)
+        },
+        modifier = Modifier.fillMaxSize()
+    )
 }
 
 /**
@@ -138,6 +175,16 @@ internal fun EmojiPickerView(
     var selectedCategory by remember { mutableIntStateOf(0) }
     val gridState = rememberLazyGridState()
     val coroutineScope = rememberCoroutineScope()
+    // True while a tab click's own animateScrollToItem is running. While
+    // this is true, the scroll-position listener below must not touch
+    // selectedCategory — otherwise every intermediate frame of the smooth
+    // scroll re-runs the "which category is this scroll position in" check
+    // and stomps the tab the user just tapped with whatever category the
+    // animation is passing through at that instant. That's what made
+    // tapping a far-away tab look like it "jumped"/flickered through the
+    // tabs in between instead of landing smoothly and immediately
+    // highlighting the tapped tab.
+    var isProgrammaticScroll by remember { mutableStateOf(false) }
 
     // Tab / active-state colors derived from the shared keyboard palette so
     // this board always matches whatever theme (dark or light) is active.
@@ -146,8 +193,12 @@ internal fun EmojiPickerView(
     val activeTabBg = colors.specialKeyBg
     val underlineColor = colors.keyText
 
-    // Auto-update selected tab based on scroll position
+    // Auto-update selected tab based on scroll position — but only for
+    // scrolling the user does by dragging the grid directly, not for the
+    // animated scroll a tab tap itself triggers (see isProgrammaticScroll
+    // above).
     LaunchedEffect(gridState.firstVisibleItemIndex) {
+        if (isProgrammaticScroll) return@LaunchedEffect
         val firstVisible = gridState.firstVisibleItemIndex
         // Find which category this item belongs to
         val catIndex = categoryStartIndices.indexOfLast { it <= firstVisible }
@@ -205,9 +256,20 @@ internal fun EmojiPickerView(
                         .clip(RoundedCornerShape(6.dp))
                         .background(if (isSelected) activeTabBg else Color.Transparent)
                         .clickable {
+                            // Set the tab immediately (instant visual
+                            // feedback + underline moves right away) and
+                            // guard the scroll listener above for the
+                            // duration of the animated scroll so it can't
+                            // override this with whatever category the
+                            // animation happens to be passing through.
                             selectedCategory = index
                             coroutineScope.launch {
-                                gridState.animateScrollToItem(categoryStartIndices[index])
+                                isProgrammaticScroll = true
+                                try {
+                                    gridState.animateScrollToItem(categoryStartIndices[index])
+                                } finally {
+                                    isProgrammaticScroll = false
+                                }
                             }
                         },
                     contentAlignment = Alignment.Center
@@ -282,10 +344,10 @@ internal fun EmojiPickerView(
                             .clickable { onEmojiSelected(emoji) },
                         contentAlignment = Alignment.Center
                     ) {
-                        Text(
-                            text = emoji,
-                            fontSize = 22.sp,
-                            textAlign = TextAlign.Center
+                        EmojiGlyphText(
+                            emoji = emoji,
+                            fontSize = 28.sp,
+                            textColor = colors.keyText
                         )
                     }
                 }
