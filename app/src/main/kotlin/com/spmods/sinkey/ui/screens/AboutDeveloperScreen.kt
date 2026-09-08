@@ -24,7 +24,6 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.ArrowForwardIos
-import androidx.compose.material.icons.filled.Code
 import androidx.compose.material.icons.filled.Email
 import androidx.compose.material.icons.filled.Language
 import androidx.compose.material.icons.filled.LocationOn
@@ -77,24 +76,6 @@ private val FOLLOW_ITEMS = listOf(
     FollowItem(Icons.Filled.Language, Color(0xFFE3DEFA), Color(0xFF5B4BDB), "Website", "https://www.spmods.download"),
     FollowItem(Icons.Filled.Send, Color(0xFFDCEEFC), Color(0xFF2AA9E0), "Telegram", null),
     FollowItem(Icons.Filled.PlayArrow, Color(0xFFFBE0E0), Color(0xFFE0362E), "YouTube", "https://youtube.com/@datahackerz?si=3ORYJfLTK2LeInBj")
-)
-
-/** One skill/tool chip shown in the "My Skills" section. */
-private data class DeveloperSkill(
-    val emoji: String,
-    val bg: Color,
-    val label: String
-)
-
-private val DEVELOPER_SKILLS = listOf(
-    DeveloperSkill("🩵", Color(0xFFDCEEFC), "Flutter"),
-    DeveloperSkill("🔷", Color(0xFFE3DEFA), "Dart"),
-    DeveloperSkill("🟨", Color(0xFFFCEFC2), "JavaScript"),
-    DeveloperSkill("🔥", Color(0xFFFBE3D6), "Firebase"),
-    DeveloperSkill("🎨", Color(0xFFF6DCEE), "UI/UX Design"),
-    DeveloperSkill("🐙", Color(0xFFE9E9EE), "Git & GitHub"),
-    DeveloperSkill("🔵", Color(0xFFDCEEFC), "VS Code"),
-    DeveloperSkill("🅿️", Color(0xFFDDE3F7), "Photoshop")
 )
 
 /**
@@ -224,40 +205,6 @@ fun AboutDeveloperScreen(
 
             Spacer(Modifier.height(16.dp))
 
-            // ── My Skills ────────────────────────────────────────────────
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clip(RoundedCornerShape(20.dp))
-                    .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f))
-                    .padding(18.dp)
-            ) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Box(
-                        modifier = Modifier
-                            .size(36.dp)
-                            .clip(CircleShape)
-                            .background(DevIndigo),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Icon(Icons.Filled.Code, contentDescription = null, tint = Color.White, modifier = Modifier.size(18.dp))
-                    }
-                    Spacer(Modifier.width(12.dp))
-                    Column {
-                        Text("My Skills", fontSize = 16.sp, fontWeight = FontWeight.Bold)
-                        Text(
-                            "Technologies & Tools I work with",
-                            fontSize = 12.sp,
-                            color = DevGrey
-                        )
-                    }
-                }
-                Spacer(Modifier.height(14.dp))
-                SkillFlowRows(skills = DEVELOPER_SKILLS)
-            }
-
-            Spacer(Modifier.height(16.dp))
-
             // ── Contact ──────────────────────────────────────────────────
             SectionCard {
                 SectionHeader(
@@ -276,8 +223,8 @@ fun AboutDeveloperScreen(
                 ContactRow(
                     icon = Icons.Filled.Email,
                     label = "Email",
-                    value = "sandunpiumal123@gmail.com",
-                    onClick = { onOpenLink("mailto:sandunpiumal123@gmail.com") }
+                    value = "spmodsofficial@gmail.com",
+                    onClick = { onOpenLink("mailto:spmodsofficial@gmail.com") }
                 )
                 Spacer(Modifier.height(14.dp))
                 androidx.compose.material3.Divider(color = MaterialTheme.colorScheme.outlineVariant)
@@ -504,41 +451,6 @@ private fun ContactRow(
         Column {
             Text(label, fontSize = 12.sp, color = DevGrey)
             Text(value, fontSize = 14.sp, fontWeight = FontWeight.Medium)
-        }
-    }
-}
-
-/** Lays skill chips out in wrapping rows of three, matching the reference layout. */
-@Composable
-private fun SkillFlowRows(skills: List<DeveloperSkill>) {
-    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-        skills.chunked(3).forEach { rowSkills ->
-            Row(
-                horizontalArrangement = Arrangement.spacedBy(10.dp),
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                rowSkills.forEach { skill ->
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        modifier = Modifier
-                            .clip(RoundedCornerShape(50))
-                            .background(MaterialTheme.colorScheme.surface)
-                            .padding(horizontal = 14.dp, vertical = 10.dp)
-                    ) {
-                        Box(
-                            modifier = Modifier
-                                .size(20.dp)
-                                .clip(RoundedCornerShape(5.dp))
-                                .background(skill.bg),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Text(skill.emoji, fontSize = 10.sp)
-                        }
-                        Spacer(Modifier.width(8.dp))
-                        Text(skill.label, fontSize = 13.sp, fontWeight = FontWeight.Medium)
-                    }
-                }
-            }
         }
     }
 }
