@@ -84,6 +84,21 @@ import com.spmods.sinkey.R
 enum class HeaderMenuMode { PREMIUM, THEME_RESET, SETTINGS_RESET }
 
 /**
+ * Matches ProfileScreen's medal thresholds (500/1500/2500 total points,
+ * 1 point per character typed) so the Home header badge always reflects
+ * the same tier shown on the Medals card in Profile — NONE falls back to
+ * the header's original plain indigo look.
+ */
+enum class MedalTier { NONE, BRONZE, SILVER, GOLD }
+
+fun medalTierForPoints(totalPoints: Long): MedalTier = when {
+    totalPoints >= 2500L -> MedalTier.GOLD
+    totalPoints >= 1500L -> MedalTier.SILVER
+    totalPoints >= 500L -> MedalTier.BRONZE
+    else -> MedalTier.NONE
+}
+
+/**
  * Shared top bar for all three tabs (Home/Themes/Settings) — kept in this
  * file since Home originally owned this exact look (SinKey/Board title,
  * tagline, trailing action box). MainActivity now hosts a single instance
@@ -100,6 +115,7 @@ enum class HeaderMenuMode { PREMIUM, THEME_RESET, SETTINGS_RESET }
 @Composable
 fun AppHeader(
     menuMode: HeaderMenuMode = HeaderMenuMode.PREMIUM,
+    medalTier: MedalTier = MedalTier.NONE,
     onResetClick: () -> Unit = {}
 ) {
     var menuExpanded by remember { mutableStateOf(false) }
@@ -111,6 +127,22 @@ fun AppHeader(
         HeaderMenuMode.PREMIUM -> "Board"
         HeaderMenuMode.THEME_RESET -> "Themes"
         HeaderMenuMode.SETTINGS_RESET -> "Settings"
+    }
+
+    // Badge background/icon tint follow the user's earned medal tier —
+    // same solid Gold/Silver/Bronze colors as the medal circles in Profile
+    // (white icon on a solid color card) — so this glyph doubles as an
+    // at-a-glance rank indicator. NONE (no medal earned yet) falls back to
+    // a neutral card so the icon still sits on a visible background.
+    val badgeBg = when (medalTier) {
+        MedalTier.GOLD -> Color(0xFFF4B400)
+        MedalTier.SILVER -> Color(0xFFB0B7C3)
+        MedalTier.BRONZE -> Color(0xFFB4692B)
+        MedalTier.NONE -> IndigoDeep.copy(alpha = 0.12f)
+    }
+    val badgeIconTint = when (medalTier) {
+        MedalTier.NONE -> IndigoDeep
+        else -> Color.White
     }
 
     Row(
@@ -157,14 +189,19 @@ fun AppHeader(
             Box(
                 modifier = Modifier
                     .size(40.dp)
-                    // The background/border/rounded-corner "chip" that used
-                    // to wrap this icon is removed — now just a plain icon
-                    // with an invisible touch target the same size, so tap
-                    // area is unchanged but nothing draws around it.
+                    // Premium badge now sits on a circular tinted card
+                    // (color driven by medalTier above) instead of a bare
+                    // icon — matches the Test Typing/Medal card treatment
+                    // elsewhere in the app. The 3-dot menu (Themes/
+                    // Settings) keeps the old plain-icon look since it's a
+                    // functional control, not a status badge.
                     .then(
-                        if (menuMode != HeaderMenuMode.PREMIUM)
+                        if (menuMode == HeaderMenuMode.PREMIUM)
+                            Modifier
+                                .clip(CircleShape)
+                                .background(badgeBg)
+                        else
                             Modifier.clickable { menuExpanded = true }
-                        else Modifier
                     ),
                 contentAlignment = Alignment.Center
             ) {
@@ -172,12 +209,14 @@ fun AppHeader(
                     if (menuMode == HeaderMenuMode.PREMIUM) Icons.Filled.WorkspacePremium
                     else Icons.Filled.MoreVert,
                     contentDescription = if (menuMode == HeaderMenuMode.PREMIUM) "Premium" else "More options",
-                    // Premium keeps its brand indigo. The 3-dot menu (Themes/
-                    // Settings) instead uses onBackground so it auto-flips:
-                    // black in Light theme, white in Dark theme — matching
-                    // the Menu icon on the left rather than a fixed color
-                    // that could vanish against either theme's background.
-                    tint = if (menuMode == HeaderMenuMode.PREMIUM) IndigoDeep
+                    // Premium's tint follows medalTier (falls back to brand
+                    // indigo when no medal is earned yet). The 3-dot menu
+                    // (Themes/Settings) instead uses onBackground so it
+                    // auto-flips: black in Light theme, white in Dark
+                    // theme — matching the Menu icon on the left rather
+                    // than a fixed color that could vanish against either
+                    // theme's background.
+                    tint = if (menuMode == HeaderMenuMode.PREMIUM) badgeIconTint
                         else MaterialTheme.colorScheme.onBackground,
                     modifier = Modifier.size(20.dp)
                 )
