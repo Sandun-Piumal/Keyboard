@@ -2871,7 +2871,19 @@ class SinKeyInputMethodService : InputMethodService() {
      * not be a separate, later InputConnection call.
      */
     private fun commitPendingWord(trailing: String = "") {
-        if (wordBuffer.isEmpty()) return
+        if (wordBuffer.isEmpty()) {
+            // BUG FIX: there's no pending word to commit, but `trailing`
+            // (e.g. the space from the SPACE key handler) still needs to
+            // reach the field. Returning here unconditionally used to
+            // silently drop it, which is why SPACE appeared to do nothing
+            // in Sinhala/mix mode whenever the buffer was already empty —
+            // pressing space twice in a row, or right after punctuation,
+            // an emoji, or a freshly committed suggestion chip.
+            if (trailing.isNotEmpty()) {
+                currentInputConnection?.commitText(trailing, 1)
+            }
+            return
+        }
         val ic = currentInputConnection
         val raw = wordBuffer.toString()
         // What's actually showing on screen right now as composing text —
