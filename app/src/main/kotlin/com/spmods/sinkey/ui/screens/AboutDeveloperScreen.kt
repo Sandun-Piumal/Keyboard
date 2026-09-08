@@ -2,6 +2,7 @@ package com.spmods.sinkey.ui.screens
 
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -25,7 +26,6 @@ import androidx.compose.material.icons.filled.Code
 import androidx.compose.material.icons.filled.Email
 import androidx.compose.material.icons.filled.LocationOn
 import androidx.compose.material.icons.filled.Person
-import androidx.compose.material.icons.filled.Send
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -50,30 +50,6 @@ import com.spmods.sinkey.R
 // ── Palette (matches the purple/indigo accent used across Profile/Settings) ──
 private val DevIndigo    = Color(0xFF6C4CE0)
 private val DevGrey      = Color(0xFF6B7280)
-private val GithubBg     = Color(0xFFEDE9F7)
-private val GithubFg     = Color(0xFF1F2430)
-private val TelegramBg   = Color(0xFFDCEEFC)
-private val TelegramFg   = Color(0xFF2AA9E0)
-private val WhatsAppBg   = Color(0xFFDFF5E3)
-private val WhatsAppFg   = Color(0xFF33B24A)
-private val MailBg       = Color(0xFFE3DEFA)
-private val MailFg       = Color(0xFF5B4BDB)
-
-/** One quick social/contact icon shown under the developer's name. */
-private data class DeveloperSocial(
-    val icon: androidx.compose.ui.graphics.vector.ImageVector,
-    val bg: Color,
-    val fg: Color,
-    val contentDescription: String,
-    val url: String
-)
-
-private val DEVELOPER_SOCIALS = listOf(
-    DeveloperSocial(Icons.Filled.Code, GithubBg, GithubFg, "GitHub", "https://github.com/"),
-    DeveloperSocial(Icons.Filled.Send, TelegramBg, TelegramFg, "Telegram", "https://t.me/SPModsSandun"),
-    DeveloperSocial(Icons.Filled.Person, WhatsAppBg, WhatsAppFg, "WhatsApp", "https://wa.me/"),
-    DeveloperSocial(Icons.Filled.Email, MailBg, MailFg, "Email", "mailto:sandunpiumal123@gmail.com")
-)
 
 /** One skill/tool chip shown in the "My Skills" section. */
 private data class DeveloperSkill(
@@ -94,8 +70,8 @@ private val DEVELOPER_SKILLS = listOf(
 )
 
 /**
- * "About developer" screen: avatar/name/tagline header, quick social icons,
- * an About Me blurb, a skills grid, and contact details (email + location).
+ * "About developer" screen: centered avatar/name/tagline header, an About Me
+ * blurb, a skills grid, and contact details (email + location).
  * [onOpenLink] receives the raw URL/mailto — the caller (MainActivity) turns
  * that into an ACTION_VIEW intent, same pattern as every other external-link
  * launch in this app.
@@ -131,66 +107,49 @@ fun AboutDeveloperScreen(
         ) {
             Spacer(Modifier.height(20.dp))
 
-            // ── Header: avatar, name, role, quote, socials ──────────────
-            Row(verticalAlignment = Alignment.Top) {
-                Image(
-                    painter = painterResource(id = R.drawable.avatar_developer),
-                    contentDescription = "Sandun Piumal",
-                    contentScale = ContentScale.Crop,
+            // ── Header: centered avatar, name, role, tagline ────────────
+            Column(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                Box(
                     modifier = Modifier
-                        .size(96.dp)
+                        .size(168.dp)
                         .clip(CircleShape)
-                )
-                Spacer(Modifier.width(16.dp))
-                Column(modifier = Modifier.weight(1f)) {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.Top
-                    ) {
-                        Column {
-                            Text("Sandun Piumal", fontSize = 20.sp, fontWeight = FontWeight.Bold)
-                            Text(
-                                "Developer & UI/UX Designer",
-                                fontSize = 13.sp,
-                                fontWeight = FontWeight.Medium,
-                                color = DevIndigo
+                        .background(
+                            androidx.compose.ui.graphics.Brush.radialGradient(
+                                colors = listOf(Color(0xFF29B6F6), Color(0xFF29B6F6).copy(alpha = 0f))
                             )
-                        }
-                        Image(
-                            painter = painterResource(id = R.drawable.badge_code),
-                            contentDescription = null,
-                            modifier = Modifier.size(44.dp)
                         )
-                    }
-                    Spacer(Modifier.height(8.dp))
-                    Text(
-                        "\u201C Turning ideas into real apps \u201D",
-                        fontSize = 13.sp,
-                        fontStyle = FontStyle.Italic,
-                        color = DevGrey
+                        .padding(10.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Image(
+                        painter = painterResource(id = R.drawable.avatar_developer),
+                        contentDescription = "Sandun Piumal",
+                        contentScale = ContentScale.Crop,
+                        modifier = Modifier
+                            .size(148.dp)
+                            .clip(CircleShape)
+                            .border(3.dp, Color(0xFF29B6F6), CircleShape)
                     )
-                    Spacer(Modifier.height(10.dp))
-                    Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                        DEVELOPER_SOCIALS.forEach { social ->
-                            Box(
-                                modifier = Modifier
-                                    .size(38.dp)
-                                    .clip(RoundedCornerShape(11.dp))
-                                    .background(social.bg)
-                                    .clickable { onOpenLink(social.url) },
-                                contentAlignment = Alignment.Center
-                            ) {
-                                Icon(
-                                    social.icon,
-                                    contentDescription = social.contentDescription,
-                                    tint = social.fg,
-                                    modifier = Modifier.size(18.dp)
-                                )
-                            }
-                        }
-                    }
                 }
+                Spacer(Modifier.height(18.dp))
+                Text("Sandun Piumal", fontSize = 24.sp, fontWeight = FontWeight.Bold)
+                Spacer(Modifier.height(4.dp))
+                Text(
+                    "Developer of SinKey",
+                    fontSize = 15.sp,
+                    color = DevGrey
+                )
+                Spacer(Modifier.height(14.dp))
+                Text(
+                    "\"Code  \u2022  Create  \u2022  Improve\"",
+                    fontSize = 15.sp,
+                    fontStyle = FontStyle.Italic,
+                    fontWeight = FontWeight.Medium,
+                    color = DevIndigo
+                )
             }
 
             Spacer(Modifier.height(24.dp))
