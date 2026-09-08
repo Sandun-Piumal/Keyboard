@@ -191,7 +191,6 @@ internal fun EmojiPickerView(
     val activeTint = colors.keyText
     val inactiveTint = colors.subText
     val activeTabBg = colors.specialKeyBg
-    val underlineColor = colors.keyText
 
     // Auto-update selected tab based on scroll position — but only for
     // scrolling the user does by dragging the grid directly, not for the
@@ -253,12 +252,10 @@ internal fun EmojiPickerView(
                     modifier = Modifier
                         .height(keyHeight)
                         .weight(1f)
-                        .clip(RoundedCornerShape(6.dp))
-                        .background(if (isSelected) activeTabBg else Color.Transparent)
                         .clickable {
                             // Set the tab immediately (instant visual
-                            // feedback + underline moves right away) and
-                            // guard the scroll listener above for the
+                            // feedback + selection circle moves right away)
+                            // and guard the scroll listener above for the
                             // duration of the animated scroll so it can't
                             // override this with whatever category the
                             // animation happens to be passing through.
@@ -274,22 +271,21 @@ internal fun EmojiPickerView(
                         },
                     contentAlignment = Alignment.Center
                 ) {
-                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    // Selected state is now a filled circle behind the
+                    // icon itself (like most emoji keyboards' tab bars),
+                    // replacing the old thin underline bar below the icon.
+                    Box(
+                        modifier = Modifier
+                            .size(28.dp)
+                            .clip(androidx.compose.foundation.shape.CircleShape)
+                            .background(if (isSelected) activeTabBg else Color.Transparent),
+                        contentAlignment = Alignment.Center
+                    ) {
                         Icon(
                             painter = painterResource(id = categoryIconRes(category.name, isSelected)),
                             contentDescription = category.name,
                             tint = if (isSelected) activeTint else inactiveTint,
-                            modifier = Modifier.size(22.dp)
-                        )
-                        Box(
-                            modifier = Modifier
-                                .padding(top = 2.dp)
-                                .width(16.dp)
-                                .height(2.dp)
-                                .background(
-                                    if (isSelected) underlineColor else Color.Transparent,
-                                    shape = RoundedCornerShape(1.dp)
-                                )
+                            modifier = Modifier.size(20.dp)
                         )
                     }
                 }
@@ -346,7 +342,7 @@ internal fun EmojiPickerView(
                     ) {
                         EmojiGlyphText(
                             emoji = emoji,
-                            fontSize = 28.sp,
+                            fontSize = 32.sp,
                             textColor = colors.keyText
                         )
                     }
