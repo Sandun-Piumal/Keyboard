@@ -249,7 +249,7 @@ fun AboutDeveloperScreen(
                 DividerLine()
             }
             Text(
-                "Thanks for using my app! \uD83D\uDE0A",
+                "Thanks for using Sinkey! \uD83D\uDE0A",
                 fontSize = 13.sp,
                 color = DevGrey,
                 modifier = Modifier
