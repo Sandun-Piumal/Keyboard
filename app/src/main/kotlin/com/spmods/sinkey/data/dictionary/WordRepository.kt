@@ -71,6 +71,20 @@ class WordRepository(context: Context) {
     }
 
     /**
+     * True if [word] exists in the dictionary for [language] — either the
+     * bundled base list or something the user has typed/learned before.
+     * Used by transliteration candidate-ranking (see
+     * SinKeyInputMethodService's onGetSuggestions Sinhala branch) to prefer
+     * a dictionary-confirmed reading over the raw phonetic default when a
+     * romanized letter is genuinely ambiguous between two Sinhala letters
+     * (e.g. "d" -> ද vs ඩ — see SinhalaTransliterator's consonant table
+     * comment). A single findExact() lookup is cheap enough to call for
+     * each ambiguous-letter candidate generated per keystroke.
+     */
+    suspend fun isKnownWord(word: String, language: String): Boolean =
+        dao.findExact(word, language) != null
+
+    /**
      * Fuzzy matches for [typed], tolerant of small spelling variations —
      * e.g. a dropped vowel sign, one wrong consonant, or a transliteration
      * ambiguity (see [SinhalaTransliterator]/[SinhalaCandidateMap]) that
@@ -155,6 +169,15 @@ class WordRepository(context: Context) {
      */
     suspend fun allWords(language: String): List<String> =
         dao.getAllForLanguage(language).map { it.word }
+
+    /**
+     * Same as [allWords] but capped to the [limit] most-frequent words —
+     * see WordDao.getTopForLanguage's doc comment for why gesture typing
+     * uses this instead of the uncapped [allWords] now that wordlist_si.txt
+     * is a 200K-word frequency corpus rather than ~1,654 words.
+     */
+    suspend fun topWords(language: String, limit: Int = GESTURE_CANDIDATE_LIMIT): List<String> =
+        dao.getTopForLanguage(language, limit).map { it.word }
 
     /**
      * Live-updating word lists for the Personal Dictionary screen — one per
@@ -243,5 +266,14 @@ class WordRepository(context: Context) {
          * dictionary.
          */
         private const val MANUAL_ADD_FREQUENCY_BOOST = 4
+
+        /**
+         * Default candidate-pool size for [topWords]/gesture typing. Large
+         * enough to cover virtually every word someone would realistically
+         * swipe (well beyond everyday vocabulary), small enough that
+         * scoring it against a swipe path on every gesture stays fast on
+         * typical devices. See WordDao.getTopForLanguage's doc comment.
+         */
+        private const val GESTURE_CANDIDATE_LIMIT = 15000
     }
 }
