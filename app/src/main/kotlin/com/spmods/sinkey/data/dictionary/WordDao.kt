@@ -60,6 +60,23 @@ interface WordDao {
     @Query("SELECT * FROM words WHERE language = :language ORDER BY frequency DESC")
     suspend fun getAllForLanguage(language: String): List<WordEntity>
 
+    /**
+     * Same as [getAllForLanguage] but capped to the [limit] most-frequent
+     * words. Added for gesture typing specifically once wordlist_si.txt
+     * grew from ~1,654 words to a 200K-word frequency corpus (see
+     * DictionarySeeder's v2->v3 note): GestureWordMatcher/
+     * rankWordsByLetterSequence score every candidate word against the
+     * swipe path on every single swipe, so handing it the full 200K-word
+     * pool would make each swipe noticeably slower for very little
+     * practical benefit — a swipe is essentially never *intended* to
+     * target a word so rare it wouldn't already be in the top few
+     * thousand most-used words for the language. ORDER BY frequency DESC
+     * means the words dropped by this cap are exactly the long tail least
+     * likely to be a real gesture target anyway.
+     */
+    @Query("SELECT * FROM words WHERE language = :language ORDER BY frequency DESC LIMIT :limit")
+    suspend fun getTopForLanguage(language: String, limit: Int): List<WordEntity>
+
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun upsert(entity: WordEntity)
 
@@ -136,6 +153,24 @@ interface WordDao {
         """
     )
     suspend fun seedWord(word: String, language: String, frequency: Int = 1, now: Long = 0L)
+
+    /**
+     * Batch version of [seedWord] for seeding large bundled word lists
+     * (e.g. wordlist_si.txt's 200K-word Sinhala frequency corpus — see
+     * DictionarySeeder). [entities] should already carry the shared seed
+     * frequency/lastUsed values (DictionarySeeder builds these the same
+     * way it used to call seedWord() per-word).
+     *
+     * @Insert with REPLACE would be wrong here — it would silently
+     * overwrite a word's real learned frequency/lastUsed with the seed
+     * values on every reseed. IGNORE keeps this equivalent to seedWord's
+     * "only insert if genuinely new" behavior, just batched into one
+     * transaction instead of one suspend call (and one implicit
+     * transaction) per word, which is what made seeding 200K words
+     * impractically slow — each individual INSERT was its own commit.
+     */
+    @Insert(onConflict = OnConflictStrategy.IGNORE)
+    suspend fun seedWords(entities: List<WordEntity>)
 
     /**
      * Raises an already-seeded word's frequency/lastUsed up to the current
