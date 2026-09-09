@@ -3788,26 +3788,30 @@ class SinKeyInputMethodService : InputMethodService() {
             }
             // Dictionary-based disambiguation for ambiguous consonants
             // (n/t/d/l — see SinhalaTransliterator's consonant table
-            // comment on why bare lowercase currently defaults to the
-            // *less* common reading for d/t specifically, e.g. "gedara"
-            // phonetically transliterating to ගෙඩර by default when the
-            // real, common word is ගෙදර). Rather than changing the
-            // transliterator's default (which would just flip which
-            // letter is wrong for the *other* set of words, e.g. කොඩිය),
-            // check whether one of the case-swapped alt-candidates already
-            // generated above is a real dictionary word while `primary`
-            // isn't, and promote it to the front of the list if so.
+            // comment on why bare lowercase currently defaults to ද over
+            // ඩ for "d" specifically, since ද is ~3.5x more common
+            // overall — but plenty of real words genuinely need ඩ, e.g.
+            // කොඩිය, and there's no way to tell which one the user means
+            // from "kodiya" alone without checking the dictionary).
+            //
+            // Rather than silently guessing one and hiding the other, if
+            // BOTH the phonetic default (`primary`, e.g. ගෙදර) and a
+            // case-swapped alt-candidate (e.g. ගෙඩර) are real dictionary
+            // words, surface both as the top two suggestions — the user
+            // picks whichever they meant with one tap, same as any normal
+            // ambiguous-suggestion case, instead of us silently deciding
+            // for them. If only one of the two is a real word, that one is
+            // promoted alone (the previous behavior). This deliberately
+            // leaves the underlying "d" -> ද / "D" -> ඩ typing shortcut
+            // completely untouched — this only affects what shows up in
+            // the suggestion strip afterward.
             //
             // This has to happen in its own serviceScope.launch, same
             // pattern as fetchNextWordSuggestions/fetchPersonalSuggestions
             // just below: isKnownWord() is a suspend Room query, and this
             // whole onGetSuggestions-family of functions is a plain
             // (non-suspend) function called directly from key-press
-            // handling — see updateSuggestions()'s many call sites. It
-            // originally tried to call isKnownWord() inline here, which
-            // doesn't compile ("Suspend function ... should be called only
-            // from a coroutine or another suspend function") since nothing
-            // here is itself suspend or already inside a launch block.
+            // handling — see updateSuggestions()'s many call sites.
             //
             // So: publish `list` (the ordinary phonetic-only candidates)
             // synchronously first via the currentLanguage.value branch
@@ -3824,30 +3828,33 @@ class SinKeyInputMethodService : InputMethodService() {
                 val capturedPrimary = primary
                 val capturedAlts = list.drop(1)
                 serviceScope.launch {
-                    if (wordRepo.isKnownWord(capturedPrimary, "si")) return@launch
+                    val primaryIsKnown = wordRepo.isKnownWord(capturedPrimary, "si")
                     val confirmedAlt = capturedAlts.firstOrNull { wordRepo.isKnownWord(it, "si") }
-                        ?: return@launch
+                    if (primaryIsKnown && confirmedAlt == null) return@launch
+                    if (!primaryIsKnown && confirmedAlt == null) return@launch
                     // Guard against a stale async reply landing after the
                     // user has since typed more/less or moved on to a
                     // different word entirely — same staleness concern
                     // fetchNextWordSuggestions guards against.
                     val stillRelevant = isSinhalaTyping() && wordBuffer.toString() == capturedRaw
                     if (!stillRelevant) return@launch
+                    // Build the corrected front-of-list ordering: both
+                    // confirmed words first (primary's original phonetic
+                    // ordering wins the tiebreak when both are known,
+                    // since it's still the more probable everyday default
+                    // per the frequency corpus), then whatever else was
+                    // already in the list, deduplicated.
+                    val reordered = LinkedHashSet<String>()
+                    if (primaryIsKnown) reordered.add(capturedPrimary)
+                    if (confirmedAlt != null) reordered.add(confirmedAlt)
+                    if (!primaryIsKnown && confirmedAlt != null) reordered.add(capturedPrimary)
                     if (currentLanguage.value == "mix") {
-                        val current = mixSinhalaSuggestions.toMutableList()
-                        if (current.contains(confirmedAlt) || current.contains(capturedPrimary)) {
-                            current.remove(confirmedAlt)
-                            current.add(0, confirmedAlt)
-                            mixSinhalaSuggestions = current.take(5)
-                            recomputeMixSuggestions()
-                        }
+                        reordered.addAll(mixSinhalaSuggestions)
+                        mixSinhalaSuggestions = reordered.take(5).toList()
+                        recomputeMixSuggestions()
                     } else {
-                        val current = suggestions.value.toMutableList()
-                        if (current.contains(confirmedAlt) || current.contains(capturedPrimary)) {
-                            current.remove(confirmedAlt)
-                            current.add(0, confirmedAlt)
-                            suggestions.value = current.take(5)
-                        }
+                        reordered.addAll(suggestions.value)
+                        suggestions.value = reordered.take(5).toList()
                     }
                 }
             }
