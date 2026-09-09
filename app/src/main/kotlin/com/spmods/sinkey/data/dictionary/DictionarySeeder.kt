@@ -55,7 +55,19 @@ object DictionarySeeder {
     // upgradeStaleSeedFrequency() below, not re-inserted (seedWord's OR
     // IGNORE would otherwise leave v1's stale frequency=1 rows untouched
     // forever, since the words themselves already exist).
-    private const val SEED_VERSION = 2
+    //
+    // v2 → v3: replaced wordlist_si.txt's ~1,654 bare root-form words with
+    // a 200,000-word list built from a real Sinhala word-frequency corpus
+    // (verified_word_list_200K.si, Fernando & Dias, ICON 2021 — see
+    // https://github.com/nlpcuom/Word-Frequency-List-for-Sinhala), so
+    // already-inflected surface forms (කරකනවා, කරන්න, කරලා, ...) are
+    // present as their own entries instead of only a single root word
+    // (කරනවා) per verb — this is what was making prefix suggestions miss
+    // most Sinhala words people actually type. seedWord's OR IGNORE means
+    // words already learned from real typing are left untouched; this
+    // version bump only adds the ~198K new words devices on v1/v2 don't
+    // have yet.
+    private const val SEED_VERSION = 3
     private const val SEED_FREQUENCY = 3
 
     // The exact frequency/lastUsed v1 shipped with — needed to safely
@@ -65,6 +77,13 @@ object DictionarySeeder {
     // that version rather than reusing this one, so upgradeStaleSeedFrequency
     // always targets the *immediately preceding* seed baseline.
     private const val V1_SEED_FREQUENCY = 1
+
+    // Room/SQLite caps bound parameters per statement (SQLITE_MAX_VARIABLE_NUMBER,
+    // commonly 999 on older SQLite builds Android may still ship). WordEntity
+    // has 4 columns, so 500 rows/batch * 4 params = 2000 — safely under even
+    // a conservative limit while still batching far more efficiently than
+    // one row per transaction.
+    private const val SEED_BATCH_SIZE = 500
 
     private val ASSET_FILES = mapOf(
         "en" to "wordlist_en.txt",
@@ -92,8 +111,20 @@ object DictionarySeeder {
         val seedTime = System.currentTimeMillis()
 
         for ((language, assetName) in ASSET_FILES) {
-            loadAssetWords(context, assetName).forEach { word ->
-                dao.seedWord(word = word, language = language, frequency = SEED_FREQUENCY, now = seedTime)
+            // Batched (not one seedWord() suspend call per word): with
+            // wordlist_si.txt now ~200K words (see SEED_VERSION's v2->v3
+            // note), one individual INSERT-per-word — each its own
+            // implicit transaction — made first-run seeding impractically
+            // slow. Chunking into SEED_BATCH_SIZE-sized batches keeps
+            // each transaction's bind-variable count well under SQLite's
+            // per-statement limit while still committing in large groups
+            // rather than one row at a time.
+            val words = loadAssetWords(context, assetName)
+            words.chunked(SEED_BATCH_SIZE).forEach { chunk ->
+                val entities = chunk.map { word ->
+                    WordEntity(word = word, language = language, frequency = SEED_FREQUENCY, lastUsed = seedTime)
+                }
+                dao.seedWords(entities)
             }
             // Devices that already ran v1 seeding have these words present
             // at frequency=1/lastUsed=0 already, so the seedWord() call
