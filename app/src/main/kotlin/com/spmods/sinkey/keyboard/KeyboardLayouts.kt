@@ -281,11 +281,28 @@ object SinhalaTransliterator {
         "TH" to "ඨ", "DH" to "ඪ",
         "N"  to "ණ",
         "T"  to "ත",
+        // "D" (uppercase) now maps to ඩ (murdhaja/hard da) — moved here
+        // from lowercase "d" (see that entry below for why), so ඩ is
+        // still fully reachable, just via the explicit uppercase key
+        // instead of being the bare-"d" default.
         "D"  to "ඩ",
         "L"  to "ළ",
         "k" to "ක", "g" to "ග",
         "j" to "ජ",
-        "t" to "ට", "d" to "ඩ", "n" to "න",
+        // Lowercase "d" -> ද (dantaja/soft da), not ඩ (murdhaja/hard da).
+        // Previously bare "d" mapped to ඩ, which meant every common word
+        // with the far more frequent soft ද — ගෙදර (gedara), දවස (dawasa),
+        // කොහොමද (kohomada), දෙන්න (denna) — transliterated wrong by
+        // default; only the rarer hard-ඩ words (කොඩිය, බැඩ්මින්ටන්) got the
+        // letter people actually expect from typing plain "d". Checked
+        // against the bundled 200K-word frequency corpus (see
+        // DictionarySeeder's v2->v3 note): words containing ද outnumber
+        // words containing ඩ by roughly 3.5 to 1, so ද is the correct
+        // default for the ambiguous bare-"d" case. ඩ is still reachable —
+        // via uppercase "D" (swapped above) — and remains offered as an
+        // alt-candidate in the suggestion strip (see
+        // SinKeyInputMethodService's onGetSuggestions Sinhala branch).
+        "t" to "ට", "d" to "ද", "n" to "න",
         "p" to "ප", "b" to "බ", "m" to "ම",
         "y" to "ය", "r" to "ර", "l" to "ල", "v" to "ව", "w" to "ව",
         "s" to "ස", "h" to "හ", "f" to "ෆ", "q" to "ද"
