@@ -3801,7 +3801,34 @@ class SinKeyInputMethodService : InputMethodService() {
                 val altCandidate = SinhalaTransliterator.transliterate(swapped)
                 if (altCandidate == primary) continue
                 if (dictionaryAmbiguousAlt == null) dictionaryAmbiguousAlt = altCandidate
-                if (list.size < 5 && !list.contains(altCandidate)) list.add(altCandidate)
+                // BUG FIX: this used to be gated behind `list.size < 5`,
+                // same as every other candidate added above (weighted,
+                // withA, cap). For a short word like "ada" that reduces to
+                // a single-letter fallback in SinhalaCandidateMap
+                // (candidatesFor("ada") -> candidateMap["a"], since
+                // there's no two-letter "a|d" entry — see candidatesFor's
+                // twoKey lookup), that fallback alone is 5 generic
+                // standalone-vowel guesses (අ/ඇ/ආ/එ/ඈ per
+                // candidateMap["a"]) totally unrelated to "ada" as a whole
+                // word. Those filled every remaining slot in `list` before
+                // this loop even ran, so `list.size < 5` was always false
+                // here and "අඩ" (aDa) never made it into the visible
+                // suggestion strip at all — even though
+                // dictionaryAmbiguousAlt above still captured it correctly
+                // for the async dictionary check, that check can only
+                // reorder what's already in the list (see
+                // fetchPersonalSuggestions below), not add a candidate
+                // that was never in it. The ambiguous-consonant alt is a
+                // real, specific reading of the exact word just typed —
+                // strictly more relevant than a generic single-letter
+                // fallback guess — so it earns a guaranteed slot: drop the
+                // lowest-priority existing entry (the end of the list) to
+                // make room instead of silently discarding this candidate
+                // when full.
+                if (!list.contains(altCandidate)) {
+                    if (list.size >= 5) list.removeAt(list.size - 1)
+                    list.add(altCandidate)
+                }
             }
             // Dictionary-based disambiguation for ambiguous consonants
             // (n/t/d/l — see SinhalaTransliterator's consonant table
