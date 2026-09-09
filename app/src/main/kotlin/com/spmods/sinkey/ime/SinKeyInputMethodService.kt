@@ -3778,13 +3778,30 @@ class SinKeyInputMethodService : InputMethodService() {
             // time (not all combinations) keeps this to at most raw.length
             // extra transliterate() calls and covers the common case of a
             // single ambiguous consonant per word.
+            //
+            // dictionaryAmbiguousAlt captures the FIRST such swap that
+            // actually changes the transliteration output — this is what
+            // gets passed to fetchPersonalSuggestions for the dictionary
+            // disambiguation check below. It must be captured here,
+            // directly from this loop, rather than assumed to be at some
+            // fixed position in `list` afterward: `list` can already
+            // contain other unrelated candidates (weighted syllable
+            // guesses, the withA/cap variants above) ahead of any
+            // ntdl-swap candidate this loop adds, so list.drop(1)
+            // .firstOrNull() — what this used to do — often grabbed one of
+            // those unrelated candidates instead of the actual ambiguous
+            // alt, silently breaking the dictionary check for any word
+            // where the ambiguous letter isn't the very first character
+            // (e.g. "ado"/"adoo" -> අඩෝ, where the d is at index 1).
+            var dictionaryAmbiguousAlt: String? = null
             for (idx in raw.indices) {
-                if (list.size >= 5) break
                 val ch = raw[idx]
                 if (ch.lowercaseChar() !in "ntdl" || ch.isUpperCase()) continue
                 val swapped = raw.substring(0, idx) + ch.uppercaseChar() + raw.substring(idx + 1)
                 val altCandidate = SinhalaTransliterator.transliterate(swapped)
-                if (altCandidate != primary && !list.contains(altCandidate)) list.add(altCandidate)
+                if (altCandidate == primary) continue
+                if (dictionaryAmbiguousAlt == null) dictionaryAmbiguousAlt = altCandidate
+                if (list.size < 5 && !list.contains(altCandidate)) list.add(altCandidate)
             }
             // Dictionary-based disambiguation for ambiguous consonants
             // (n/t/d/l — see SinhalaTransliterator's consonant table
@@ -3815,9 +3832,7 @@ class SinKeyInputMethodService : InputMethodService() {
             // fetchPersonalSuggestions instead means both checks happen in
             // the same coroutine, in a fixed order, with one final write —
             // no race possible.
-            val ambiguousAlt = if (raw.length >= 3 && list.isNotEmpty() && list[0] == primary) {
-                list.drop(1).firstOrNull()
-            } else null
+            val ambiguousAlt = if (raw.length >= 3) dictionaryAmbiguousAlt else null
             // BUG FIX: in mix mode this used to write straight into
             // suggestions.value, which the async English spell-check reply
             // (see onGetSuggestions' mix branch) or the personal-dictionary
