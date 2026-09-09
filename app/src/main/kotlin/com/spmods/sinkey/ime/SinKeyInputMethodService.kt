@@ -3794,70 +3794,30 @@ class SinKeyInputMethodService : InputMethodService() {
             // කොඩිය, and there's no way to tell which one the user means
             // from "kodiya" alone without checking the dictionary).
             //
-            // Rather than silently guessing one and hiding the other, if
-            // BOTH the phonetic default (`primary`, e.g. ගෙදර) and a
-            // case-swapped alt-candidate (e.g. ගෙඩර) are real dictionary
-            // words, surface both as the top two suggestions — the user
-            // picks whichever they meant with one tap, same as any normal
-            // ambiguous-suggestion case, instead of us silently deciding
-            // for them. If only one of the two is a real word, that one is
-            // promoted alone (the previous behavior). This deliberately
-            // leaves the underlying "d" -> ද / "D" -> ඩ typing shortcut
-            // completely untouched — this only affects what shows up in
-            // the suggestion strip afterward.
-            //
-            // This has to happen in its own serviceScope.launch, same
-            // pattern as fetchNextWordSuggestions/fetchPersonalSuggestions
-            // just below: isKnownWord() is a suspend Room query, and this
-            // whole onGetSuggestions-family of functions is a plain
-            // (non-suspend) function called directly from key-press
-            // handling — see updateSuggestions()'s many call sites.
-            //
-            // So: publish `list` (the ordinary phonetic-only candidates)
-            // synchronously first via the currentLanguage.value branch
-            // below, same as before this fix existed, then correct it
-            // in-place shortly after once the dictionary check resolves.
-            // This only fires once raw is long enough to plausibly be a
-            // complete word (same 3+ threshold used above for preferring
-            // the full-word transliteration over syllable fragments),
-            // since checking short prefixes against findExact would
-            // essentially never match and would just waste lookups on
-            // every keystroke of every word.
-            if (raw.length >= 3 && list.isNotEmpty() && list[0] == primary) {
-                val capturedRaw = raw
-                val capturedPrimary = primary
-                val capturedAlts = list.drop(1)
-                serviceScope.launch {
-                    val primaryIsKnown = wordRepo.isKnownWord(capturedPrimary, "si")
-                    val confirmedAlt = capturedAlts.firstOrNull { wordRepo.isKnownWord(it, "si") }
-                    if (primaryIsKnown && confirmedAlt == null) return@launch
-                    if (!primaryIsKnown && confirmedAlt == null) return@launch
-                    // Guard against a stale async reply landing after the
-                    // user has since typed more/less or moved on to a
-                    // different word entirely — same staleness concern
-                    // fetchNextWordSuggestions guards against.
-                    val stillRelevant = isSinhalaTyping() && wordBuffer.toString() == capturedRaw
-                    if (!stillRelevant) return@launch
-                    // Build the corrected front-of-list ordering: both
-                    // confirmed words first (primary's original phonetic
-                    // ordering wins the tiebreak when both are known,
-                    // since it's still the more probable everyday default
-                    // per the frequency corpus), then whatever else was
-                    // already in the list, deduplicated.
-                    val reordered = LinkedHashSet<String>()
-                    if (primaryIsKnown) reordered.add(capturedPrimary)
-                    if (confirmedAlt != null) reordered.add(confirmedAlt)
-                    if (!primaryIsKnown && confirmedAlt != null) reordered.add(capturedPrimary)
-                    if (currentLanguage.value == "mix") {
-                        reordered.addAll(mixSinhalaSuggestions)
-                        mixSinhalaSuggestions = reordered.take(5).toList()
-                        recomputeMixSuggestions()
-                    } else {
-                        reordered.addAll(suggestions.value)
-                        suggestions.value = reordered.take(5).toList()
-                    }
-                }
-            }
+            // The actual disambiguation logic lives inside
+            // fetchPersonalSuggestions (see ambiguousAlt parameter there),
+            // not here. It used to live in its own separate
+            // serviceScope.launch block right at this spot, but that
+            // raced against fetchPersonalSuggestions's own
+            // serviceScope.launch just below — both are async (isKnownWord
+            // and fuzzySuggestionsFor are both suspend Room queries) and
+            // both ultimately write the same mixSinhalaSuggestions/
+            // suggestions.value fields, so whichever one's coroutine
+            // happened to finish last silently won, discarding the
+            // other's result. In practice fetchPersonalSuggestions's fuzzy
+            // dictionary search usually finished last (it does more work —
+            // a fuzzy edit-distance scan over up to 200 candidates — so it
+            // isn't reliably faster or slower, just uncoordinated), which
+            // is why the disambiguation fix appeared to do nothing: a
+            // stray fuzzy match like "කා" would land in position 0 right
+            // after this block's own correction had already written the
+            // right word there. Passing the alt-candidate into
+            // fetchPersonalSuggestions instead means both checks happen in
+            // the same coroutine, in a fixed order, with one final write —
+            // no race possible.
+            val ambiguousAlt = if (raw.length >= 3 && list.isNotEmpty() && list[0] == primary) {
+                list.drop(1).firstOrNull()
+            } else null
             // BUG FIX: in mix mode this used to write straight into
             // suggestions.value, which the async English spell-check reply
             // (see onGetSuggestions' mix branch) or the personal-dictionary
@@ -3875,7 +3835,7 @@ class SinKeyInputMethodService : InputMethodService() {
             // Merge in personal-dictionary words the user has typed before that
             // start with the same rendered prefix (e.g. previously typed
             // Sinhala words matching what's being composed right now).
-            fetchPersonalSuggestions(primary, "si", baseList = list)
+            fetchPersonalSuggestions(primary, "si", baseList = list, ambiguousAlt = ambiguousAlt)
 
             // Mix mode only: also surface the raw Latin buffer as a plain-English
             // suggestion (and its spell-checker completions) alongside the Sinhala
@@ -3996,7 +3956,12 @@ class SinKeyInputMethodService : InputMethodService() {
         }
     }
 
-    private fun fetchPersonalSuggestions(prefix: String, language: String, baseList: List<String>) {
+    private fun fetchPersonalSuggestions(
+        prefix: String,
+        language: String,
+        baseList: List<String>,
+        ambiguousAlt: String? = null
+    ) {
         if (prefix.isEmpty()) return
         // BUG FIX: in mix mode, "si" personal-dictionary results used to be
         // merged straight into suggestions.value, the same shared field the
@@ -4013,7 +3978,35 @@ class SinKeyInputMethodService : InputMethodService() {
             } else {
                 wordRepo.suggestionsFor(prefix, language, limit = 5)
             }
-            if (learned.isEmpty()) return@launch
+            // Dictionary-based disambiguation for ambiguous consonants
+            // (n/t/d/l — see SinhalaTransliterator's consonant table
+            // comment on why bare lowercase "d" defaults to ද over ඩ).
+            // [ambiguousAlt], when non-null, is the case-swapped reading
+            // of [prefix] (e.g. prefix="ගෙදර", ambiguousAlt="ගෙඩර") — see
+            // onGetSuggestions' Sinhala branch for how it's computed. This
+            // check runs HERE, inside the same coroutine as the fuzzy
+            // personal-dictionary lookup above, rather than in its own
+            // separate serviceScope.launch (which is where it originally
+            // lived): that separate coroutine had no way to coordinate
+            // with this one, and since both ultimately write the same
+            // mixSinhalaSuggestions/suggestions.value fields, whichever
+            // one's coroutine happened to finish last silently overwrote
+            // the other's result — in practice this fuzzy lookup usually
+            // won, discarding the disambiguation fix's correction. Doing
+            // both checks in one coroutine with one final write removes
+            // the race entirely.
+            val disambiguated: List<String> = if (ambiguousAlt != null) {
+                val primaryIsKnown = wordRepo.isKnownWord(prefix, "si")
+                val altIsKnown = wordRepo.isKnownWord(ambiguousAlt, "si")
+                when {
+                    primaryIsKnown && altIsKnown -> listOf(prefix, ambiguousAlt)
+                    altIsKnown && !primaryIsKnown -> listOf(ambiguousAlt, prefix)
+                    else -> emptyList()
+                }
+            } else {
+                emptyList()
+            }
+            if (learned.isEmpty() && disambiguated.isEmpty()) return@launch
             // Personal-dictionary words are the user's own real, previously
             // typed vocabulary — a much stronger signal than the generic
             // transliteration/weighted-candidate guesses in baseList. Put
@@ -4021,16 +4014,20 @@ class SinKeyInputMethodService : InputMethodService() {
             // a baseList that's already full (which happens for any 3+
             // char word since the transliteration fix above), then fill
             // any remaining room with baseList entries not already present.
+            // `disambiguated` (when present) goes even before `learned`:
+            // it's a direct dictionary confirmation of the exact word just
+            // typed, a stronger signal than fuzzy matches against
+            // *other*, only edit-distance-similar words.
             if (isMixSinhala) {
                 // Stale-reply guard: only apply if mix mode's Sinhala buffer
                 // still holds the word this lookup was for.
                 if (currentLanguage.value != "mix" || wordBuffer.toString() != prefix) return@launch
                 val current = mixSinhalaSuggestions.ifEmpty { baseList }
-                mixSinhalaSuggestions = (learned + current).distinct().take(5)
+                mixSinhalaSuggestions = (disambiguated + learned + current).distinct().take(5)
                 recomputeMixSuggestions()
             } else {
                 val current = suggestions.value.ifEmpty { baseList }
-                val merged = (learned + current).distinct().take(5)
+                val merged = (disambiguated + learned + current).distinct().take(5)
                 suggestions.value = merged
             }
         }
