@@ -3147,7 +3147,12 @@ class SinKeyInputMethodService : InputMethodService() {
         // whichever language matched more cleanly comes first, rather than
         // one language's whole list always winning over the other's.
         val rankedPerLanguage = languages.mapNotNull { lang ->
-            val dictionary = wordRepo.allWords(lang)
+            // topWords (frequency-capped), not allWords: wordlist_si.txt is
+            // now a 200K-word frequency corpus (see DictionarySeeder's
+            // v2->v3 note), and scoring every candidate against the swipe
+            // path on every single gesture doesn't scale to that — see
+            // WordDao.getTopForLanguage's doc comment.
+            val dictionary = wordRepo.topWords(lang)
             if (dictionary.isEmpty()) null else rankWordsByLetterSequence(letters, dictionary)
         }
         if (rankedPerLanguage.isEmpty()) return emptyList()
@@ -3762,7 +3767,7 @@ class SinKeyInputMethodService : InputMethodService() {
             // BUG FIX: the `cap` candidate above only ever uppercases
             // raw[0], so it can only surface the alternate letter (ණ/ත/ඩ/ළ
             // instead of න/ට/ද/ල) when the ambiguous consonant is the very
-            // first character of the word (e.g. "da" -> ඩ candidate). Mid-word
+            // first character of the word (e.g. "Da" -> ඩ candidate). Mid-word
             // occurrences — "ado" (wants අඩො, not just අදො), "kade" (wants
             // කඩේ) — never got an alt candidate at all, since nothing else
             // in this function re-checks case sensitivity past position 0.
@@ -3780,6 +3785,32 @@ class SinKeyInputMethodService : InputMethodService() {
                 val swapped = raw.substring(0, idx) + ch.uppercaseChar() + raw.substring(idx + 1)
                 val altCandidate = SinhalaTransliterator.transliterate(swapped)
                 if (altCandidate != primary && !list.contains(altCandidate)) list.add(altCandidate)
+            }
+            // Dictionary-based disambiguation for ambiguous consonants
+            // (n/t/d/l — see SinhalaTransliterator's consonant table
+            // comment on why bare lowercase currently defaults to the
+            // *less* common reading for d/t specifically, e.g. "gedara"
+            // phonetically transliterating to ගෙඩර by default when the
+            // real, common word is ගෙදර). Rather than changing the
+            // transliterator's default (which would just flip which
+            // letter is wrong for the *other* set of words, e.g. කොඩිය),
+            // check whether one of the case-swapped alt-candidates already
+            // generated above is a real dictionary word while `primary`
+            // isn't, and promote it to the front of the list if so — this
+            // only fires once raw is long enough to plausibly be a
+            // complete word (same 3+ threshold used above for preferring
+            // the full-word transliteration over syllable fragments),
+            // since checking short prefixes against findExact would
+            // essentially never match and would just waste lookups on
+            // every keystroke of every word.
+            if (raw.length >= 3 && list.isNotEmpty() && list[0] == primary &&
+                !wordRepo.isKnownWord(primary, "si")
+            ) {
+                val confirmedAlt = list.drop(1).firstOrNull { wordRepo.isKnownWord(it, "si") }
+                if (confirmedAlt != null) {
+                    list.remove(confirmedAlt)
+                    list.add(0, confirmedAlt)
+                }
             }
             // BUG FIX: in mix mode this used to write straight into
             // suggestions.value, which the async English spell-check reply
