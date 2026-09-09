@@ -3796,20 +3796,59 @@ class SinKeyInputMethodService : InputMethodService() {
             // letter is wrong for the *other* set of words, e.g. කොඩිය),
             // check whether one of the case-swapped alt-candidates already
             // generated above is a real dictionary word while `primary`
-            // isn't, and promote it to the front of the list if so — this
-            // only fires once raw is long enough to plausibly be a
+            // isn't, and promote it to the front of the list if so.
+            //
+            // This has to happen in its own serviceScope.launch, same
+            // pattern as fetchNextWordSuggestions/fetchPersonalSuggestions
+            // just below: isKnownWord() is a suspend Room query, and this
+            // whole onGetSuggestions-family of functions is a plain
+            // (non-suspend) function called directly from key-press
+            // handling — see updateSuggestions()'s many call sites. It
+            // originally tried to call isKnownWord() inline here, which
+            // doesn't compile ("Suspend function ... should be called only
+            // from a coroutine or another suspend function") since nothing
+            // here is itself suspend or already inside a launch block.
+            //
+            // So: publish `list` (the ordinary phonetic-only candidates)
+            // synchronously first via the currentLanguage.value branch
+            // below, same as before this fix existed, then correct it
+            // in-place shortly after once the dictionary check resolves.
+            // This only fires once raw is long enough to plausibly be a
             // complete word (same 3+ threshold used above for preferring
             // the full-word transliteration over syllable fragments),
             // since checking short prefixes against findExact would
             // essentially never match and would just waste lookups on
             // every keystroke of every word.
-            if (raw.length >= 3 && list.isNotEmpty() && list[0] == primary &&
-                !wordRepo.isKnownWord(primary, "si")
-            ) {
-                val confirmedAlt = list.drop(1).firstOrNull { wordRepo.isKnownWord(it, "si") }
-                if (confirmedAlt != null) {
-                    list.remove(confirmedAlt)
-                    list.add(0, confirmedAlt)
+            if (raw.length >= 3 && list.isNotEmpty() && list[0] == primary) {
+                val capturedRaw = raw
+                val capturedPrimary = primary
+                val capturedAlts = list.drop(1)
+                serviceScope.launch {
+                    if (wordRepo.isKnownWord(capturedPrimary, "si")) return@launch
+                    val confirmedAlt = capturedAlts.firstOrNull { wordRepo.isKnownWord(it, "si") }
+                        ?: return@launch
+                    // Guard against a stale async reply landing after the
+                    // user has since typed more/less or moved on to a
+                    // different word entirely — same staleness concern
+                    // fetchNextWordSuggestions guards against.
+                    val stillRelevant = isSinhalaTyping() && wordBuffer.toString() == capturedRaw
+                    if (!stillRelevant) return@launch
+                    if (currentLanguage.value == "mix") {
+                        val current = mixSinhalaSuggestions.toMutableList()
+                        if (current.contains(confirmedAlt) || current.contains(capturedPrimary)) {
+                            current.remove(confirmedAlt)
+                            current.add(0, confirmedAlt)
+                            mixSinhalaSuggestions = current.take(5)
+                            recomputeMixSuggestions()
+                        }
+                    } else {
+                        val current = suggestions.value.toMutableList()
+                        if (current.contains(confirmedAlt) || current.contains(capturedPrimary)) {
+                            current.remove(confirmedAlt)
+                            current.add(0, confirmedAlt)
+                            suggestions.value = current.take(5)
+                        }
+                    }
                 }
             }
             // BUG FIX: in mix mode this used to write straight into
