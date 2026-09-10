@@ -472,21 +472,63 @@ private fun keyboardColorsBase(showKeyBorders: Boolean, isDark: Boolean): Keyboa
     }
 }
 
-/** Convert a 0..3 slider step to a concrete key-row height in dp. */
-private fun stepToKeyHeight(step: Float): Dp = when (Math.round(step)) {
-    // Desh exact: config_key_height_qwerty = 48dp (default = step 1)
-    0    -> 42.dp
-    1    -> 48.dp
-    2    -> 54.dp
-    else -> 62.dp
+/**
+ * Convert a 0..3 slider step to a concrete key-row height in dp, scaled to
+ * the device's actual screen width.
+ *
+ * BUG FIX (keyboard proportions wrong across different phones — same
+ * "Small" step looks tiny on one phone, huge on another): this used to
+ * return a flat, device-independent dp constant per step (42/48/54/62dp).
+ * dp is DENSITY-independent, not SCREEN-SIZE-independent — a 42dp key row
+ * renders at the same physical size on a compact 5" phone and a 6.7"
+ * phablet with the same density, but 42dp is a much bigger fraction of a
+ * small screen's height than a large one's. The intent of "Small/Medium/
+ * Large/XL" is relative to THIS phone's own keyboard area, not an absolute
+ * physical size, so the base value must scale with the screen the keyboard
+ * is actually rendering on.
+ *
+ * baseWidthDp anchors the scale to screen WIDTH rather than height: a
+ * QWERTY row always has to fit the same ~10 keys across the screen, so
+ * width is what actually determines how tall a proportionally-consistent
+ * key can be (this mirrors how stock Android/Gboard scale their default
+ * key height off screen width, not height, so rows stay square-ish instead
+ * of stretching tall on narrow-but-tall screens). 360dp is a common
+ * "baseline" phone width (e.g. Pixel-class devices) the original flat
+ * constants were implicitly tuned for, so dividing by it and multiplying
+ * back by the real screenWidthDp preserves the original look on baseline-
+ * width phones exactly, while scaling proportionally up/down elsewhere.
+ */
+private fun stepToKeyHeight(step: Float, screenWidthDp: Int): Dp {
+    val baseWidthDp = 360f
+    val scale = (screenWidthDp / baseWidthDp).coerceIn(0.75f, 1.35f)
+    val base = when (Math.round(step)) {
+        // Desh exact: config_key_height_qwerty = 48dp (default = step 1)
+        0    -> 42f
+        1    -> 48f
+        2    -> 54f
+        else -> 62f
+    }
+    return (base * scale).dp
 }
 
-/** Convert a 0..3 slider step to bottom padding in dp. */
-private fun stepToBottomPadding(step: Float): Dp = when (Math.round(step)) {
-    0    -> 4.dp
-    1    -> 10.dp
-    2    -> 18.dp
-    else -> 28.dp
+/**
+ * Convert a 0..3 slider step to bottom padding in dp, scaled to screen
+ * width the same way stepToKeyHeight is — see that function's doc comment.
+ * Keeping both scaled by the same factor means the bottom padding stays
+ * proportionally consistent with key height across phones, rather than
+ * key rows scaling but the padding beneath them staying flat and looking
+ * relatively larger/smaller on off-baseline screens.
+ */
+private fun stepToBottomPadding(step: Float, screenWidthDp: Int): Dp {
+    val baseWidthDp = 360f
+    val scale = (screenWidthDp / baseWidthDp).coerceIn(0.75f, 1.35f)
+    val base = when (Math.round(step)) {
+        0    -> 4f
+        1    -> 10f
+        2    -> 18f
+        else -> 28f
+    }
+    return (base * scale).dp
 }
 
 // Board state enum — tracks which keyboard panel is currently visible.
@@ -718,8 +760,9 @@ internal fun KeyboardView(
         // still layer on top exactly as before.
         if (materialYouEnabled) base.copy(accent = materialYouAccentColor(context, isDark)) else base
     }
-    val keyHeight = stepToKeyHeight(keyboardHeight)
-    val bottomPadding = if (bottomSpaceEnabled) stepToBottomPadding(bottomSpaceSize) else 4.dp
+    val screenWidthDp = androidx.compose.ui.platform.LocalConfiguration.current.screenWidthDp
+    val keyHeight = stepToKeyHeight(keyboardHeight, screenWidthDp)
+    val bottomPadding = if (bottomSpaceEnabled) stepToBottomPadding(bottomSpaceSize, screenWidthDp) else 4.dp
     val keyShape = RoundedCornerShape(6.dp)
 
     // ── Shared "a key was just pressed here" state for the three features
