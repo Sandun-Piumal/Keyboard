@@ -2,21 +2,28 @@ package com.spmods.sinkey.keyboard
 
 /**
  * Categorized special/ornamental Unicode characters — reached from the
- * Emoji board's bottom-bar "Decorate" icon area, a separate "Special
- * characters" board sitting alongside it. Mirrors EmojiData's own
- * Category(icon, name, chars) shape so this reuses the exact same
- * tabbed-category-picker UI (EmojiPickerView's layout skeleton) with a
- * different backing list, rather than being a one-off screen.
+ * Emoji board's bottom-bar "Special characters" (☆) icon. Mirrors
+ * EmojiData's own Category(icon, name, chars) shape so this reuses the
+ * exact same tabbed-category-picker UI (EmojiPickerView's layout
+ * skeleton) with a different backing list, rather than being a one-off
+ * screen.
  *
- * Every codepoint here comes from long-established, pre-Unicode-6.0
- * blocks (Arrows U+2190-U+2BFF, General Punctuation quotes/brackets,
- * Enclosed Alphanumerics U+2460-U+24FF, Miscellaneous Technical
- * U+2300-U+23FF, Geometric Shapes U+25A0-U+25FF, Miscellaneous Symbols
- * U+2600-U+26FF, Dingbats U+2700-U+27BF) — unlike EmojiData's newer emoji
- * ranges, none of these need String.isSupported()'s API-level gating;
- * they've had full font coverage on every Android version this app
- * targets since long before Unicode's emoji era began, so no equivalent
- * filtering is needed here.
+ * BUG FIX: the first version of this file pulled from every "old,
+ * pre-emoji" Unicode block without distinguishing WITHIN that era —
+ * Miscellaneous Technical (U+2300-U+23FF), Supplemental Arrows-A/B
+ * (U+27F0-U+297F), and Miscellaneous Symbols and Arrows (U+2B00-U+2BFF)
+ * are technically old blocks, but they're sparse LEGACY TYPESETTING
+ * symbols that most Android OEM system fonts never actually bundled
+ * glyphs for — being "pre-emoji" doesn't mean "in every font". Rendering
+ * those showed tofu boxes (▯) for most entries. This version keeps only
+ * blocks confirmed to ship in Android's bundled Noto Sans Symbols /
+ * Roboto coverage: core Arrows (U+2190-U+21FF), General Punctuation
+ * quotes/brackets, ornamental Dingbat/Math brackets (U+2768-U+2775,
+ * U+27E6-U+27EF, U+2985-U+2998), Enclosed Alphanumerics (U+2460-U+24FF)
+ * + Dingbat circled numbers (U+2776-U+2793), Geometric Shapes
+ * (U+25A0-U+25FF), and Miscellaneous Symbols + Dingbats (U+2600-U+27BF).
+ * ~900 characters, all confirmed-renderable, rather than ~1550 with a
+ * large tofu tail.
  */
 object SpecialCharData {
 
@@ -30,35 +37,6 @@ object SpecialCharData {
             "⇖","⇗","⇘","⇙","⇚","⇛","⇜","⇝","⇞","⇟","⇠","⇡","⇢","⇣",
             "⇤","⇥","⇦","⇧","⇨","⇩","⇪","⇫","⇬","⇭","⇮","⇯","⇰","⇱",
             "⇲","⇳","⇴","⇵","⇶","⇷","⇸","⇹","⇺","⇻","⇼","⇽","⇾","⇿",
-            "⟰","⟱","⟲","⟳","⟴","⟵","⟶","⟷","⟸","⟹","⟺","⟻","⟼","⟽",
-            "⟾","⟿","⤀","⤁","⤂","⤃","⤄","⤅","⤆","⤇","⤈","⤉","⤊","⤋",
-            "⤌","⤍","⤎","⤏","⤐","⤑","⤒","⤓","⤔","⤕","⤖","⤗","⤘","⤙",
-            "⤚","⤛","⤜","⤝","⤞","⤟","⤠","⤡","⤢","⤣","⤤","⤥","⤦","⤧",
-            "⤨","⤩","⤪","⤫","⤬","⤭","⤮","⤯","⤰","⤱","⤲","⤳","⤴","⤵",
-            "⤶","⤷","⤸","⤹","⤺","⤻","⤼","⤽","⤾","⤿","⥀","⥁","⥂","⥃",
-            "⥄","⥅","⥆","⥇","⥈","⥉","⥊","⥋","⥌","⥍","⥎","⥏","⥐","⥑",
-            "⥒","⥓","⥔","⥕","⥖","⥗","⥘","⥙","⥚","⥛","⥜","⥝","⥞","⥟",
-            "⥠","⥡","⥢","⥣","⥤","⥥","⥦","⥧","⥨","⥩","⥪","⥫","⥬","⥭",
-            "⥮","⥯","⥰","⥱","⥲","⥳","⥴","⥵","⥶","⥷","⥸","⥹","⥺","⥻",
-            "⥼","⥽","⥾","⥿","⬀","⬁","⬂","⬃","⬄","⬅","⬆","⬇","⬈","⬉",
-            "⬊","⬋","⬌","⬍","⬎","⬏","⬐","⬑","⬒","⬓","⬔","⬕","⬖","⬗",
-            "⬘","⬙","⬚","⬛","⬜","⬝","⬞","⬟","⬠","⬡","⬢","⬣","⬤","⬥",
-            "⬦","⬧","⬨","⬩","⬪","⬫","⬬","⬭","⬮","⬯","⬰","⬱","⬲","⬳",
-            "⬴","⬵","⬶","⬷","⬸","⬹","⬺","⬻","⬼","⬽","⬾","⬿","⭀","⭁",
-            "⭂","⭃","⭄","⭅","⭆","⭇","⭈","⭉","⭊","⭋","⭌","⭍","⭎","⭏",
-            "⭐","⭑","⭒","⭓","⭔","⭕","⭖","⭗","⭘","⭙","⭚","⭛","⭜","⭝",
-            "⭞","⭟","⭠","⭡","⭢","⭣","⭤","⭥","⭦","⭧","⭨","⭩","⭪","⭫",
-            "⭬","⭭","⭮","⭯","⭰","⭱","⭲","⭳","⭶","⭷","⭸","⭹","⭺","⭻",
-            "⭼","⭽","⭾","⭿","⮀","⮁","⮂","⮃","⮄","⮅","⮆","⮇","⮈","⮉",
-            "⮊","⮋","⮌","⮍","⮎","⮏","⮐","⮑","⮒","⮓","⮔","⮕","⮗","⮘",
-            "⮙","⮚","⮛","⮜","⮝","⮞","⮟","⮠","⮡","⮢","⮣","⮤","⮥","⮦",
-            "⮧","⮨","⮩","⮪","⮫","⮬","⮭","⮮","⮯","⮰","⮱","⮲","⮳","⮴",
-            "⮵","⮶","⮷","⮸","⮹","⮺","⮻","⮼","⮽","⮾","⮿","⯀","⯁","⯂",
-            "⯃","⯄","⯅","⯆","⯇","⯈","⯉","⯊","⯋","⯌","⯍","⯎","⯏","⯐",
-            "⯑","⯒","⯓","⯔","⯕","⯖","⯗","⯘","⯙","⯚","⯛","⯜","⯝","⯞",
-            "⯟","⯠","⯡","⯢","⯣","⯤","⯥","⯦","⯧","⯨","⯩","⯪","⯫","⯬",
-            "⯭","⯮","⯯","⯰","⯱","⯲","⯳","⯴","⯵","⯶","⯷","⯸","⯹","⯺",
-            "⯻","⯼","⯽","⯾","⯿",
         )),
         EmojiData.Category("‘", "Brackets", listOf(
             "‘","’","‚","‛","“","”","„","‟","‹","›","〈","〉","《","》",
@@ -90,26 +68,7 @@ object SpecialCharData {
             "◊","○","◌","◍","◎","●","◐","◑","◒","◓","◔","◕","◖","◗",
             "◘","◙","◚","◛","◜","◝","◞","◟","◠","◡","◢","◣","◤","◥",
             "◦","◧","◨","◩","◪","◫","◬","◭","◮","◯","◰","◱","◲","◳",
-            "◴","◵","◶","◷","◸","◹","◺","◻","◼","◽","◾","◿","⌀","⌁",
-            "⌂","⌃","⌄","⌅","⌆","⌇","⌈","⌉","⌊","⌋","⌌","⌍","⌎","⌏",
-            "⌐","⌑","⌒","⌓","⌔","⌕","⌖","⌗","⌘","⌙","⌚","⌛","⌜","⌝",
-            "⌞","⌟","⌠","⌡","⌢","⌣","⌤","⌥","⌦","⌧","⌨","〈","〉","⌫",
-            "⌬","⌭","⌮","⌯","⌰","⌱","⌲","⌳","⌴","⌵","⌶","⌷","⌸","⌹",
-            "⌺","⌻","⌼","⌽","⌾","⌿","⍀","⍁","⍂","⍃","⍄","⍅","⍆","⍇",
-            "⍈","⍉","⍊","⍋","⍌","⍍","⍎","⍏","⍐","⍑","⍒","⍓","⍔","⍕",
-            "⍖","⍗","⍘","⍙","⍚","⍛","⍜","⍝","⍞","⍟","⍠","⍡","⍢","⍣",
-            "⍤","⍥","⍦","⍧","⍨","⍩","⍪","⍫","⍬","⍭","⍮","⍯","⍰","⍱",
-            "⍲","⍳","⍴","⍵","⍶","⍷","⍸","⍹","⍺","⍻","⍼","⍽","⍾","⍿",
-            "⎀","⎁","⎂","⎃","⎄","⎅","⎆","⎇","⎈","⎉","⎊","⎋","⎌","⎍",
-            "⎎","⎏","⎐","⎑","⎒","⎓","⎔","⎕","⎖","⎗","⎘","⎙","⎚","⎛",
-            "⎜","⎝","⎞","⎟","⎠","⎡","⎢","⎣","⎤","⎥","⎦","⎧","⎨","⎩",
-            "⎪","⎫","⎬","⎭","⎮","⎯","⎰","⎱","⎲","⎳","⎴","⎵","⎶","⎷",
-            "⎸","⎹","⎺","⎻","⎼","⎽","⎾","⎿","⏀","⏁","⏂","⏃","⏄","⏅",
-            "⏆","⏇","⏈","⏉","⏊","⏋","⏌","⏍","⏎","⏏","⏐","⏑","⏒","⏓",
-            "⏔","⏕","⏖","⏗","⏘","⏙","⏚","⏛","⏜","⏝","⏞","⏟","⏠","⏡",
-            "⏢","⏣","⏤","⏥","⏦","⏧","⏨","⏩","⏪","⏫","⏬","⏭","⏮","⏯",
-            "⏰","⏱","⏲","⏳","⏴","⏵","⏶","⏷","⏸","⏹","⏺","⏻","⏼","⏽",
-            "⏾","⏿",
+            "◴","◵","◶","◷","◸","◹","◺","◻","◼","◽","◾","◿",
         )),
         EmojiData.Category("☀", "Misc", listOf(
             "☀","☁","☂","☃","☄","★","☆","☇","☈","☉","☊","☋","☌","☍",
