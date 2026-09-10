@@ -145,7 +145,19 @@ internal fun EmojiPickerView(
     bottomPadding: Dp,
     onEmojiSelected: (String) -> Unit,
     onBackspace: () -> Unit,
-    onDismiss: () -> Unit
+    onDismiss: () -> Unit,
+    // "Decorate" — opens Board.DECORATION_STYLES directly (the fixed-style
+    // list, same page reached via the main keyboard toolbar's Decorate
+    // icon → "Styles" row), so a style can be picked right from the emoji
+    // board without detouring through the DECORATION incognito/enable page
+    // first. Popping back from there returns here (to EMOJI), not to
+    // DECORATION, since this pushes DECORATION_STYLES directly onto
+    // whatever board was already under EMOJI on the stack.
+    onDecorationOpen: () -> Unit,
+    // "Special characters" — opens Board.SPECIAL_CHARS (SpecialCharPickerView),
+    // same idea as onDecorationOpen: pushed directly on top of EMOJI so
+    // "Back" from there returns here.
+    onSpecialCharsOpen: () -> Unit
 ) {
     val hasRecent = recentEmojis.isNotEmpty()
     val allCategories = remember(recentEmojis) {
@@ -351,8 +363,8 @@ internal fun EmojiPickerView(
         }
         }
 
-        // ── Row 4: bottom icon row — keyboard / emoji / delete — same
-        // keyHeight-tall row as every other board's final row.
+        // ── Row 4: bottom icon row — keyboard / emoji / decorate / delete —
+        // same keyHeight-tall row as every other board's final row.
         Row(
             modifier = Modifier.fillMaxWidth().padding(vertical = 3.dp),
             horizontalArrangement = Arrangement.spacedBy(6.dp),
@@ -385,6 +397,290 @@ internal fun EmojiPickerView(
                     contentDescription = null,
                     modifier = Modifier.size(20.dp),
                     tint = activeTint
+                )
+            }
+            // "Decorate" — opens the decorative-text style list
+            // (Board.DECORATION_STYLES) directly on top of EMOJI, so
+            // "Back" from there returns to this board. Same icon
+            // (ic_unified_menu) as the main toolbar's own Decorate button,
+            // for visual consistency between the two entry points.
+            Box(
+                modifier = Modifier
+                    .height(keyHeight)
+                    .weight(1f)
+                    .clip(RoundedCornerShape(6.dp))
+                    .clickable { onDecorationOpen() },
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    painter = painterResource(id = R.drawable.ic_unified_menu),
+                    contentDescription = null,
+                    modifier = Modifier.size(20.dp),
+                    tint = colors.subText
+                )
+            }
+            // "Special characters" — opens Board.SPECIAL_CHARS (the
+            // arrows/brackets/circled-numbers/ornamental/misc glyph
+            // picker), same idea and same "Back returns to EMOJI" behavior
+            // as the Decorate icon above.
+            Box(
+                modifier = Modifier
+                    .height(keyHeight)
+                    .weight(1f)
+                    .clip(RoundedCornerShape(6.dp))
+                    .clickable { onSpecialCharsOpen() },
+                contentAlignment = Alignment.Center
+            ) {
+                Text(
+                    text = "☆",
+                    fontSize = 18.sp,
+                    color = colors.subText
+                )
+            }
+            Box(
+                modifier = Modifier
+                    .height(keyHeight)
+                    .weight(1f)
+                    .clip(RoundedCornerShape(6.dp))
+                    .clickable { onBackspace() },
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    imageVector = Icons.Filled.Backspace,
+                    contentDescription = null,
+                    modifier = Modifier.size(20.dp),
+                    tint = colors.subText
+                )
+            }
+        }
+    }
+}
+
+/**
+ * Special/ornamental characters board — Board.SPECIAL_CHARS. Same tabbed
+ * category-picker skeleton as EmojiPickerView above (top category tabs +
+ * scrollable grid + bottom icon row), backed by SpecialCharData instead
+ * of EmojiData, so it's a second board that looks and behaves like the
+ * emoji picker but for arrows/brackets/circled-numbers/ornamental/misc
+ * Unicode glyphs (~1500 characters across 5 categories) instead of emoji.
+ * Reached from EmojiPickerView's bottom bar's "Decorate" slot's neighbor —
+ * see KeyboardView's onSpecialCharsOpen wiring.
+ *
+ * Deliberately its own composable rather than a generic "pick from any
+ * Category list" parameterization of EmojiPickerView: EmojiPickerView's
+ * Recent-category logic, EmojiCompat glyph rendering (EmojiGlyphText —
+ * built for color emoji specifically, not needed for plain Unicode glyphs
+ * which every device font already renders correctly) and isSupported()
+ * API-gating are all emoji-specific concerns this board doesn't share, so
+ * folding both into one parameterized composable would mean threading a
+ * lot of "only if this is the emoji board" conditionals through a single
+ * function instead of two smaller, purpose-built ones.
+ */
+@Composable
+internal fun SpecialCharPickerView(
+    colors: KeyboardColors,
+    keyHeight: Dp,
+    bottomPadding: Dp,
+    onCharSelected: (String) -> Unit,
+    onBackspace: () -> Unit,
+    onDismiss: () -> Unit
+) {
+    val allCategories = SpecialCharData.categories
+
+    val categoryStartIndices = remember(allCategories) {
+        val indices = mutableListOf<Int>()
+        var cursor = 0
+        allCategories.forEach { cat ->
+            indices.add(cursor)
+            cursor += 1 + cat.emojis.size
+        }
+        indices
+    }
+
+    var selectedCategory by remember { mutableIntStateOf(0) }
+    val gridState = rememberLazyGridState()
+    val coroutineScope = rememberCoroutineScope()
+    var isProgrammaticScroll by remember { mutableStateOf(false) }
+
+    val activeTint = colors.keyText
+    val inactiveTint = colors.subText
+    val activeTabBg = colors.specialKeyBg
+
+    LaunchedEffect(gridState.firstVisibleItemIndex) {
+        if (isProgrammaticScroll) return@LaunchedEffect
+        val firstVisible = gridState.firstVisibleItemIndex
+        val catIndex = categoryStartIndices.indexOfLast { it <= firstVisible }
+        if (catIndex >= 0 && catIndex != selectedCategory) {
+            selectedCategory = catIndex
+        }
+    }
+
+    // Same sizing reasoning as EmojiPickerView's rowUnit/gridHeight — see
+    // its doc comment. This board replaces the toolbar and recent-strip
+    // exactly the same way EMOJI does (see KeyboardView's currentBoard
+    // exclusion lists, which include SPECIAL_CHARS alongside EMOJI), so it
+    // needs the same compensation to match Main/Symbols/Numpad's total
+    // on-screen height.
+    val rowUnit = keyHeight + 6.dp
+    val missingRecentStripHeight = 44.dp
+    val missingToolbarHeight = 48.dp
+    val gridHeight = (rowUnit * 2) + missingRecentStripHeight + missingToolbarHeight
+
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(colors.bg)
+            .padding(horizontal = 4.dp, vertical = 2.dp)
+            .padding(bottom = bottomPadding)
+    ) {
+        // ── Row 1: category tabs ─────────────────────────────────────────
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(vertical = 3.dp),
+            horizontalArrangement = Arrangement.spacedBy(2.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            allCategories.forEachIndexed { index, category ->
+                val isSelected = index == selectedCategory
+                Box(
+                    modifier = Modifier
+                        .height(keyHeight)
+                        .weight(1f)
+                        .clickable {
+                            selectedCategory = index
+                            coroutineScope.launch {
+                                isProgrammaticScroll = true
+                                try {
+                                    gridState.animateScrollToItem(categoryStartIndices[index])
+                                } finally {
+                                    isProgrammaticScroll = false
+                                }
+                            }
+                        },
+                    contentAlignment = Alignment.Center
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .size(28.dp)
+                            .clip(androidx.compose.foundation.shape.CircleShape)
+                            .background(if (isSelected) activeTabBg else Color.Transparent),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        // Plain glyph tab icon (e.g. "←", "①") instead of a
+                        // drawable resource — SpecialCharData categories
+                        // don't have dedicated tab-icon drawables the way
+                        // EmojiData's do (categoryIconRes), and a plain
+                        // Unicode glyph renders fine here since every
+                        // character in this data set is from a long-
+                        // established pre-emoji block with full font
+                        // coverage (see SpecialCharData's doc comment).
+                        Text(
+                            text = category.icon,
+                            fontSize = 16.sp,
+                            color = if (isSelected) activeTint else inactiveTint
+                        )
+                    }
+                }
+            }
+        }
+
+        // ── Rows 2–3: scrollable character grid ──────────────────────────
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(gridHeight)
+                .padding(vertical = 3.dp)
+        ) {
+            LazyVerticalGrid(
+                columns = GridCells.Fixed(8),
+                state = gridState,
+                modifier = Modifier.fillMaxSize(),
+                contentPadding = PaddingValues(bottom = 4.dp)
+            ) {
+                allCategories.forEachIndexed { catIndex, category ->
+                    item(
+                        key = "header_$catIndex",
+                        span = { GridItemSpan(8) }
+                    ) {
+                        Text(
+                            text = category.name.uppercase(),
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            color = colors.subText,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(start = 2.dp, top = 6.dp, bottom = 4.dp)
+                        )
+                    }
+
+                    items(
+                        count = category.emojis.size,
+                        key = { i -> "char_${catIndex}_$i" }
+                    ) { i ->
+                        val ch = category.emojis[i]
+                        Box(
+                            modifier = Modifier
+                                .aspectRatio(1f)
+                                .clip(RoundedCornerShape(6.dp))
+                                .clickable { onCharSelected(ch) },
+                            contentAlignment = Alignment.Center
+                        ) {
+                            // Plain Text() rather than EmojiPickerView's
+                            // EmojiGlyphText/EmojiCompat routing — these are
+                            // ordinary Unicode glyphs from pre-emoji blocks,
+                            // not color emoji, so Compose's own Text()
+                            // renders them correctly without needing the
+                            // EmojiCompat span workaround (see EmojiGlyphText's
+                            // doc comment for why THAT workaround is needed
+                            // specifically for color emoji).
+                            Text(
+                                text = ch,
+                                fontSize = 22.sp,
+                                color = colors.keyText,
+                                textAlign = TextAlign.Center
+                            )
+                        }
+                    }
+                }
+            }
+        }
+
+        // ── Row 4: bottom icon row — keyboard / special-chars / delete ──
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(vertical = 3.dp),
+            horizontalArrangement = Arrangement.spacedBy(6.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Box(
+                modifier = Modifier
+                    .height(keyHeight)
+                    .weight(1f)
+                    .clip(RoundedCornerShape(6.dp))
+                    .clickable { onDismiss() },
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    painter = painterResource(id = R.drawable.ic_back_to_keyboard),
+                    contentDescription = null,
+                    modifier = Modifier.size(20.dp),
+                    tint = colors.subText
+                )
+            }
+            Box(
+                modifier = Modifier
+                    .height(keyHeight)
+                    .weight(1f)
+                    .clip(RoundedCornerShape(6.dp)),
+                contentAlignment = Alignment.Center
+            ) {
+                // Active-board indicator (non-clickable, matches
+                // EmojiPickerView's own emoji-icon slot in the same
+                // position) — uses the first Arrows-category glyph as a
+                // simple "special characters" indicator rather than a
+                // dedicated drawable.
+                Text(
+                    text = "☆",
+                    fontSize = 18.sp,
+                    color = activeTint
                 )
             }
             Box(
