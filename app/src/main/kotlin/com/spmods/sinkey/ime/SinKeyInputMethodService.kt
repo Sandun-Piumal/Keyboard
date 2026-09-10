@@ -1909,11 +1909,32 @@ class SinKeyInputMethodService : InputMethodService() {
                 englishBuffer.clear()
                 resumedWordBeforeCursor = null
                 clearSuggestions()
-                currentLanguage.value = when (currentLanguage.value) {
+                val newLang = when (currentLanguage.value) {
                     "mix" -> "en"
                     "en"  -> "si"
                     else  -> "mix" // "si" -> "mix"
                 }
+                currentLanguage.value = newLang
+                // BUG FIX (toggled language silently reverts mid-session,
+                // both in normal typing and inside the translate row): this
+                // only ever updated currentLanguage.value in memory. The
+                // actual source of truth is prefs.defaultLanguage (DataStore),
+                // which onCreate keeps collecting for the service's entire
+                // lifetime (`prefs.defaultLanguage.collect { currentLanguage.value = it }`)
+                // so the Settings screen's own language picker can push
+                // live updates into a keyboard that's already open. Because
+                // LANG_TOGGLE never wrote back to that same DataStore key,
+                // the in-memory value and the persisted value could disagree
+                // for the rest of the session — and the moment that Flow
+                // re-emitted for ANY reason (DataStore's underlying file
+                // being touched, the Settings screen's own collector
+                // re-syncing, etc.), the collector above would snap
+                // currentLanguage.value back to the stale persisted value,
+                // silently undoing the toggle while typing kept behaving
+                // like the old mode. Persisting here keeps both in sync, so
+                // a re-emission just re-confirms the same value instead of
+                // reverting it.
+                serviceScope.launch { prefs.setDefaultLanguage(newLang) }
             }
             "," , "." -> {
                 commitPendingWord()
@@ -2413,11 +2434,18 @@ class SinKeyInputMethodService : InputMethodService() {
                 englishBuffer.clear()
                 resumedWordBeforeCursor = null
                 clearSuggestions()
-                currentLanguage.value = when (currentLanguage.value) {
+                val newLang = when (currentLanguage.value) {
                     "mix" -> "en"
                     "en"  -> "si"
                     else  -> "mix"
                 }
+                currentLanguage.value = newLang
+                // Same persistence fix as the main LANG_TOGGLE handler in
+                // handleKey — see its comment for the full reasoning. Both
+                // handlers must persist via prefs.setDefaultLanguage, or
+                // whichever one runs, the toggle can still get silently
+                // reverted by the other's stale currentLanguage.value.collect.
+                serviceScope.launch { prefs.setDefaultLanguage(newLang) }
                 return // language switched; typing buffers reset above
             }
             key.length == 1 -> {
