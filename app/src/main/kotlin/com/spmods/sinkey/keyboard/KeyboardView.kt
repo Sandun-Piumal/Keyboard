@@ -535,7 +535,7 @@ private fun stepToBottomPadding(step: Float, screenWidthDp: Int): Dp {
 // Replaces the previous ad-hoc boolean flags (showSymbols, showEmojiPicker)
 // which had no memory of which board opened them, so back always went to MAIN.
 // Must be internal (not private) so SinKeyInputMethodService can reference it.
-enum class Board { MAIN, SYMBOLS, NUMPAD, EMOJI, CLIPBOARD, FONT, DECORATION, DECORATION_STYLES, STICKER, STICKER_CREATE, STICKER_EDIT, SPECIAL_CHARS }
+enum class Board { MAIN, SYMBOLS, NUMPAD, EMOJI, CLIPBOARD, FONT, DECORATION, DECORATION_STYLES, STICKER, STICKER_CREATE, STICKER_EDIT }
 
 /** Result of Board.STICKER_EDIT's async preview-image decode — see that branch in KeyboardView's content `when`. */
 private sealed class StickerEditDecodeResult {
@@ -963,7 +963,6 @@ internal fun KeyboardView(
             // tabs to the very top instead, in place of this toolbar) ──────
             if (currentBoard != Board.EMOJI && currentBoard != Board.CLIPBOARD && currentBoard != Board.FONT &&
                 currentBoard != Board.DECORATION && currentBoard != Board.DECORATION_STYLES &&
-                currentBoard != Board.SPECIAL_CHARS &&
                 currentBoard != Board.STICKER && currentBoard != Board.STICKER_CREATE) {
                 AppsMicBar(
                     colors = colors,
@@ -1024,7 +1023,6 @@ internal fun KeyboardView(
             // shown at all while the banner is up.
             if (!isPhoneInput && currentBoard != Board.EMOJI && currentBoard != Board.CLIPBOARD && currentBoard != Board.FONT &&
                 currentBoard != Board.DECORATION && currentBoard != Board.DECORATION_STYLES &&
-                currentBoard != Board.SPECIAL_CHARS &&
                 currentBoard != Board.STICKER && currentBoard != Board.STICKER_CREATE) {
                 if (showUpdateBanner) {
                     UpdateBanner(
@@ -1059,16 +1057,7 @@ internal fun KeyboardView(
                     bottomPadding = bottomPadding,
                     onEmojiSelected = { emoji -> onKey(emoji) },
                     onBackspace = { onKey("BACKSPACE") },
-                    onDismiss = { popBoard() },          // back to whichever board opened emoji
-                    onSpecialCharsOpen = { pushBoard(Board.SPECIAL_CHARS) }
-                )
-                currentBoard == Board.SPECIAL_CHARS -> SpecialCharPickerView(
-                    colors = colors,
-                    keyHeight = keyHeight,
-                    bottomPadding = bottomPadding,
-                    onCharSelected = { ch -> onKey(ch) },
-                    onBackspace = { onKey("BACKSPACE") },
-                    onDismiss = { popBoard() }           // back to EMOJI
+                    onDismiss = { popBoard() }           // back to whichever board opened emoji
                 )
                 currentBoard == Board.SYMBOLS -> SymbolsKeyboardKeys(
                     colors = colors, keyHeight = keyHeight,
