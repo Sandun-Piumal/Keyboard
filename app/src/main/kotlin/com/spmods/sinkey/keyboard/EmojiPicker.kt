@@ -32,8 +32,7 @@ import kotlinx.coroutines.launch
  * We check by seeing if the string's codepoints are all in supported ranges
  * and that it doesn't contain unsupported flag/ZWJ sequences on older APIs.
  */
-private fun String.isSupported(): Boolean {
-    val codePoints = codePoints().toArray()
+private fun String.isSupported(): Boolean {    val codePoints = codePoints().toArray()
     val sdk = android.os.Build.VERSION.SDK_INT
 
     // Flag sequences (U+1F1E6..U+1F1FF): need Android 6.0+
@@ -55,6 +54,34 @@ private fun String.isSupported(): Boolean {
 
     return true
 }
+
+/**
+ * BUG FIX (special-char board showing tofu boxes ▯ for many glyphs): a
+ * static "these blocks are old Unicode" allowlist isn't enough — several
+ * legacy technical/typesetting blocks are old but still sparse in real
+ * Android system fonts (already trimmed the worst offenders out of
+ * SpecialCharData's source list itself; see that file's doc comment).
+ * This is the second, runtime layer of defense: for whatever's left,
+ * actually ask the device's default Paint/Typeface whether it has a
+ * glyph for this exact character before ever showing it, the same way a
+ * font-coverage check should be done — Paint.hasGlyph() is precisely the
+ * platform API for this, unlike isSupported() above which only reasons
+ * about EmojiCompat/color-emoji API-level gating and doesn't touch plain-
+ * glyph font coverage at all. A single shared Paint instance is reused
+ * across the whole grid (created once, not per-glyph) since Paint
+ * allocation itself is cheap-ish but repeated hasGlyph() calls on a fresh
+ * Paint each time would still add unnecessary overhead across ~900 checks.
+ */
+private val specialCharGlyphCheckPaint by lazy { android.graphics.Paint() }
+private fun String.hasRenderableGlyph(): Boolean =
+    try {
+        specialCharGlyphCheckPaint.hasGlyph(this)
+    } catch (e: Exception) {
+        // hasGlyph() can throw on some OEM font stacks for unusual
+        // sequences; treat "couldn't determine" as "assume it renders"
+        // rather than silently dropping otherwise-fine characters.
+        true
+    }
 
 /**
  * Renders a single emoji glyph through EmojiCompat's bundled Noto Color
@@ -146,17 +173,8 @@ internal fun EmojiPickerView(
     onEmojiSelected: (String) -> Unit,
     onBackspace: () -> Unit,
     onDismiss: () -> Unit,
-    // "Decorate" — opens Board.DECORATION_STYLES directly (the fixed-style
-    // list, same page reached via the main keyboard toolbar's Decorate
-    // icon → "Styles" row), so a style can be picked right from the emoji
-    // board without detouring through the DECORATION incognito/enable page
-    // first. Popping back from there returns here (to EMOJI), not to
-    // DECORATION, since this pushes DECORATION_STYLES directly onto
-    // whatever board was already under EMOJI on the stack.
-    onDecorationOpen: () -> Unit,
-    // "Special characters" — opens Board.SPECIAL_CHARS (SpecialCharPickerView),
-    // same idea as onDecorationOpen: pushed directly on top of EMOJI so
-    // "Back" from there returns here.
+    // "Special characters" — opens Board.SPECIAL_CHARS (SpecialCharPickerView).
+    // Pushed directly on top of EMOJI so "Back" from there returns here.
     onSpecialCharsOpen: () -> Unit
 ) {
     val hasRecent = recentEmojis.isNotEmpty()
@@ -363,8 +381,10 @@ internal fun EmojiPickerView(
         }
         }
 
-        // ── Row 4: bottom icon row — keyboard / emoji / decorate / delete —
-        // same keyHeight-tall row as every other board's final row.
+        // ── Row 4: bottom icon row — keyboard / emoji / special-chars /
+        // delete — same keyHeight-tall row as every other board's final
+        // row. (Decorate access stays on the main toolbar only, per the
+        // duplicate-icon feedback that led to removing it from here.)
         Row(
             modifier = Modifier.fillMaxWidth().padding(vertical = 3.dp),
             horizontalArrangement = Arrangement.spacedBy(6.dp),
@@ -399,30 +419,9 @@ internal fun EmojiPickerView(
                     tint = activeTint
                 )
             }
-            // "Decorate" — opens the decorative-text style list
-            // (Board.DECORATION_STYLES) directly on top of EMOJI, so
-            // "Back" from there returns to this board. Same icon
-            // (ic_unified_menu) as the main toolbar's own Decorate button,
-            // for visual consistency between the two entry points.
-            Box(
-                modifier = Modifier
-                    .height(keyHeight)
-                    .weight(1f)
-                    .clip(RoundedCornerShape(6.dp))
-                    .clickable { onDecorationOpen() },
-                contentAlignment = Alignment.Center
-            ) {
-                Icon(
-                    painter = painterResource(id = R.drawable.ic_unified_menu),
-                    contentDescription = null,
-                    modifier = Modifier.size(20.dp),
-                    tint = colors.subText
-                )
-            }
             // "Special characters" — opens Board.SPECIAL_CHARS (the
             // arrows/brackets/circled-numbers/ornamental/misc glyph
-            // picker), same idea and same "Back returns to EMOJI" behavior
-            // as the Decorate icon above.
+            // picker). "Back" from there returns here (to EMOJI).
             Box(
                 modifier = Modifier
                     .height(keyHeight)
@@ -485,7 +484,17 @@ internal fun SpecialCharPickerView(
     onBackspace: () -> Unit,
     onDismiss: () -> Unit
 ) {
-    val allCategories = SpecialCharData.categories
+    // Runtime glyph-coverage filter (see hasRenderableGlyph's doc comment)
+    // on top of SpecialCharData's already-curated static list — catches
+    // whatever's still missing on this specific device's font stack, and
+    // drops empty categories entirely rather than showing an empty grid
+    // section with just a header.
+    val allCategories = remember {
+        SpecialCharData.categories.mapNotNull { cat ->
+            val filtered = cat.emojis.filter { it.hasRenderableGlyph() }
+            if (filtered.isNotEmpty()) cat.copy(emojis = filtered) else null
+        }
+    }
 
     val categoryStartIndices = remember(allCategories) {
         val indices = mutableListOf<Int>()
