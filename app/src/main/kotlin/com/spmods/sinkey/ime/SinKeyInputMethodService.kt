@@ -989,7 +989,7 @@ class SinKeyInputMethodService : InputMethodService() {
                     com.spmods.sinkey.data.ThemeMode.DARK   -> true
                     com.spmods.sinkey.data.ThemeMode.SYSTEM -> androidx.compose.foundation.isSystemInDarkTheme()
                 }
-                val keyboardHeight by prefs.keyboardHeight.collectAsState(initial = 2f)
+                val keyboardHeight by prefs.keyboardHeight.collectAsState(initial = 0f)
                 val bottomSpaceEnabled by prefs.bottomSpaceEnabled.collectAsState(initial = true)
                 val bottomSpaceSize by prefs.bottomSpaceSize.collectAsState(initial = 0f)
                 val showKeyBorders by prefs.showKeyBorders.collectAsState(initial = true)
