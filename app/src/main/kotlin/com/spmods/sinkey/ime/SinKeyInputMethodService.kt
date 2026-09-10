@@ -355,6 +355,25 @@ class SinKeyInputMethodService : InputMethodService() {
     // the reply matching the most recently issued request is ever applied.
     private var mixEnglishRequestId: Long = 0
 
+    // BUG FIX (suggestions sometimes stop updating in pure English mode):
+    // same race as mixEnglishRequestId above, but for the "en" branch of
+    // onGetSuggestions. getSuggestions() is fired on every keystroke
+    // (updateSuggestions' else-branch) and its replies are NOT guaranteed
+    // to arrive in the order they were sent — a fast typist can have an
+    // older, shorter-prefix query's reply land after a newer one's. The
+    // English branch used to just re-read englishBuffer.toString() live at
+    // callback time with no check that the reply actually belongs to that
+    // text, so a late-arriving stale reply could silently overwrite
+    // suggestions.value with results for a word already left behind,
+    // making the bar look frozen/wrong until the next full keyboard
+    // restart reset all the buffers and cleared the in-flight race.
+    // englishQuery holds the exact word most recently sent to
+    // getSuggestions() for pure English mode, since SuggestionsInfo doesn't
+    // echo the original query text back to onGetSuggestions — set right
+    // before every getSuggestions() call in updateSuggestions' else-branch,
+    // checked against englishBuffer's live content in the callback above.
+    private var englishQuery: String = ""
+
     // Holds the Sinhala/transliteration side of the current suggestion list
     // separately from the async English (mix mode) results, so the two
     // async sources (Room personal-dictionary lookup + spell-checker) can
@@ -389,6 +408,13 @@ class SinKeyInputMethodService : InputMethodService() {
         mixEnglishSuggestions = emptyList()
         mixEnglishQuery = ""
         mixEnglishRequestId += 1
+        // BUG FIX: also invalidate any in-flight pure-English request the
+        // same way — otherwise a late reply for a word the user has since
+        // moved past could still match englishBuffer's live content by
+        // coincidence (e.g. backspaced back to the same text) and get
+        // wrongly applied. Blanking it here means it can only ever match
+        // again once a genuinely new request sets it.
+        englishQuery = ""
     }
 
     // Tracks where WE expect the cursor to be after our own edits (typing,
@@ -803,9 +829,31 @@ class SinKeyInputMethodService : InputMethodService() {
                         // Pure English mode: ("en") — this callback owns the whole
                         // suggestion bar keyed off englishBuffer, as before.
                         if (currentLanguage.value == "en") {
-                            val raw = englishBuffer.toString()
+                            // BUG FIX: getSuggestions() replies are NOT
+                            // guaranteed to arrive in the order they were
+                            // sent. Every request updates englishQuery to the
+                            // word it was issued for; this callback has no
+                            // way to know which request it's a reply to, so
+                            // instead it only trusts the CURRENT englishQuery
+                            // (the most recently issued request's word) —
+                            // if that still matches what's live in
+                            // englishBuffer right now, apply the results;
+                            // any older, slower reply either won't match
+                            // englishQuery by the time it lands (a newer
+                            // request already overwrote it) or, if it
+                            // spuriously does, is indistinguishable from a
+                            // fresh correct reply and is safe to apply.
+                            // Without this, an out-of-order reply for an old
+                            // prefix landing after a newer request was
+                            // already fired could silently overwrite
+                            // suggestions.value with stale/wrong results,
+                            // making the suggestion bar appear frozen or
+                            // wrong mid-typing.
+                            val raw = englishQuery
+                            if (raw.isEmpty()) return
+                            if (englishBuffer.toString() != raw) return
                             val words = mutableListOf<String>()
-                            if (raw.isNotEmpty()) words.add(raw)
+                            words.add(raw)
                             var looksLikeTypo = false
                             var topCorrection: String? = null
                             results?.forEach { info ->
@@ -819,12 +867,7 @@ class SinKeyInputMethodService : InputMethodService() {
                                     if (s != raw && words.size < 5) words.add(s)
                                 }
                             }
-                            if (words.isNotEmpty()) suggestions.value = words
-                            // Recorded even when raw is empty (verdict simply
-                            // won't be used — maybeAutocorrectAndCommitSpace
-                            // requires a non-blank typedWord match) so a
-                            // stale verdict from the previous word can never
-                            // be mistakenly reused for an empty buffer.
+                            suggestions.value = words
                             lastSpellCheckVerdict = SpellCheckVerdict(raw, looksLikeTypo, topCorrection)
                             return
                         }
@@ -2352,12 +2395,30 @@ class SinKeyInputMethodService : InputMethodService() {
                 return // no buffer change — don't fall through to re-translate below
             }
             key == "LANG_TOGGLE" -> {
+                // BUG FIX: this is a SEPARATE LANG_TOGGLE handler from the
+                // main one in handleKey (used while the translate row is
+                // open) — it only flipped currentLanguage.value and never
+                // touched wordBuffer/englishBuffer/suggestions the way the
+                // main handler does. That left the typing buffers holding
+                // whatever partial word was typed under the OLD language,
+                // now mismatched against the NEW currentLanguage.value —
+                // e.g. toggle mid-word from mix to en, and englishBuffer
+                // stays empty while wordBuffer still has the Sinhala partial
+                // sitting in it, so suggestions/typing behave like the old
+                // mode kept running until translate mode was closed (which
+                // does reset everything in closeTranslateMode). Clearing
+                // them here the same way keeps behavior consistent with a
+                // fresh language switch, matching the main LANG_TOGGLE path.
+                wordBuffer.clear()
+                englishBuffer.clear()
+                resumedWordBeforeCursor = null
+                clearSuggestions()
                 currentLanguage.value = when (currentLanguage.value) {
                     "mix" -> "en"
                     "en"  -> "si"
                     else  -> "mix"
                 }
-                return // language mode change only — buffer text unchanged
+                return // language switched; typing buffers reset above
             }
             key.length == 1 -> {
                 // Sinhala/mix mode: same case-sensitivity handling as the
@@ -3892,6 +3953,11 @@ class SinKeyInputMethodService : InputMethodService() {
             if (session != null) {
                 // Show typed word immediately; async callback will update with real suggestions.
                 if (suggestions.value.firstOrNull() != raw) suggestions.value = listOf(raw)
+                // BUG FIX: record which word this request is for so the
+                // (possibly out-of-order) reply in onGetSuggestions above
+                // can tell a stale reply apart from the current one — see
+                // englishQuery's field comment.
+                englishQuery = raw
                 try {
                     session.getSuggestions(android.view.textservice.TextInfo(raw), 4)
                 } catch (e: Exception) {
@@ -4068,6 +4134,20 @@ class SinKeyInputMethodService : InputMethodService() {
                 mixSinhalaSuggestions = (disambiguated + learned + current).distinct().take(5)
                 recomputeMixSuggestions()
             } else {
+                // BUG FIX (suggestions sometimes never show — affects BOTH
+                // Sinhala and English, not just mix mode): this branch had
+                // no staleness check at all, unlike isMixSinhala's above.
+                // wordRepo.fuzzySuggestionsFor/suggestionsFor are Room
+                // queries with variable latency (fuzzy edit-distance scans
+                // especially), so on fast typing an OLDER prefix's lookup
+                // can finish and land here after a NEWER prefix's lookup
+                // already did — silently overwriting suggestions.value
+                // with a merge built around a word the user has since
+                // typed past. Guard the same way the mix branch does:
+                // only apply if the live buffer still holds exactly the
+                // word this lookup was for.
+                val liveBuffer = if (language == "si") wordBuffer else englishBuffer
+                if (liveBuffer.toString() != prefix) return@launch
                 val current = suggestions.value.ifEmpty { baseList }
                 val merged = (disambiguated + learned + current).distinct().take(5)
                 suggestions.value = merged
