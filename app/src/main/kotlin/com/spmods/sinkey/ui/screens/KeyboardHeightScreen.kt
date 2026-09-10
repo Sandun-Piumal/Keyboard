@@ -59,7 +59,7 @@ fun KeyboardHeightScreen(
     onKeyOpacityChange: (Float) -> Unit,
     onBack: () -> Unit
 ) {
-    val isDefault = keyboardHeight == 2f   // L is the factory default
+    val isDefault = keyboardHeight == 0f   // S is the factory default
 
     Column(
         modifier = Modifier
@@ -114,7 +114,7 @@ fun KeyboardHeightScreen(
                         color = MaterialTheme.colorScheme.primary,
                         modifier = Modifier
                             .clip(RoundedCornerShape(6.dp))
-                            .clickable { onKeyboardHeightChange(2f) }
+                            .clickable { onKeyboardHeightChange(0f) }
                             .padding(horizontal = 8.dp, vertical = 4.dp)
                     )
                 } else {
