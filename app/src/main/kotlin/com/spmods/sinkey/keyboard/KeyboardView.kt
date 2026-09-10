@@ -1060,7 +1060,6 @@ internal fun KeyboardView(
                     onEmojiSelected = { emoji -> onKey(emoji) },
                     onBackspace = { onKey("BACKSPACE") },
                     onDismiss = { popBoard() },          // back to whichever board opened emoji
-                    onDecorationOpen = { pushBoard(Board.DECORATION_STYLES) },
                     onSpecialCharsOpen = { pushBoard(Board.SPECIAL_CHARS) }
                 )
                 currentBoard == Board.SPECIAL_CHARS -> SpecialCharPickerView(
