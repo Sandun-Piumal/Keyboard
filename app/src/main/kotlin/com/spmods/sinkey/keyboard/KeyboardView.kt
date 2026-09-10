@@ -546,7 +546,7 @@ private sealed class StickerEditDecodeResult {
 @Composable
 internal fun KeyboardView(
     currentLanguage: String,
-    keyboardHeight: Float = 2f,
+    keyboardHeight: Float = 0f,
     bottomSpaceEnabled: Boolean = true,
     bottomSpaceSize: Float = 0f,
     showKeyBorders: Boolean = true,
