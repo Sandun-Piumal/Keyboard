@@ -13,7 +13,6 @@ import androidx.compose.material3.Text
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Backspace
 import androidx.compose.material.icons.filled.Star
-import androidx.compose.material.icons.filled.StarOutline
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -178,32 +177,38 @@ internal fun EmojiPickerView(
     onDismiss: () -> Unit
 ) {
     val hasRecent = recentEmojis.isNotEmpty()
-    // BUG FIX: special characters used to be their own separate board
-    // (Board.SPECIAL_CHARS), reached by pushing a new page on top of EMOJI
-    // and popped back via "Back". Per feedback, this should instead be
-    // just more TABS on this same board — no page navigation, no separate
-    // back-stack entry, switching feels exactly like switching between
-    // Smileys/Animals/Food. So SpecialCharData's categories are appended
-    // directly onto the same allCategories list the emoji categories live
-    // in, and both scroll through one continuous grid exactly like
-    // EmojiData's own categories already do. The runtime glyph-coverage
-    // filter (hasRenderableGlyph — see its doc comment) is applied here
-    // too, same as it was in the old standalone board, so devices with
-    // font gaps still don't see tofu boxes.
-    val allCategories = remember(recentEmojis) {
+
+    // Two independent category lists — normal emoji categories, and
+    // SpecialCharData's categories — switched between via a toggle button
+    // in the bottom bar (see showSpecialChars below), NOT via board
+    // navigation. This is neither "merged into one continuous tab strip"
+    // nor "a separate pushed board": tapping the bottom-bar toggle swaps
+    // which list feeds the SAME tab strip + grid in place, instantly,
+    // with no back-stack entry and no page transition — closer to how the
+    // shift key flips between two label sets on the same row than to
+    // switching boards.
+    val emojiCategories = remember(recentEmojis) {
         buildList {
             if (hasRecent) add(EmojiData.Category("🕐", "Recent", recentEmojis))
-            // Filter out emojis that won't render on this device
             EmojiData.categories.forEach { cat ->
                 val filtered = cat.emojis.filter { it.isSupported() }
                 if (filtered.isNotEmpty()) add(cat.copy(emojis = filtered))
             }
-            SpecialCharData.categories.forEach { cat ->
-                val filtered = cat.emojis.filter { it.hasRenderableGlyph() }
-                if (filtered.isNotEmpty()) add(cat.copy(emojis = filtered))
-            }
         }
     }
+    val specialCharCategories = remember {
+        // Runtime glyph-coverage filter (see hasRenderableGlyph's doc
+        // comment) on top of SpecialCharData's already-curated static
+        // list — catches whatever's still missing on this specific
+        // device's font stack.
+        SpecialCharData.categories.mapNotNull { cat ->
+            val filtered = cat.emojis.filter { it.hasRenderableGlyph() }
+            if (filtered.isNotEmpty()) cat.copy(emojis = filtered) else null
+        }
+    }
+
+    var showSpecialChars by remember { mutableStateOf(false) }
+    val allCategories = if (showSpecialChars) specialCharCategories else emojiCategories
 
     // Build a flat index map: gridItem index → category index
     // Each category has 1 header item + N emoji items
@@ -218,8 +223,8 @@ internal fun EmojiPickerView(
         indices
     }
 
-    var selectedCategory by remember { mutableIntStateOf(0) }
-    val gridState = rememberLazyGridState()
+    var selectedCategory by remember(showSpecialChars) { mutableIntStateOf(0) }
+    val gridState = remember(showSpecialChars) { androidx.compose.foundation.lazy.grid.LazyGridState() }
     val coroutineScope = rememberCoroutineScope()
     // True while a tab click's own animateScrollToItem is running. While
     // this is true, the scroll-position listener below must not touch
@@ -397,13 +402,17 @@ internal fun EmojiPickerView(
         }
         }
 
-        // ── Row 4: bottom icon row — keyboard / emoji / delete — same
-        // keyHeight-tall row as every other board's final row. (Special
-        // characters are now tabs within this same board — see
-        // allCategories' comment above — so there's no separate
-        // navigation icon for them here anymore; Decorate access stays on
-        // the main toolbar only, per the duplicate-icon feedback that led
-        // to removing it from here.)
+        // ── Row 4: bottom icon row — keyboard / emoji↔special-chars toggle
+        // / delete — same keyHeight-tall row as every other board's final
+        // row. The middle slot (previously a non-clickable "active board"
+        // indicator) is now a TOGGLE: tapping it flips showSpecialChars,
+        // swapping the tab strip + grid above between emoji categories and
+        // SpecialCharData's categories in place — no board push/pop, no
+        // back-stack entry, no page transition. Its icon reflects whichever
+        // mode is currently showing (smiley = emoji, star = special
+        // chars) so it also doubles as the active-mode indicator the
+        // plain smiley icon used to be. (Decorate access stays on the main
+        // toolbar only, per earlier duplicate-icon feedback.)
         Row(
             modifier = Modifier.fillMaxWidth().padding(vertical = 3.dp),
             horizontalArrangement = Arrangement.spacedBy(6.dp),
@@ -428,15 +437,25 @@ internal fun EmojiPickerView(
                 modifier = Modifier
                     .height(keyHeight)
                     .weight(1f)
-                    .clip(RoundedCornerShape(6.dp)),
+                    .clip(RoundedCornerShape(6.dp))
+                    .clickable { showSpecialChars = !showSpecialChars },
                 contentAlignment = Alignment.Center
             ) {
-                Icon(
-                    painter = painterResource(id = R.drawable.ic_emoji_for_compose),
-                    contentDescription = null,
-                    modifier = Modifier.size(20.dp),
-                    tint = activeTint
-                )
+                if (showSpecialChars) {
+                    Icon(
+                        imageVector = Icons.Filled.Star,
+                        contentDescription = null,
+                        modifier = Modifier.size(20.dp),
+                        tint = activeTint
+                    )
+                } else {
+                    Icon(
+                        painter = painterResource(id = R.drawable.ic_emoji_for_compose),
+                        contentDescription = null,
+                        modifier = Modifier.size(20.dp),
+                        tint = activeTint
+                    )
+                }
             }
             Box(
                 modifier = Modifier
