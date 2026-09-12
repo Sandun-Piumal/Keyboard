@@ -13,6 +13,12 @@ import androidx.compose.material3.Text
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Backspace
 import androidx.compose.material.icons.filled.Star
+import androidx.compose.material.icons.filled.ArrowForward
+import androidx.compose.material.icons.filled.Code
+import androidx.compose.material.icons.filled.LooksOne
+import androidx.compose.material.icons.filled.AutoAwesome
+import androidx.compose.material.icons.filled.Widgets
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -139,6 +145,26 @@ private fun categoryIconRes(name: String, selected: Boolean): Int = when (name) 
     "New ✨" -> if (selected) R.drawable.ic_emoji_objects_selected else R.drawable.ic_emoji_objects_unselected
     "Flags" -> if (selected) R.drawable.ic_emoji_flags_selected else R.drawable.ic_emoji_flags_unselected
     else -> if (selected) R.drawable.ic_emoji_symbols_selected else R.drawable.ic_emoji_symbols_unselected
+}
+
+/**
+ * Vector tab icons for SpecialCharData's 5 categories (Arrows, Brackets,
+ * Numbers, Ornamental, Misc). These previously had no per-category icon
+ * at all — categoryIconRes's `else` branch fell back to the same plain
+ * "Symbols" drawable for all five, so every special-chars tab looked
+ * identical with no way to tell them apart at a glance. Distinct
+ * Material vector icons here (rather than adding 10 more drawable
+ * resources to match categoryIconRes's existing pattern) keep this
+ * self-contained in code, matching how the rest of this new feature
+ * avoided touching the drawable resource set.
+ */
+private fun specialCharCategoryIcon(name: String): ImageVector? = when (name) {
+    "Arrows" -> Icons.Filled.ArrowForward
+    "Brackets" -> Icons.Filled.Code
+    "Numbers" -> Icons.Filled.LooksOne
+    "Ornamental" -> Icons.Filled.AutoAwesome
+    "Misc" -> Icons.Filled.Widgets
+    else -> null
 }
 
 /**
@@ -332,12 +358,22 @@ internal fun EmojiPickerView(
                             .background(if (isSelected) activeTabBg else Color.Transparent),
                         contentAlignment = Alignment.Center
                     ) {
-                        Icon(
-                            painter = painterResource(id = categoryIconRes(category.name, isSelected)),
-                            contentDescription = category.name,
-                            tint = if (isSelected) activeTint else inactiveTint,
-                            modifier = Modifier.size(20.dp)
-                        )
+                        val vectorIcon = specialCharCategoryIcon(category.name)
+                        if (vectorIcon != null) {
+                            Icon(
+                                imageVector = vectorIcon,
+                                contentDescription = category.name,
+                                tint = if (isSelected) activeTint else inactiveTint,
+                                modifier = Modifier.size(20.dp)
+                            )
+                        } else {
+                            Icon(
+                                painter = painterResource(id = categoryIconRes(category.name, isSelected)),
+                                contentDescription = category.name,
+                                tint = if (isSelected) activeTint else inactiveTint,
+                                modifier = Modifier.size(20.dp)
+                            )
+                        }
                     }
                 }
             }
