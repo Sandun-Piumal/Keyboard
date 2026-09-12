@@ -402,17 +402,17 @@ internal fun EmojiPickerView(
         }
         }
 
-        // ── Row 4: bottom icon row — keyboard / emoji↔special-chars toggle
-        // / delete — same keyHeight-tall row as every other board's final
-        // row. The middle slot (previously a non-clickable "active board"
-        // indicator) is now a TOGGLE: tapping it flips showSpecialChars,
-        // swapping the tab strip + grid above between emoji categories and
-        // SpecialCharData's categories in place — no board push/pop, no
-        // back-stack entry, no page transition. Its icon reflects whichever
-        // mode is currently showing (smiley = emoji, star = special
-        // chars) so it also doubles as the active-mode indicator the
-        // plain smiley icon used to be. (Decorate access stays on the main
-        // toolbar only, per earlier duplicate-icon feedback.)
+        // ── Row 4: bottom icon row — keyboard / emoji / special-chars /
+        // delete — same keyHeight-tall row as every other board's final
+        // row. Emoji and special-chars are now TWO SEPARATE icons, both
+        // always visible, rather than one toggle icon that flips between
+        // them — tapping either one switches the tab strip + grid above to
+        // that category set (showSpecialChars = false/true), with the
+        // tapped icon's tint showing which one is currently active. Still
+        // no board push/pop, no back-stack entry, no page transition —
+        // switching is instant and in-place either way. (Decorate access
+        // stays on the main toolbar only, per earlier duplicate-icon
+        // feedback.)
         Row(
             modifier = Modifier.fillMaxWidth().padding(vertical = 3.dp),
             horizontalArrangement = Arrangement.spacedBy(6.dp),
@@ -438,24 +438,30 @@ internal fun EmojiPickerView(
                     .height(keyHeight)
                     .weight(1f)
                     .clip(RoundedCornerShape(6.dp))
-                    .clickable { showSpecialChars = !showSpecialChars },
+                    .clickable { showSpecialChars = false },
                 contentAlignment = Alignment.Center
             ) {
-                if (showSpecialChars) {
-                    Icon(
-                        imageVector = Icons.Filled.Star,
-                        contentDescription = null,
-                        modifier = Modifier.size(20.dp),
-                        tint = activeTint
-                    )
-                } else {
-                    Icon(
-                        painter = painterResource(id = R.drawable.ic_emoji_for_compose),
-                        contentDescription = null,
-                        modifier = Modifier.size(20.dp),
-                        tint = activeTint
-                    )
-                }
+                Icon(
+                    painter = painterResource(id = R.drawable.ic_emoji_for_compose),
+                    contentDescription = null,
+                    modifier = Modifier.size(20.dp),
+                    tint = if (showSpecialChars) colors.subText else activeTint
+                )
+            }
+            Box(
+                modifier = Modifier
+                    .height(keyHeight)
+                    .weight(1f)
+                    .clip(RoundedCornerShape(6.dp))
+                    .clickable { showSpecialChars = true },
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    imageVector = Icons.Filled.Star,
+                    contentDescription = null,
+                    modifier = Modifier.size(20.dp),
+                    tint = if (showSpecialChars) activeTint else colors.subText
+                )
             }
             Box(
                 modifier = Modifier
