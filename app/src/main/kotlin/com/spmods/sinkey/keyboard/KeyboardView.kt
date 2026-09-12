@@ -1057,7 +1057,7 @@ internal fun KeyboardView(
                     bottomPadding = bottomPadding,
                     onEmojiSelected = { emoji -> onKey(emoji) },
                     onBackspace = { onKey("BACKSPACE") },
-                    onDismiss = { popBoard() }           // back to whichever board opened emoji
+                    onDismiss = { popBoard() }            // back to whichever board opened emoji
                 )
                 currentBoard == Board.SYMBOLS -> SymbolsKeyboardKeys(
                     colors = colors, keyHeight = keyHeight,
