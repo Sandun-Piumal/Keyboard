@@ -531,21 +531,28 @@ fun ProfileScreen(
                 medalColor = MedalGold,
                 title = "Gold Medal",
                 subtitle = "2500+ Points",
-                earned = totalCharacters >= 2500
+                // BUG FIX: this compared totalCharacters (raw character
+                // count) against the POINTS threshold — but points are
+                // totalCharacters / 1000 (see totalPoints' definition
+                // above), so medals were unlocking 1000x too early (2500
+                // characters ≈ 2.5 points, not 2500 points). Comparing
+                // against totalPoints itself makes the "2500+ Points"
+                // label actually match what's being checked.
+                earned = totalPoints >= 2500
             )
             MedalCard(
                 modifier = Modifier.weight(1f),
                 medalColor = MedalSilver,
                 title = "Silver Medal",
                 subtitle = "1500+ Points",
-                earned = totalCharacters >= 1500
+                earned = totalPoints >= 1500
             )
             MedalCard(
                 modifier = Modifier.weight(1f),
                 medalColor = MedalBronze,
                 title = "Bronze Medal",
                 subtitle = "500+ Points",
-                earned = totalCharacters >= 500
+                earned = totalPoints >= 500
             )
         }
 
