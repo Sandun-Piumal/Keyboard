@@ -116,7 +116,11 @@ fun medalTierForPoints(totalPoints: Long): MedalTier = when {
 fun AppHeader(
     menuMode: HeaderMenuMode = HeaderMenuMode.PREMIUM,
     medalTier: MedalTier = MedalTier.NONE,
-    onResetClick: () -> Unit = {}
+    onResetClick: () -> Unit = {},
+    // Opens the side drawer (SinKeyDrawer, in MainActivity.kt) — the Menu
+    // glyph was already sitting here with no click handler at all before
+    // this, unused chrome with no drawer behind it.
+    onMenuClick: () -> Unit = {}
 ) {
     var menuExpanded by remember { mutableStateOf(false) }
 
@@ -156,7 +160,11 @@ fun AppHeader(
             Icons.Filled.Menu,
             contentDescription = "Menu",
             tint = MaterialTheme.colorScheme.onBackground,
-            modifier = Modifier.size(26.dp)
+            modifier = Modifier
+                .size(26.dp)
+                .clip(CircleShape)
+                .clickable { onMenuClick() }
+                .padding(2.dp)
         )
 
         Column(
