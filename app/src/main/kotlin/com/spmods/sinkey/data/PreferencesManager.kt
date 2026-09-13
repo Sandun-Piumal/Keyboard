@@ -343,10 +343,16 @@ class PreferencesManager(private val context: Context) {
         prefs[Keys.DICTIONARY_SEED_VERSION] ?: 0
     }
 
-    /** Emits the most-recently-used emojis list (up to [MAX_RECENT] entries). */
+    /**
+     * Emits the most-recently-used emojis list (up to [MAX_RECENT] entries).
+     * Defaults to DEFAULT_RECENT_EMOJIS until the user has actually tapped
+     * any emoji — matches how a fresh keyboard install still shows a
+     * useful/populated Recent row instead of an empty one on first use.
+     */
     val recentEmojis: Flow<List<String>> = context.dataStore.data.map { prefs ->
-        val raw = prefs[Keys.RECENT_EMOJIS] ?: ""
-        if (raw.isBlank()) emptyList()
+        val raw = prefs[Keys.RECENT_EMOJIS]
+        if (raw == null) DEFAULT_RECENT_EMOJIS
+        else if (raw.isBlank()) emptyList()
         else raw.split(",").filter { it.isNotBlank() }
     }
 
@@ -585,12 +591,21 @@ class PreferencesManager(private val context: Context) {
     /**
      * Pushes [emoji] to the front of the recent-emojis list and persists it.
      * Duplicates are removed and the list is capped at [MAX_RECENT].
+     *
+     * BUG FIX: this used to read RECENT_EMOJIS directly with `?: ""` — on
+     * a brand-new install (key never written) that meant the very first
+     * emoji tap started from an empty list and immediately overwrote the
+     * key, silently discarding DEFAULT_RECENT_EMOJIS forever even though
+     * the `recentEmojis` Flow above was showing them a moment earlier.
+     * Seeding `current` from DEFAULT_RECENT_EMOJIS when the key is still
+     * null (same null-check the Flow uses) means the first real tap
+     * merges into the defaults instead of replacing them outright.
      */
     suspend fun addRecentEmoji(emoji: String) {
         context.dataStore.edit { prefs ->
-            val current = (prefs[Keys.RECENT_EMOJIS] ?: "")
-                .split(",")
-                .filter { it.isNotBlank() && it != emoji } // remove duplicate
+            val raw = prefs[Keys.RECENT_EMOJIS]
+            val existing = if (raw == null) DEFAULT_RECENT_EMOJIS else raw.split(",").filter { it.isNotBlank() }
+            val current = existing.filter { it != emoji } // remove duplicate
             val updated = (listOf(emoji) + current).take(MAX_RECENT)
             prefs[Keys.RECENT_EMOJIS] = updated.joinToString(",")
         }
@@ -659,6 +674,19 @@ class PreferencesManager(private val context: Context) {
 
     companion object {
         const val MAX_RECENT = 20 // LazyRow allows unlimited scroll — keep up to 20 recent emojis
+
+        /**
+         * Shown in the Recent row before the user has tapped any emoji of
+         * their own, so a fresh install doesn't show an empty Recent
+         * strip. Once the user taps any emoji, addRecentEmoji merges it to
+         * the front of this same list (see that function's doc comment)
+         * rather than replacing it outright, so these stay present until
+         * naturally pushed out past MAX_RECENT entries by real usage.
+         */
+        val DEFAULT_RECENT_EMOJIS = listOf(
+            "😊", "😂", "🤣", "🥰", "😍", "😛", "😘", "✌️",
+            "👍", "🌹", "🌺", "🌸", "❤️", "💓", "❣️", "🇱🇰"
+        )
     }
 }
 
