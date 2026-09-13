@@ -3037,12 +3037,16 @@ private fun rememberKeyBumpOffsetY(pressed: Boolean): Dp {
  * guaranteed to observe as a rising edge on the very next recomposition,
  * independent of how quickly the matching up event follows. The bubble's
  * visible window is now unconditionally minVisibleMs long, timed purely
- * from the down event, which better matches how Gboard/SwiftKey behave
- * anyway (their preview bubble length doesn't visibly depend on press
- * duration either).
+ * from the down event.
+ *
+ * BUG FIX: minVisibleMs was 150ms, which — combined with the bubble
+ * being small (see KeyPreviewPopup's own fix) — read as a flicker rather
+ * than a deliberate preview during normal typing speed. Gboard/SwiftKey's
+ * own preview dwell time is closer to 250-300ms; 280ms here matches that
+ * without feeling sluggish on fast consecutive taps.
  */
 @Composable
-private fun rememberPreviewVisible(pressTick: Int, minVisibleMs: Long = 150L): Boolean {
+private fun rememberPreviewVisible(pressTick: Int, minVisibleMs: Long = 280L): Boolean {
     var visible by remember { mutableStateOf(false) }
     LaunchedEffect(pressTick) {
         if (pressTick == 0) return@LaunchedEffect
@@ -3054,23 +3058,29 @@ private fun rememberPreviewVisible(pressTick: Int, minVisibleMs: Long = 150L): B
 }
 
 /**
- * The small single-character bubble shown the instant a key is pressed —
- * ported 1:1 (visually) from FlorisBoard's PopupUiController.show() /
- * PopupBaseBox (ime/popup/PopupUi.kt + PopupUiController.kt): a plain
- * elevated box, no spring/scale-in choreography, roughly 10% taller than
- * the key itself, holding just the key's own label centered — real
- * FlorisBoard doesn't animate this in with a bounce, it's simply present
- * or not, so this doesn't either (the earlier scale+fade version here was
- * a deviation from FlorisBoard's actual look, not a match for it).
+ * The small single-character bubble shown the instant a key is pressed.
+ *
+ * BUG FIX (felt "off" compared to other keyboards — too squat/small, and
+ * vanished too fast / felt like a flicker): this used to be only 1.1x the
+ * key's own height with a 0.60x font-size ratio — barely taller than the
+ * key itself, so it read as a subtle tint change rather than a distinct
+ * floating bubble. Gboard/SwiftKey-style previews are roughly 1.7-2x the
+ * key's height with a noticeably larger character, so raising both ratios
+ * here (height 1.1x → 1.8x, font 0.60x → 0.85x) makes it read as its own
+ * clearly-risen bubble instead of a barely-taller restyle of the key.
+ * Paired with minVisibleMs's own fix (150ms → 280ms, see
+ * rememberPreviewVisible's doc comment) for the "gone too fast" half of
+ * the complaint — a bigger bubble that still vanishes in 150ms would
+ * still read as a flicker, so both needed to move together.
  */
 @Composable
 private fun KeyPreviewPopup(label: String, keyHeight: Dp, colors: KeyboardColors, keyShape: RoundedCornerShape) {
     val width = keyHeight
-    val height = (keyHeight.value * 1.1f).dp
+    val height = (keyHeight.value * 1.8f).dp
     Box(
         modifier = Modifier
             .defaultMinSize(minWidth = width, minHeight = height)
-            .shadow(elevation = 2.dp, shape = keyShape)
+            .shadow(elevation = 4.dp, shape = keyShape)
             .clip(keyShape)
             .background(colors.specialKeyBg)
             .padding(horizontal = 8.dp, vertical = 2.dp),
@@ -3078,7 +3088,7 @@ private fun KeyPreviewPopup(label: String, keyHeight: Dp, colors: KeyboardColors
     ) {
         Text(
             text = label,
-            fontSize = (keyHeight.value * 0.60f).sp,
+            fontSize = (keyHeight.value * 0.85f).sp,
             color = colors.keyText,
             fontWeight = FontWeight.Normal
         )
@@ -3385,7 +3395,7 @@ private fun RowScope.NumberedLetterKey(
             }
         } else if (rememberPreviewVisible(pressTick)) {
             Popup(alignment = Alignment.TopCenter,
-                offset = IntOffset(0, -((keyHeight.value * 1.4f).toInt()))) {
+                offset = IntOffset(0, -((keyHeight.value * 1.9f).toInt()))) {
                 KeyPreviewPopup(label = label, keyHeight = keyHeight, colors = colors, keyShape = keyShape)
             }
         }
@@ -3642,7 +3652,7 @@ private fun RowScope.LetterKey(
             }
         } else if (rememberPreviewVisible(pressTick)) {
             Popup(alignment = Alignment.TopCenter,
-                offset = IntOffset(0, -((keyHeight.value * 1.4f).toInt()))) {
+                offset = IntOffset(0, -((keyHeight.value * 1.9f).toInt()))) {
                 KeyPreviewPopup(label = label, keyHeight = keyHeight, colors = colors, keyShape = keyShape)
             }
         }
@@ -3780,7 +3790,7 @@ private fun RowScope.SpecialKey(
         Text(text = label, fontSize = keyLabelFontSize(keyHeight), fontWeight = FontWeight.Medium, color = colors.specialKeyText)
         if (rememberPreviewVisible(pressTick)) {
             Popup(alignment = Alignment.TopCenter,
-                offset = IntOffset(0, -((keyHeight.value * 1.4f).toInt()))) {
+                offset = IntOffset(0, -((keyHeight.value * 1.9f).toInt()))) {
                 KeyPreviewPopup(label = label, keyHeight = keyHeight, colors = colors, keyShape = keyShape)
             }
         }
