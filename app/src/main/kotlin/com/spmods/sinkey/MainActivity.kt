@@ -26,11 +26,14 @@ import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.FloatingActionButtonDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.ModalNavigationDrawer
 import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.rememberDrawerState
+import androidx.compose.material3.DrawerValue
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.SideEffect
@@ -40,6 +43,8 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import com.spmods.sinkey.ui.screens.DrawerDestination
+import com.spmods.sinkey.ui.screens.SinKeyDrawer
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -197,6 +202,7 @@ private fun SinKeyApp(prefs: PreferencesManager, initialTab: Tab = Tab.HOME) {
     // whether its back button returns to Profile or to Settings' main list.
     var helpSupportFromProfile by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
+    val drawerState = rememberDrawerState(initialValue = DrawerValue.Closed)
 
     // Hoisted here (not inside the showProfile branch below) so its
     // collectAsState doesn't restart from `initial` every time showProfile
@@ -435,6 +441,9 @@ private fun SinKeyApp(prefs: PreferencesManager, initialTab: Tab = Tab.HOME) {
     if (tab != Tab.HOME && !showKeyboardPreview) {
         BackHandler { tab = Tab.HOME }
     }
+    if (drawerState.isOpen) {
+        BackHandler { scope.launch { drawerState.close() } }
+    }
     if (showTypingTest) {
         BackHandler { showTypingTest = false }
     }
@@ -469,6 +478,36 @@ private fun SinKeyApp(prefs: PreferencesManager, initialTab: Tab = Tab.HOME) {
 
     // ─────────────────────────────────────────────────────────────────────────
 
+    // Full display name for the drawer's header monogram/greeting — falls
+    // back to blank (drawer shows "Welcome") until profile setup is done,
+    // same source profileFirstName/profileLastName already hoisted above
+    // for the Edit Profile flow.
+    val drawerDisplayName = listOf(profileFirstName, profileLastName)
+        .filter { it.isNotBlank() }
+        .joinToString(" ")
+
+    ModalNavigationDrawer(
+        drawerState = drawerState,
+        // Tap-only, no edge-swipe-to-open — this app has horizontally
+        // scrollable content in a few places (emoji rows, theme swatches)
+        // that a left-edge swipe gesture could conflict with, so opening
+        // is deliberately restricted to the hamburger icon tap only.
+        gesturesEnabled = drawerState.isOpen,
+        drawerContent = {
+            SinKeyDrawer(
+                userDisplayName = drawerDisplayName,
+                onDestinationClick = { destination ->
+                    when (destination) {
+                        DrawerDestination.PROFILE -> showProfile = true
+                        DrawerDestination.PERSONAL_DICTIONARY -> settingsSubScreen = SettingsSubScreen.PERSONAL_DICTIONARY
+                        DrawerDestination.QUICK_TEXT -> settingsSubScreen = SettingsSubScreen.QUICK_TEXT
+                        DrawerDestination.ABOUT -> settingsSubScreen = SettingsSubScreen.ABOUT_DEVELOPER
+                    }
+                },
+                onDismiss = { scope.launch { drawerState.close() } }
+            )
+        }
+    ) {
     Scaffold(
         floatingActionButton = {
             // Preview FAB is now an allow-list rather than a deny-list: it
@@ -565,7 +604,8 @@ private fun SinKeyApp(prefs: PreferencesManager, initialTab: Tab = Tab.HOME) {
                                         Tab.HOME -> {}
                                     }
                                 }
-                            }
+                            },
+                            onMenuClick = { scope.launch { drawerState.open() } }
                         )
                     }
 
@@ -850,6 +890,7 @@ private fun SinKeyApp(prefs: PreferencesManager, initialTab: Tab = Tab.HOME) {
                 )
             }
         }
+    }
     }
 }
 
