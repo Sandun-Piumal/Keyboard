@@ -3060,35 +3060,32 @@ private fun rememberPreviewVisible(pressTick: Int, minVisibleMs: Long = 280L): B
 /**
  * The small single-character bubble shown the instant a key is pressed.
  *
- * BUG FIX (felt "off" compared to other keyboards — too squat/small, and
- * vanished too fast / felt like a flicker): this used to be only 1.1x the
- * key's own height with a 0.60x font-size ratio — barely taller than the
- * key itself, so it read as a subtle tint change rather than a distinct
- * floating bubble. Gboard/SwiftKey-style previews are roughly 1.7-2x the
- * key's height with a noticeably larger character, so raising both ratios
- * here (height 1.1x → 1.8x, font 0.60x → 0.85x) makes it read as its own
- * clearly-risen bubble instead of a barely-taller restyle of the key.
- * Paired with minVisibleMs's own fix (150ms → 280ms, see
- * rememberPreviewVisible's doc comment) for the "gone too fast" half of
- * the complaint — a bigger bubble that still vanishes in 150ms would
- * still read as a flicker, so both needed to move together.
+ * BUG FIX: this previously used its own separate sizing (1.8x key height,
+ * 0.85x font, 4.dp elevation) tuned to look like Gboard/SwiftKey's
+ * preview — but that meant the tap-preview bubble and the long-press
+ * popup (LongPressPopupRow/PopupCell, 0.85x cell size, 0.5x-of-cell font,
+ * 2.dp elevation) had two different, inconsistent looks for what's really
+ * the same kind of element: a small floating bubble showing a key's
+ * character. Matching PopupCell's own proportions here (single-cell
+ * width/height at 0.85x keyHeight, font at 0.5x of that cell, 2.dp
+ * elevation) means every key-popup on this keyboard — tap preview and
+ * long-press alternates alike — shares one consistent style instead of
+ * only some keys "having it right".
  */
 @Composable
 private fun KeyPreviewPopup(label: String, keyHeight: Dp, colors: KeyboardColors, keyShape: RoundedCornerShape) {
-    val width = keyHeight
-    val height = (keyHeight.value * 1.8f).dp
+    val cellSize = (keyHeight.value * 0.85f).dp
     Box(
         modifier = Modifier
-            .defaultMinSize(minWidth = width, minHeight = height)
-            .shadow(elevation = 4.dp, shape = keyShape)
+            .size(cellSize, cellSize)
+            .shadow(elevation = 2.dp, shape = keyShape)
             .clip(keyShape)
-            .background(colors.specialKeyBg)
-            .padding(horizontal = 8.dp, vertical = 2.dp),
+            .background(colors.specialKeyBg),
         contentAlignment = Alignment.Center
     ) {
         Text(
             text = label,
-            fontSize = (keyHeight.value * 0.85f).sp,
+            fontSize = (cellSize.value * 0.5f).sp,
             color = colors.keyText,
             fontWeight = FontWeight.Normal
         )
@@ -3395,7 +3392,7 @@ private fun RowScope.NumberedLetterKey(
             }
         } else if (rememberPreviewVisible(pressTick)) {
             Popup(alignment = Alignment.TopCenter,
-                offset = IntOffset(0, -((keyHeight.value * 1.9f).toInt()))) {
+                offset = IntOffset(0, -((keyHeight.value * 1.0f).toInt()))) {
                 KeyPreviewPopup(label = label, keyHeight = keyHeight, colors = colors, keyShape = keyShape)
             }
         }
@@ -3652,7 +3649,7 @@ private fun RowScope.LetterKey(
             }
         } else if (rememberPreviewVisible(pressTick)) {
             Popup(alignment = Alignment.TopCenter,
-                offset = IntOffset(0, -((keyHeight.value * 1.9f).toInt()))) {
+                offset = IntOffset(0, -((keyHeight.value * 1.0f).toInt()))) {
                 KeyPreviewPopup(label = label, keyHeight = keyHeight, colors = colors, keyShape = keyShape)
             }
         }
@@ -3790,7 +3787,7 @@ private fun RowScope.SpecialKey(
         Text(text = label, fontSize = keyLabelFontSize(keyHeight), fontWeight = FontWeight.Medium, color = colors.specialKeyText)
         if (rememberPreviewVisible(pressTick)) {
             Popup(alignment = Alignment.TopCenter,
-                offset = IntOffset(0, -((keyHeight.value * 1.9f).toInt()))) {
+                offset = IntOffset(0, -((keyHeight.value * 1.0f).toInt()))) {
                 KeyPreviewPopup(label = label, keyHeight = keyHeight, colors = colors, keyShape = keyShape)
             }
         }
