@@ -82,6 +82,7 @@ import com.spmods.sinkey.ui.screens.TypingTestScreen
 import com.spmods.sinkey.ui.screens.medalTierForPoints
 import com.spmods.sinkey.ui.theme.SinKeyTheme
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
@@ -116,9 +117,26 @@ class MainActivity : ComponentActivity() {
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
-        installSplashScreen()
+        val splashScreen = installSplashScreen()
         super.onCreate(savedInstanceState)
         val prefs = PreferencesManager(applicationContext)
+        // BUG FIX (something flashed open briefly on every cold/warm
+        // launch, never on hot-start/recent-apps resume — matching
+        // exactly when the system SplashScreen is shown vs. skipped):
+        // installSplashScreen()'s default behavior dismisses the splash
+        // the moment the very first Compose frame is drawn, regardless of
+        // what that frame actually contains. SinKeyApp's own state
+        // (hasSeenOnboardingState) starts at null for one frame while its
+        // DataStore-backed Flow is still loading, so that literal first
+        // frame drawn — the one the splash screen hands off to — could be
+        // an intermediate/incomplete state of the tree rather than the
+        // final settled UI. Keeping the splash on-screen until that Flow
+        // has actually emitted at least once (isAppReady) means the
+        // splash only ever hands off directly to the real, fully-resolved
+        // first frame, with nothing transitional in between for a flash
+        // to come from.
+        var isAppReady = false
+        splashScreen.setKeepOnScreenCondition { !isAppReady }
         // Lets external callers (currently: the "Settings" pill button on
         // the keyboard's tools row — see SinKeyInputMethodService's
         // onOpenAppSettings) launch straight into a specific tab instead of
@@ -131,6 +149,10 @@ class MainActivity : ComponentActivity() {
         }
 
         setContent {
+            LaunchedEffect(Unit) {
+                prefs.hasSeenOnboarding.first()
+                isAppReady = true
+            }
             val themeMode by prefs.themeMode.collectAsState(initial = ThemeMode.SYSTEM)
             val isDark = when (themeMode) {
                 ThemeMode.LIGHT -> false
@@ -486,61 +508,28 @@ private fun SinKeyApp(prefs: PreferencesManager, initialTab: Tab = Tab.HOME) {
         .filter { it.isNotBlank() }
         .joinToString(" ")
 
-    // BUG FIX (drawer sheet + scrim briefly flashed fully visible right as
-    // the app launched, then disappeared): earlier attempts assumed this
-    // was an animation-timing issue and tried forcing drawerState closed
-    // via snapTo inside a LaunchedEffect — that didn't help because
-    // LaunchedEffect bodies run AFTER the first composition's frame is
-    // already drawn, so if ModalNavigationDrawer's very first frame
-    // renders its sheet/scrim before that effect has a chance to run,
-    // the flash already happened by the time snapTo executes. The actual
-    // fix is to not mount ModalNavigationDrawer's drawer+scrim visuals on
-    // that first frame at all: drawerReady starts false and flips true
-    // one frame later (also via LaunchedEffect, but here it's gating
-    // whether the drawer renders in the first place, not trying to
-    // correct a state after the fact). Scaffold's content itself doesn't
-    // depend on the drawer being mounted, so showing it without the
-    // drawer wrapper for that first frame is not visibly different to
-    // the user — there's simply nothing to flash.
-    var drawerReady by remember { mutableStateOf(false) }
-    LaunchedEffect(Unit) { drawerReady = true }
-
     ModalNavigationDrawer(
         drawerState = drawerState,
-        // BUG FIX: `gesturesEnabled = false` (a previous attempt at fixing
-        // the open-flash-on-launch issue) turned out to disable BOTH
-        // swipe-to-close AND tap-outside-to-close on Compose Material3's
-        // ModalNavigationDrawer — gesturesEnabled gates the scrim's own
-        // tap handling too, not just drag gestures, so with it fully
-        // false the only way left to close the drawer was the back
-        // button. Reverting to `drawerState.isOpen` restores tap-outside
-        // and swipe-to-close once the drawer is actually open, while
-        // still blocking edge-swipe-to-OPEN while closed (this app's
-        // horizontally-scrollable emoji/theme rows near the screen edge
-        // could otherwise trigger it accidentally). The open-flash-on-
-        // launch problem itself is addressed by drawerReady above/below
-        // instead of by disabling gestures outright.
+        // Swipe-to-open is disabled while closed (this app has
+        // horizontally-scrollable content — emoji rows, theme swatches —
+        // near the screen edge that an edge-swipe could conflict with),
+        // but gestures (including scrim-tap-to-close, which Compose
+        // Material3's ModalNavigationDrawer gates behind this same flag)
+        // stay enabled once the drawer is actually open.
         gesturesEnabled = drawerState.isOpen,
         drawerContent = {
-            // Nothing to render (and nothing for the scrim to sit behind)
-            // until drawerReady flips true one frame after this composable
-            // first mounts — see drawerReady's own doc comment above for
-            // why this is the actual fix for the launch-time flash rather
-            // than trying to correct drawerState after the fact.
-            if (drawerReady) {
-                SinKeyDrawer(
-                    userDisplayName = drawerDisplayName,
-                    onDestinationClick = { destination ->
-                        when (destination) {
-                            DrawerDestination.PROFILE -> showProfile = true
-                            DrawerDestination.PERSONAL_DICTIONARY -> settingsSubScreen = SettingsSubScreen.PERSONAL_DICTIONARY
-                            DrawerDestination.QUICK_TEXT -> settingsSubScreen = SettingsSubScreen.QUICK_TEXT
-                            DrawerDestination.ABOUT -> settingsSubScreen = SettingsSubScreen.ABOUT_DEVELOPER
-                        }
-                    },
-                    onDismiss = { scope.launch { drawerState.close() } }
-                )
-            }
+            SinKeyDrawer(
+                userDisplayName = drawerDisplayName,
+                onDestinationClick = { destination ->
+                    when (destination) {
+                        DrawerDestination.PROFILE -> showProfile = true
+                        DrawerDestination.PERSONAL_DICTIONARY -> settingsSubScreen = SettingsSubScreen.PERSONAL_DICTIONARY
+                        DrawerDestination.QUICK_TEXT -> settingsSubScreen = SettingsSubScreen.QUICK_TEXT
+                        DrawerDestination.ABOUT -> settingsSubScreen = SettingsSubScreen.ABOUT_DEVELOPER
+                    }
+                },
+                onDismiss = { scope.launch { drawerState.close() } }
+            )
         }
     ) {
     Scaffold(
