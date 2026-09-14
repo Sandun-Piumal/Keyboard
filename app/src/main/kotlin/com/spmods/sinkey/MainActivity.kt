@@ -488,11 +488,19 @@ private fun SinKeyApp(prefs: PreferencesManager, initialTab: Tab = Tab.HOME) {
 
     ModalNavigationDrawer(
         drawerState = drawerState,
-        // Tap-only, no edge-swipe-to-open — this app has horizontally
-        // scrollable content in a few places (emoji rows, theme swatches)
-        // that a left-edge swipe gesture could conflict with, so opening
-        // is deliberately restricted to the hamburger icon tap only.
-        gesturesEnabled = drawerState.isOpen,
+        // BUG FIX: this was `gesturesEnabled = drawerState.isOpen` — reading
+        // drawerState.isOpen here made gesturesEnabled flip the very first
+        // time this composable mounted (right when hasSeenOnboarding first
+        // becomes true, since the drawer isn't part of the tree at all
+        // before that — see the onboarding gate above), which could kick
+        // the drawer's own internal AnchoredDraggableState into a settle
+        // animation on that first frame and made the drawer flash open
+        // then close right as the app launched. Tap-only was already the
+        // intent (see the comment this replaces) — a flat `false` gives
+        // the same tap-only behavior without ever reading isOpen here, so
+        // there's nothing tied to drawerState's own value that could
+        // trigger a spurious animation on first mount.
+        gesturesEnabled = false,
         drawerContent = {
             SinKeyDrawer(
                 userDisplayName = drawerDisplayName,
