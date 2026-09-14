@@ -486,21 +486,37 @@ private fun SinKeyApp(prefs: PreferencesManager, initialTab: Tab = Tab.HOME) {
         .filter { it.isNotBlank() }
         .joinToString(" ")
 
+    // BUG FIX (drawer briefly flashed open then closed right as the app
+    // launched): this part of the tree isn't mounted at all until
+    // hasSeenOnboarding first becomes true (see the onboarding gate
+    // above) — so ModalNavigationDrawer's own DrawerState/
+    // AnchoredDraggableState gets created fresh exactly on that first
+    // composition, and its default initial anchor briefly resolved to an
+    // open-ish offset before the very first animation frame settled it
+    // back to Closed, reading as a flash. snapTo jumps the underlying
+    // anchor straight to Closed with no animation at all, so there's
+    // nothing to visibly settle on that first frame.
+    LaunchedEffect(Unit) {
+        drawerState.snapTo(DrawerValue.Closed)
+    }
+
     ModalNavigationDrawer(
         drawerState = drawerState,
-        // BUG FIX: this was `gesturesEnabled = drawerState.isOpen` — reading
-        // drawerState.isOpen here made gesturesEnabled flip the very first
-        // time this composable mounted (right when hasSeenOnboarding first
-        // becomes true, since the drawer isn't part of the tree at all
-        // before that — see the onboarding gate above), which could kick
-        // the drawer's own internal AnchoredDraggableState into a settle
-        // animation on that first frame and made the drawer flash open
-        // then close right as the app launched. Tap-only was already the
-        // intent (see the comment this replaces) — a flat `false` gives
-        // the same tap-only behavior without ever reading isOpen here, so
-        // there's nothing tied to drawerState's own value that could
-        // trigger a spurious animation on first mount.
-        gesturesEnabled = false,
+        // BUG FIX: `gesturesEnabled = false` (a previous attempt at fixing
+        // the open-flash-on-launch issue) turned out to disable BOTH
+        // swipe-to-close AND tap-outside-to-close on Compose Material3's
+        // ModalNavigationDrawer — gesturesEnabled gates the scrim's own
+        // tap handling too, not just drag gestures, so with it fully
+        // false the only way left to close the drawer was the back
+        // button. Reverting to `drawerState.isOpen` restores tap-outside
+        // and swipe-to-close once the drawer is actually open, while
+        // still blocking edge-swipe-to-OPEN while closed (this app's
+        // horizontally-scrollable emoji/theme rows near the screen edge
+        // could otherwise trigger it accidentally). The open-flash-on-
+        // launch problem is addressed separately below (see the
+        // LaunchedEffect right after this block) instead of by disabling
+        // gestures outright.
+        gesturesEnabled = drawerState.isOpen,
         drawerContent = {
             SinKeyDrawer(
                 userDisplayName = drawerDisplayName,
