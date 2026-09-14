@@ -486,19 +486,24 @@ private fun SinKeyApp(prefs: PreferencesManager, initialTab: Tab = Tab.HOME) {
         .filter { it.isNotBlank() }
         .joinToString(" ")
 
-    // BUG FIX (drawer briefly flashed open then closed right as the app
-    // launched): this part of the tree isn't mounted at all until
-    // hasSeenOnboarding first becomes true (see the onboarding gate
-    // above) — so ModalNavigationDrawer's own DrawerState/
-    // AnchoredDraggableState gets created fresh exactly on that first
-    // composition, and its default initial anchor briefly resolved to an
-    // open-ish offset before the very first animation frame settled it
-    // back to Closed, reading as a flash. snapTo jumps the underlying
-    // anchor straight to Closed with no animation at all, so there's
-    // nothing to visibly settle on that first frame.
-    LaunchedEffect(Unit) {
-        drawerState.snapTo(DrawerValue.Closed)
-    }
+    // BUG FIX (drawer sheet + scrim briefly flashed fully visible right as
+    // the app launched, then disappeared): earlier attempts assumed this
+    // was an animation-timing issue and tried forcing drawerState closed
+    // via snapTo inside a LaunchedEffect — that didn't help because
+    // LaunchedEffect bodies run AFTER the first composition's frame is
+    // already drawn, so if ModalNavigationDrawer's very first frame
+    // renders its sheet/scrim before that effect has a chance to run,
+    // the flash already happened by the time snapTo executes. The actual
+    // fix is to not mount ModalNavigationDrawer's drawer+scrim visuals on
+    // that first frame at all: drawerReady starts false and flips true
+    // one frame later (also via LaunchedEffect, but here it's gating
+    // whether the drawer renders in the first place, not trying to
+    // correct a state after the fact). Scaffold's content itself doesn't
+    // depend on the drawer being mounted, so showing it without the
+    // drawer wrapper for that first frame is not visibly different to
+    // the user — there's simply nothing to flash.
+    var drawerReady by remember { mutableStateOf(false) }
+    LaunchedEffect(Unit) { drawerReady = true }
 
     ModalNavigationDrawer(
         drawerState = drawerState,
@@ -513,23 +518,29 @@ private fun SinKeyApp(prefs: PreferencesManager, initialTab: Tab = Tab.HOME) {
         // still blocking edge-swipe-to-OPEN while closed (this app's
         // horizontally-scrollable emoji/theme rows near the screen edge
         // could otherwise trigger it accidentally). The open-flash-on-
-        // launch problem is addressed separately below (see the
-        // LaunchedEffect right after this block) instead of by disabling
-        // gestures outright.
+        // launch problem itself is addressed by drawerReady above/below
+        // instead of by disabling gestures outright.
         gesturesEnabled = drawerState.isOpen,
         drawerContent = {
-            SinKeyDrawer(
-                userDisplayName = drawerDisplayName,
-                onDestinationClick = { destination ->
-                    when (destination) {
-                        DrawerDestination.PROFILE -> showProfile = true
-                        DrawerDestination.PERSONAL_DICTIONARY -> settingsSubScreen = SettingsSubScreen.PERSONAL_DICTIONARY
-                        DrawerDestination.QUICK_TEXT -> settingsSubScreen = SettingsSubScreen.QUICK_TEXT
-                        DrawerDestination.ABOUT -> settingsSubScreen = SettingsSubScreen.ABOUT_DEVELOPER
-                    }
-                },
-                onDismiss = { scope.launch { drawerState.close() } }
-            )
+            // Nothing to render (and nothing for the scrim to sit behind)
+            // until drawerReady flips true one frame after this composable
+            // first mounts — see drawerReady's own doc comment above for
+            // why this is the actual fix for the launch-time flash rather
+            // than trying to correct drawerState after the fact.
+            if (drawerReady) {
+                SinKeyDrawer(
+                    userDisplayName = drawerDisplayName,
+                    onDestinationClick = { destination ->
+                        when (destination) {
+                            DrawerDestination.PROFILE -> showProfile = true
+                            DrawerDestination.PERSONAL_DICTIONARY -> settingsSubScreen = SettingsSubScreen.PERSONAL_DICTIONARY
+                            DrawerDestination.QUICK_TEXT -> settingsSubScreen = SettingsSubScreen.QUICK_TEXT
+                            DrawerDestination.ABOUT -> settingsSubScreen = SettingsSubScreen.ABOUT_DEVELOPER
+                        }
+                    },
+                    onDismiss = { scope.launch { drawerState.close() } }
+                )
+            }
         }
     ) {
     Scaffold(
