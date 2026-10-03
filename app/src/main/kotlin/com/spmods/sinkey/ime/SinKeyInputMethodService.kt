@@ -1879,12 +1879,26 @@ class SinKeyInputMethodService : InputMethodService() {
             "SHIFT" -> {
                 // Single tap cycles: OFF → ONE_SHOT → OFF
                 // Double tap (handled via SHIFT_LOCK from KeyboardView) → LOCKED
-                shiftState.value = when (shiftState.value) {
-                    ShiftState.OFF      -> ShiftState.ONE_SHOT
-                    ShiftState.ONE_SHOT -> ShiftState.OFF
-                    ShiftState.LOCKED   -> ShiftState.OFF
+                //
+                // FIX (Sinhala/mix): at sentence/field start the shift key is
+                // already lit by AUTO-capitalize (ONE_SHOT, not explicit).
+                // Tapping SHIFT then used to switch it OFF, so t/d/n/l/s
+                // still came out as the plain letters (ට/ද/න/ල/ස) and the
+                // user needed a second tap to get ත/ඩ/ණ/ළ/ශ. In Sinhala
+                // typing a tap on an auto-lit shift now converts it into an
+                // EXPLICIT one-shot shift instead of cancelling it.
+                if (isSinhalaTyping() &&
+                    shiftState.value == ShiftState.ONE_SHOT && !wasExplicitShift
+                ) {
+                    wasExplicitShift = true
+                } else {
+                    shiftState.value = when (shiftState.value) {
+                        ShiftState.OFF      -> ShiftState.ONE_SHOT
+                        ShiftState.ONE_SHOT -> ShiftState.OFF
+                        ShiftState.LOCKED   -> ShiftState.OFF
+                    }
+                    wasExplicitShift = shiftState.value != ShiftState.OFF
                 }
-                wasExplicitShift = shiftState.value != ShiftState.OFF
             }
             "SHIFT_LOCK" -> {
                 shiftState.value = if (shiftState.value == ShiftState.LOCKED) ShiftState.OFF else ShiftState.LOCKED
@@ -2407,12 +2421,21 @@ class SinKeyInputMethodService : InputMethodService() {
                 if (handledAsAction) return
             }
             key == "SHIFT" || key == "SHIFT_LOCK" -> {
-                shiftState.value = when (shiftState.value) {
-                    ShiftState.OFF      -> ShiftState.ONE_SHOT
-                    ShiftState.ONE_SHOT -> if (key == "SHIFT_LOCK") ShiftState.LOCKED else ShiftState.OFF
-                    ShiftState.LOCKED   -> ShiftState.OFF
+                // Same Sinhala fix as handleKey's "SHIFT" branch: a tap on an
+                // auto-lit (non-explicit) one-shot shift makes it explicit
+                // rather than cancelling it.
+                if (key == "SHIFT" && isSinhalaTyping() &&
+                    shiftState.value == ShiftState.ONE_SHOT && !wasExplicitShift
+                ) {
+                    wasExplicitShift = true
+                } else {
+                    shiftState.value = when (shiftState.value) {
+                        ShiftState.OFF      -> ShiftState.ONE_SHOT
+                        ShiftState.ONE_SHOT -> if (key == "SHIFT_LOCK") ShiftState.LOCKED else ShiftState.OFF
+                        ShiftState.LOCKED   -> ShiftState.OFF
+                    }
+                    wasExplicitShift = shiftState.value != ShiftState.OFF
                 }
-                wasExplicitShift = shiftState.value != ShiftState.OFF
                 return // no buffer change — don't fall through to re-translate below
             }
             key == "LANG_TOGGLE" -> {
@@ -3399,6 +3422,9 @@ class SinKeyInputMethodService : InputMethodService() {
             // instead of over it. onScreenPreview is captured before this
             // clears anything, so it reflects exactly what's displayed.
             val onScreenPreview = renderStyledBuffer()
+            // What the user actually typed for this word — kept for the
+            // "remember which reading I picked" learning further down.
+            val rawTypedForLearning = wordBuffer.toString()
             ic.finishComposingText()
             if (onScreenPreview.isNotEmpty()) ic.deleteSurroundingText(onScreenPreview.length, 0)
             if (cachedHiddenMessageEnabled) {
@@ -3423,6 +3449,16 @@ class SinKeyInputMethodService : InputMethodService() {
             // that window and also invalidates the in-flight request id.
             clearSuggestions()
             learnWord(word, if (pickedEnglish) "en" else "si")
+            // Remember which reading was picked for this typing so it ranks
+            // first next time (see WordRepository.rankSinhalaVariants). Only
+            // explicit taps on Latin typing count: a "resumed" on-screen word
+            // has Sinhala text in the buffer, and next-word predictions have
+            // an empty one.
+            if (!pickedEnglish && !cachedIncognitoEnabled &&
+                rawTypedForLearning.isNotEmpty() && rawTypedForLearning.all { it.code < 128 }
+            ) {
+                serviceScope.launch { wordRepo.learnVariantChoice(rawTypedForLearning, word) }
+            }
         } else {
             // Delete the length of what's actually on screen (the styled/
             // fancy text as it was live-typed — NOT decoration, since
@@ -3966,7 +4002,13 @@ class SinKeyInputMethodService : InputMethodService() {
             // Merge in personal-dictionary words the user has typed before that
             // start with the same rendered prefix (e.g. previously typed
             // Sinhala words matching what's being composed right now).
-            fetchPersonalSuggestions(primary, "si", baseList = list, ambiguousAlt = ambiguousAlt)
+            fetchPersonalSuggestions(
+                primary, "si", baseList = list, ambiguousAlt = ambiguousAlt,
+                rawSnapshot = raw,
+                // 2+ typed letters: try every reading of the ambiguous letters
+                // against the dictionary (see WordRepository.rankSinhalaVariants).
+                variantRaw = if (raw.length >= 2) raw else null
+            )
 
             // Mix mode only: also surface the raw Latin buffer as a plain-English
             // suggestion (and its spell-checker completions) alongside the Sinhala
@@ -4092,11 +4134,24 @@ class SinKeyInputMethodService : InputMethodService() {
         }
     }
 
+    // Latest in-flight personal-dictionary lookup. A newer keystroke makes any
+    // older one pointless (its result would be dropped as stale anyway), and
+    // the variant ranking below is heavy enough that letting old ones keep
+    // running while the user types fast would only waste time.
+    private var personalSuggestionJob: kotlinx.coroutines.Job? = null
+
     private fun fetchPersonalSuggestions(
         prefix: String,
         language: String,
         baseList: List<String>,
-        ambiguousAlt: String? = null
+        ambiguousAlt: String? = null,
+        // The buffer text this lookup was started for. For English this is
+        // the same as [prefix]; for Sinhala [prefix] is the TRANSLITERATED
+        // text while the live buffers hold the raw Latin typing, so the
+        // stale-reply guards below must compare against this instead.
+        rawSnapshot: String = prefix,
+        // Raw Latin typing to rank all readings of (Sinhala only); null = skip.
+        variantRaw: String? = null
     ) {
         if (prefix.isEmpty()) return
         // BUG FIX: in mix mode, "si" personal-dictionary results used to be
@@ -4108,12 +4163,31 @@ class SinKeyInputMethodService : InputMethodService() {
         // higher up in updateSuggestions(), so this can only ever affect
         // the Sinhala half of the merged result.
         val isMixSinhala = language == "si" && currentLanguage.value == "mix"
-        serviceScope.launch {
+        // Sentence context for the variant ranker: only meaningful when the
+        // previous word was Sinhala too (same rule learnWord uses for bigrams).
+        val previousWord = if (lastCommittedLanguage == "si" && lastCommittedWord.isNotBlank()) lastCommittedWord else null
+        personalSuggestionJob?.cancel()
+        personalSuggestionJob = serviceScope.launch {
             val learned = if (language == "si") {
-                wordRepo.fuzzySuggestionsFor(prefix, language, limit = 5)
+                // A half-typed word renders with a trailing hal kirima (්),
+                // which would make the prefix search miss every longer word.
+                wordRepo.fuzzySuggestionsFor(
+                    com.spmods.sinkey.keyboard.SinhalaVariants.completionPrefix(prefix),
+                    language, limit = 5
+                )
             } else {
                 wordRepo.suggestionsFor(prefix, language, limit = 5)
             }
+            val ranked: List<String> = if (variantRaw != null && language == "si") {
+                try {
+                    wordRepo.rankSinhalaVariants(variantRaw, previousWord)
+                } catch (e: kotlinx.coroutines.CancellationException) {
+                    throw e
+                } catch (e: Exception) {
+                    android.util.Log.w("SinKey", "rankSinhalaVariants failed", e)
+                    emptyList()
+                }
+            } else emptyList()
             // Dictionary-based disambiguation for ambiguous consonants
             // (n/t/d/l — see SinhalaTransliterator's consonant table
             // comment on why bare lowercase "d" defaults to ද over ඩ).
@@ -4131,7 +4205,11 @@ class SinKeyInputMethodService : InputMethodService() {
             // won, discarding the disambiguation fix's correction. Doing
             // both checks in one coroutine with one final write removes
             // the race entirely.
-            val disambiguated: List<String> = if (ambiguousAlt != null) {
+            val disambiguated: List<String> = if (ranked.isNotEmpty()) {
+                // Best dictionary-backed readings first, but always keep the
+                // plain transliteration of what was typed within reach.
+                ranked.take(3) + prefix
+            } else if (ambiguousAlt != null) {
                 val primaryIsKnown = wordRepo.isKnownWord(prefix, "si")
                 val altIsKnown = wordRepo.isKnownWord(ambiguousAlt, "si")
                 when {
@@ -4157,7 +4235,7 @@ class SinKeyInputMethodService : InputMethodService() {
             if (isMixSinhala) {
                 // Stale-reply guard: only apply if mix mode's Sinhala buffer
                 // still holds the word this lookup was for.
-                if (currentLanguage.value != "mix" || wordBuffer.toString() != prefix) return@launch
+                if (currentLanguage.value != "mix" || wordBuffer.toString() != rawSnapshot) return@launch
                 val current = mixSinhalaSuggestions.ifEmpty { baseList }
                 mixSinhalaSuggestions = (disambiguated + learned + current).distinct().take(5)
                 recomputeMixSuggestions()
@@ -4175,7 +4253,7 @@ class SinKeyInputMethodService : InputMethodService() {
                 // only apply if the live buffer still holds exactly the
                 // word this lookup was for.
                 val liveBuffer = if (language == "si") wordBuffer else englishBuffer
-                if (liveBuffer.toString() != prefix) return@launch
+                if (liveBuffer.toString() != rawSnapshot) return@launch
                 val current = suggestions.value.ifEmpty { baseList }
                 val merged = (disambiguated + learned + current).distinct().take(5)
                 suggestions.value = merged
