@@ -271,7 +271,7 @@ object SinhalaTransliterator {
     // ---- Consonant bases, longest key first so digraphs win over single letters ----
     private val consonants = listOf(
         "chh" to "ඡ",
-        "thh" to "ථ", "ddh" to "ධ",
+        "thh" to "ථ", "ddh" to "ධ", "dh" to "ධ",
         "kh" to "ඛ", "gh" to "ඝ", "ng" to "ඞ",
         "ch" to "ච", "jh" to "ඣ", "ny" to "ඤ", "gn" to "ඥ",
         "th" to "ත", "sh" to "ශ",
@@ -305,7 +305,10 @@ object SinhalaTransliterator {
         "t" to "ට", "d" to "ද", "n" to "න",
         "p" to "ප", "b" to "බ", "m" to "ම",
         "y" to "ය", "r" to "ර", "l" to "ල", "v" to "ව", "w" to "ව",
-        "s" to "ස", "h" to "හ", "f" to "ෆ", "q" to "ද"
+        "s" to "ස", "h" to "හ", "f" to "ෆ", "q" to "ද",
+        // "z" key is labelled ෂ on the keyboard (sinhalaKeyHints) — it used
+        // to be missing here, so it fell through and typed a Latin "z".
+        "z" to "ෂ"
     )
 
     // Prenasalized letters — tried before the plain consonant list
@@ -368,6 +371,9 @@ object SinhalaTransliterator {
         }
         return out.toString()
     }
+
+    /** Public wrapper — keeps meaningful case (N/T/D/L, Sh/TH/DH), lowercases the rest. */
+    fun normalizeCase(rawInput: String): String = normalizeCaseForTransliteration(rawInput)
 
     fun transliterate(rawInput: String): String {
 
@@ -434,6 +440,7 @@ object SinhalaTransliterator {
                     if (next < input.length &&
                         input[next].isLetter() &&
                         input[next] !in "aeiouAEIOU" &&
+                        input[next] != 'x' &&
                         input[next] != c
                     ) {
                         out.append(ANUSVARA); i = next; continue
@@ -578,6 +585,11 @@ object SinhalaTransliterator {
                 out.append(vowel.second); i += vowel.first.length; continue
             }
 
+            // ---- Standalone "x" -> anusvara ං (matches the key's ං label).
+            // After a consonant, "x" is consumed earlier as the explicit
+            // virama / conjunct joiner, so only a free-standing x lands here.
+            if (c == 'x') { out.append(ANUSVARA); i++; continue }
+
             // ---- Fallback: unknown input, preserve original character ----
             out.append(c)
             i++
@@ -654,7 +666,7 @@ object SinhalaCandidateMap {
         "c|i" to listOf("චි", "චී"),
         "c|o" to listOf("චො", "චෝ", "චූ", "කො"),
         "c|u" to listOf("චු", "චූ"),
-        "d" to listOf("ඩ", "ද", "ද්", "ඩ්", "ඩැ", "දෑ", "ද්‍", "ඩෙ", "ඩේ", "ධ", "ඩ්‍", "දැ", "දේ", "ඩු", "ඩි", "ඩො", "දු", "ඩී", "දෙ", "ඩෝ"),
+        "d" to listOf("ද", "ඩ", "ද්", "ඩ්", "ඩැ", "දෑ", "ද්‍", "ඩෙ", "ඩේ", "ධ", "ඩ්‍", "දැ", "දේ", "ඩු", "ඩි", "ඩො", "දු", "ඩී", "දෙ", "ඩෝ"),
         "d|a" to listOf("ඩැ", "ඩා", "දා", "ඩෑ"),
         "d|e" to listOf("ඩෙ", "ඩේ", "දේ", "ඩී", "දෙ", "දී"),
         "d|h" to listOf("ධ", "ධා", "ධි", "ධී", "ධු", "ධෝ", "ධේ", "ධූ", "ඪ", "ධෙ"),
@@ -766,18 +778,19 @@ object SinhalaCandidateMap {
         "w|i" to listOf("වි", "වී"),
         "w|o" to listOf("වො", "වෝ", "ඌ"),
         "w|u" to listOf("වු", "වූ"),
-        "x" to listOf("ෂ්", "ෂා", "ෂ"),
-        "x|e" to listOf("ෂෙ"),
-        "x|i" to listOf("ෂි"),
-        "x|u" to listOf("ෂු"),
+        "x" to listOf("ං"),
         "y" to listOf("ය", "ය්", "යි", "යෑ", "යී", "යේ", "යෙ", "යු", "යො", "ර"),
         "y|a" to listOf("යා", "යැ"),
         "y|e" to listOf("යේ", "යෙ"),
         "y|i" to listOf("යි", "යී"),
         "y|o" to listOf("යෝ", "යො", "යූ"),
         "y|u" to listOf("යු", "යූ"),
-        "z" to listOf("ළ්", "ළ"),
-        "z|o" to listOf("ළූ", "ඌ"),
+        "z" to listOf("ෂ", "ෂ්", "ෂා", "ෂි", "ෂු"),
+        "z|a" to listOf("ෂා", "ෂැ"),
+        "z|e" to listOf("ෂෙ", "ෂේ", "ෂී"),
+        "z|i" to listOf("ෂි", "ෂී"),
+        "z|o" to listOf("ෂො", "ෂෝ", "ෂූ"),
+        "z|u" to listOf("ෂු", "ෂූ"),
     )
 
     /**
