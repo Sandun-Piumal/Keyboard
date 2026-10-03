@@ -1,5 +1,6 @@
 package com.spmods.sinkey.data.dictionary
 
+import androidx.room.ColumnInfo
 import androidx.room.Entity
 import androidx.room.Index
 import androidx.room.PrimaryKey
@@ -39,5 +40,15 @@ data class WordEntity(
     val word: String,
     val language: String,
     val frequency: Int = 1,
-    val lastUsed: Long = System.currentTimeMillis()
+    val lastUsed: Long = System.currentTimeMillis(),
+    /**
+     * Position of this word in the bundled Sinhala frequency corpus
+     * (wordlist_si.txt is ordered most-common-first): 1 = most common.
+     * 0 = not in the corpus (e.g. a word only the user has typed, or any
+     * English word). Lets the variant ranker prefer the more common of two
+     * dictionary words — every seeded word otherwise shares the same
+     * frequency value, so that ordering information would be lost.
+     */
+    @ColumnInfo(defaultValue = "0")
+    val corpusRank: Int = 0
 )
