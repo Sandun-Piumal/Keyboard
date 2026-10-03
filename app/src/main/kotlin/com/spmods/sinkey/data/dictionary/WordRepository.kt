@@ -1,6 +1,11 @@
 package com.spmods.sinkey.data.dictionary
 
 import android.content.Context
+import com.spmods.sinkey.keyboard.SinhalaTransliterator
+import com.spmods.sinkey.keyboard.SinhalaVariants
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
+import kotlin.math.ln
 
 /**
  * User's personal, growing word dictionary — every word committed while
@@ -11,6 +16,7 @@ class WordRepository(context: Context) {
     private val appContext = context.applicationContext
     private val dao = WordDatabase.getInstance(context).wordDao()
     private val bigramDao = WordDatabase.getInstance(context).bigramDao()
+    private val variantChoiceDao = WordDatabase.getInstance(context).variantChoiceDao()
 
     /**
      * Total distinct words known (bundled dictionary + user-learned,
@@ -137,6 +143,144 @@ class WordRepository(context: Context) {
         return (prefixHits + scored).distinct().take(limit)
     }
 
+    // ------------------------------------------------------------------
+    // Sinhala variant ranking
+    // ------------------------------------------------------------------
+
+    /**
+     * Remembers that, for the typed buffer [rawBuffer], the user tapped
+     * [chosen] in the suggestion strip. Next time the same typing comes up,
+     * [rankSinhalaVariants] puts [chosen] first. Call only for explicit taps.
+     */
+    suspend fun learnVariantChoice(rawBuffer: String, chosen: String) {
+        val key = SinhalaTransliterator.normalizeCase(rawBuffer).trim()
+        val word = chosen.trim()
+        if (key.isEmpty() || word.isEmpty() || key.length > 40 || word.length > 40) return
+        variantChoiceDao.learn(key, word)
+    }
+
+    /**
+     * Ranks Sinhala readings of the typed Singlish buffer [rawBuffer].
+     *
+     * Every combination of the ambiguous letters (see [SinhalaVariants]) is
+     * checked against the dictionary — as a finished word and as the start of
+     * longer words — and scored from:
+     *   - how common the word is (bundled corpus position + the user's own use),
+     *   - a small penalty per letter changed from the default reading,
+     *   - what the user picked before for this same typing,
+     *   - how often the word followed [previousWord] before (bigram context).
+     *
+     * Returns up to [limit] words, best first. Only dictionary-backed or
+     * previously chosen words are returned — the plain default transliteration
+     * is not included unless it is itself a known word, so callers should add
+     * it separately.
+     */
+    suspend fun rankSinhalaVariants(
+        rawBuffer: String,
+        previousWord: String?,
+        limit: Int = 5
+    ): List<String> {
+        val key = SinhalaTransliterator.normalizeCase(rawBuffer).trim()
+        if (key.length < 2) return emptyList()
+
+        val variants = withContext(Dispatchers.Default) { SinhalaVariants.generate(key) }
+        if (variants.isEmpty()) return emptyList()
+
+        val scores = HashMap<String, Double>()
+        fun offer(word: String, score: Double) {
+            val old = scores[word]
+            if (old == null || score > old) scores[word] = score
+        }
+
+        // Every form worth an exact lookup: the reading itself, and (when it
+        // ends in hal kirima because the word isn't finished) the reading
+        // without it — "kad" may well be heading for කද.
+        val exactSet = HashSet<String>()
+        val devOf = HashMap<String, Int>()
+        for (v in variants) {
+            exactSet.add(v.sinhala)
+            devOf[v.sinhala] = v.deviations
+            val p = SinhalaVariants.completionPrefix(v.sinhala)
+            if (p.isNotEmpty() && p != v.sinhala && !devOf.containsKey(p)) devOf[p] = v.deviations
+        }
+
+        // 1) Known words among all readings.
+        for (chunk in devOf.keys.toList().chunked(VARIANT_LOOKUP_CHUNK)) {
+            for (e in dao.findExactMany(chunk, "si")) {
+                val dev = devOf[e.word] ?: 0
+                val bonus = if (e.word in exactSet) EXACT_BONUS else EXACT_PREFIXFORM_BONUS
+                offer(e.word, bonus + wordScore(e) - DEVIATION_PENALTY * dev)
+            }
+        }
+
+        // 2) Longer dictionary words each reading could be the start of.
+        //    Only the first few readings (fewest changes) are searched.
+        val completionSources = variants
+            .map { it to SinhalaVariants.completionPrefix(it.sinhala) }
+            .filter { it.second.length >= 2 }
+            .take(MAX_COMPLETION_VARIANTS)
+        for ((v, prefix) in completionSources) {
+            val rows = dao.findByRange(prefix, prefix + "\uFFFF", "si", COMPLETIONS_PER_VARIANT)
+            for (e in rows) {
+                val extra = (e.word.length - prefix.length).coerceAtLeast(0)
+                offer(
+                    e.word,
+                    COMPLETION_WEIGHT * wordScore(e) - COMPLETION_LENGTH_PENALTY * extra -
+                        DEVIATION_PENALTY * v.deviations
+                )
+            }
+        }
+
+        // 3) What the user picked for this exact typing before (strong), and
+        //    for longer typings that start with it (weaker).
+        for (c in variantChoiceDao.findByRaw(key, 5)) {
+            offer(c.chosen, CHOICE_EXACT_BASE + CHOICE_EXACT_SCALE * ln(1.0 + c.uses))
+        }
+        for (c in variantChoiceDao.findByRawRange(key, key + "\uFFFF", 5)) {
+            if (c.rawKey == key) continue
+            offer(c.chosen, CHOICE_PREFIX_BASE + CHOICE_PREFIX_SCALE * ln(1.0 + c.uses))
+        }
+
+        // 4) Sentence context: words that followed the previous word before.
+        val prev = previousWord?.trim().orEmpty()
+        if (prev.isNotEmpty() && scores.isNotEmpty()) {
+            val followers = bigramDao.findFollowers(
+                prev, "si", scores.keys.toList().take(VARIANT_LOOKUP_CHUNK)
+            )
+            for (b in followers) {
+                val old = scores[b.nextWord] ?: continue
+                scores[b.nextWord] = old + bigramBonus(b.frequency)
+            }
+            // Followers the steps above never surfaced, but which extend one
+            // of the readings, are exactly what context is for.
+            val prefixes = variants.map { SinhalaVariants.completionPrefix(it.sinhala) }
+                .filter { it.isNotEmpty() }
+            for (b in bigramDao.findByPreviousWord(prev, "si", BIGRAM_SCAN_LIMIT)) {
+                if (scores.containsKey(b.nextWord)) continue
+                if (prefixes.any { b.nextWord.startsWith(it) }) {
+                    offer(b.nextWord, BIGRAM_ONLY_BASE + bigramBonus(b.frequency))
+                }
+            }
+        }
+
+        return scores.entries
+            .sortedByDescending { it.value }
+            .map { it.key }
+            .take(limit)
+    }
+
+    /** How "good" a dictionary word is on its own: corpus commonness + the user's own use. */
+    private fun wordScore(e: WordEntity): Double {
+        val inCorpus = e.corpusRank > 0
+        // A seeded word starts at SEED_FREQUENCY; only uses above that are the user's own.
+        val uses = if (inCorpus) (e.frequency - DictionarySeeder.SEED_FREQUENCY).coerceAtLeast(0) else e.frequency
+        val user = USER_USE_WEIGHT * ln(1.0 + uses)
+        val corpus = if (inCorpus) (CORPUS_MAX - CORPUS_SLOPE * ln(e.corpusRank.toDouble())).coerceAtLeast(0.0) else UNRANKED_BASE
+        return user + corpus
+    }
+
+    private fun bigramBonus(frequency: Int): Double = BIGRAM_BASE + BIGRAM_SCALE * ln(1.0 + frequency)
+
     /** Classic Levenshtein edit distance between [a] and [b]. */
     private fun levenshtein(a: String, b: String): Int {
         if (a == b) return 0
@@ -210,6 +354,9 @@ class WordRepository(context: Context) {
      */
     suspend fun delete(word: String, language: String) {
         dao.delete(word.trim(), language)
+        // A remembered "typed X -> picked this word" choice would otherwise
+        // keep resurrecting a word the user just removed.
+        if (language == "si") variantChoiceDao.deleteByChosen(word.trim())
     }
 
     /**
@@ -252,11 +399,33 @@ class WordRepository(context: Context) {
      * short-circuits instantly if so, and seedWord()'s OR IGNORE means
      * even a redundant call can't re-bump frequencies or duplicate rows.
      */
-    suspend fun seedBaseDictionaryIfNeeded() {
+    suspend fun seedBaseDictionaryIfNeeded() = withContext(Dispatchers.IO) {
         DictionarySeeder.seedIfNeeded(appContext, dao)
     }
 
     companion object {
+        // ---- Variant ranking weights (see rankSinhalaVariants) ----
+        private const val VARIANT_LOOKUP_CHUNK = 400      // stays under SQLite's 999 bound variables
+        private const val MAX_COMPLETION_VARIANTS = 12    // readings searched for longer words
+        private const val COMPLETIONS_PER_VARIANT = 5
+        private const val EXACT_BONUS = 12.0              // reading is itself a known word
+        private const val EXACT_PREFIXFORM_BONUS = 6.0    // reading minus trailing hal is a known word
+        private const val COMPLETION_WEIGHT = 0.6
+        private const val COMPLETION_LENGTH_PENALTY = 0.8 // per extra character still to be typed
+        private const val DEVIATION_PENALTY = 2.0         // per letter changed from the default reading
+        private const val USER_USE_WEIGHT = 6.0
+        private const val CORPUS_MAX = 14.0               // corpus rank 1
+        private const val CORPUS_SLOPE = 1.1              // falls with ln(rank)
+        private const val UNRANKED_BASE = 3.0             // known word outside the corpus
+        private const val CHOICE_EXACT_BASE = 40.0
+        private const val CHOICE_EXACT_SCALE = 6.0
+        private const val CHOICE_PREFIX_BASE = 12.0
+        private const val CHOICE_PREFIX_SCALE = 3.0
+        private const val BIGRAM_BASE = 10.0
+        private const val BIGRAM_SCALE = 5.0
+        private const val BIGRAM_ONLY_BASE = 3.0
+        private const val BIGRAM_SCAN_LIMIT = 40
+
         /**
          * How many extra learnWord() bumps a manually added word gets
          * beyond its first insert, so it starts at a frequency comparable
