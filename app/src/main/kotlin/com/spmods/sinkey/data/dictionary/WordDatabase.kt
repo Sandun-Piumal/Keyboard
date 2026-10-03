@@ -6,10 +6,15 @@ import androidx.room.Room
 import androidx.room.RoomDatabase
 import androidx.sqlite.db.SupportSQLiteDatabase
 
-@Database(entities = [WordEntity::class, BigramEntity::class], version = 3, exportSchema = false)
+@Database(
+    entities = [WordEntity::class, BigramEntity::class, VariantChoiceEntity::class],
+    version = 4,
+    exportSchema = false
+)
 abstract class WordDatabase : RoomDatabase() {
     abstract fun wordDao(): WordDao
     abstract fun bigramDao(): BigramDao
+    abstract fun variantChoiceDao(): VariantChoiceDao
 
     companion object {
         @Volatile private var instance: WordDatabase? = null
@@ -56,6 +61,32 @@ abstract class WordDatabase : RoomDatabase() {
             }
         }
 
+        /**
+         * v3 -> v4: adds words.corpusRank (position in the bundled Sinhala
+         * frequency corpus, 0 = unknown — filled in by DictionarySeeder) and
+         * the variant_choices table (which reading the user picked for a
+         * typed buffer). Existing words/bigrams are untouched.
+         */
+        private val MIGRATION_3_4 = object : androidx.room.migration.Migration(3, 4) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE words ADD COLUMN corpusRank INTEGER NOT NULL DEFAULT 0")
+                db.execSQL(
+                    """
+                    CREATE TABLE IF NOT EXISTS variant_choices (
+                        rawKey TEXT NOT NULL,
+                        chosen TEXT NOT NULL,
+                        uses INTEGER NOT NULL,
+                        lastUsed INTEGER NOT NULL,
+                        PRIMARY KEY(rawKey, chosen)
+                    )
+                    """.trimIndent()
+                )
+                db.execSQL(
+                    "CREATE INDEX IF NOT EXISTS idx_variant_choices_raw ON variant_choices(rawKey)"
+                )
+            }
+        }
+
         fun getInstance(context: Context): WordDatabase =
             instance ?: synchronized(this) {
                 instance ?: Room.databaseBuilder(
@@ -63,7 +94,7 @@ abstract class WordDatabase : RoomDatabase() {
                     WordDatabase::class.java,
                     "sinkey_words.db"
                 )
-                    .addMigrations(MIGRATION_1_2, MIGRATION_2_3)
+                    .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4)
                     .build().also { instance = it }
             }
     }
