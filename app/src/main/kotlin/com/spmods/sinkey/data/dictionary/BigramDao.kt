@@ -61,4 +61,17 @@ interface BigramDao {
         language: String,
         limit: Int = 3
     ): List<BigramEntity>
+
+    /**
+     * How often each of [candidates] has followed [previousWord] — lets the
+     * variant ranker boost the reading that fits the sentence so far.
+     * Keep [candidates] under SQLite's bound-variable limit (<= 400).
+     */
+    @Query(
+        """
+        SELECT * FROM bigrams
+        WHERE previousWord = :previousWord AND language = :language AND nextWord IN (:candidates)
+        """
+    )
+    suspend fun findFollowers(previousWord: String, language: String, candidates: List<String>): List<BigramEntity>
 }
