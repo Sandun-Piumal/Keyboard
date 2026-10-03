@@ -1,6 +1,7 @@
 package com.spmods.sinkey.data.dictionary
 
 import android.content.Context
+import androidx.room.withTransaction
 import com.spmods.sinkey.data.PreferencesManager
 import kotlinx.coroutines.flow.first
 import java.io.BufferedReader
@@ -67,8 +68,14 @@ object DictionarySeeder {
     // words already learned from real typing are left untouched; this
     // version bump only adds the ~198K new words devices on v1/v2 don't
     // have yet.
-    private const val SEED_VERSION = 3
-    private const val SEED_FREQUENCY = 3
+    //
+    // v3 → v4: records each Sinhala word's position in the (most-common-first)
+    // corpus in the new words.corpusRank column. Every seeded word shares
+    // SEED_FREQUENCY, so without this the variant ranker couldn't tell a
+    // very common word from a rare one. Devices already on v3 get the ranks
+    // filled in once by the pass below; no learned frequency is touched.
+    private const val SEED_VERSION = 4
+    internal const val SEED_FREQUENCY = 3
 
     // The exact frequency/lastUsed v1 shipped with — needed to safely
     // identify "this row is still at its original v1 seed value and hasn't
@@ -120,11 +127,33 @@ object DictionarySeeder {
             // per-statement limit while still committing in large groups
             // rather than one row at a time.
             val words = loadAssetWords(context, assetName)
-            words.chunked(SEED_BATCH_SIZE).forEach { chunk ->
-                val entities = chunk.map { word ->
-                    WordEntity(word = word, language = language, frequency = SEED_FREQUENCY, lastUsed = seedTime)
+            // Only the Sinhala corpus is frequency-ordered and used for
+            // variant ranking; English words keep corpusRank = 0.
+            val ranked = language == "si"
+            words.withIndex().chunked(SEED_BATCH_SIZE).forEach { chunk ->
+                val entities = chunk.map { (index, word) ->
+                    WordEntity(
+                        word = word,
+                        language = language,
+                        frequency = SEED_FREQUENCY,
+                        lastUsed = seedTime,
+                        corpusRank = if (ranked) index + 1 else 0
+                    )
                 }
                 dao.seedWords(entities)
+            }
+            // Devices that seeded before v4 already have these rows (the
+            // inserts above were ignored), so give them their corpus ranks
+            // now. One transaction for the whole list — 200K single-row
+            // updates in separate transactions would take minutes.
+            // "first occurrence wins" is enforced by the query itself
+            // (it only fills rows whose rank is still 0).
+            if (ranked && currentVersion in 1 until 4) {
+                WordDatabase.getInstance(context).withTransaction {
+                    words.forEachIndexed { index, word ->
+                        dao.setCorpusRankIfUnset(word, language, index + 1)
+                    }
+                }
             }
             // Devices that already ran v1 seeding have these words present
             // at frequency=1/lastUsed=0 already, so the seedWord() call
@@ -132,7 +161,10 @@ object DictionarySeeder {
             // still sitting at exactly the old v1 baseline up to the
             // current one — scoped by frequency so a word the user has
             // since typed (frequency > 1) is never touched.
-            if (currentVersion in 1 until SEED_VERSION) {
+            // Restricted to genuine v1 installs: this used to run for every
+            // older version, so each version bump re-raised any word the user
+            // had typed exactly once (frequency 1) up to the seed baseline.
+            if (currentVersion == 1) {
                 dao.upgradeStaleSeedFrequency(
                     language = language,
                     oldFrequency = V1_SEED_FREQUENCY,
