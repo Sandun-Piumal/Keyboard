@@ -49,6 +49,36 @@ interface WordDao {
     suspend fun findExact(word: String, language: String): WordEntity?
 
     /**
+     * Batch exact lookup — which of [words] exist for [language]. Callers
+     * must keep [words] under SQLite's bound-variable limit (chunk to <= 400).
+     * Used by the Sinhala variant ranker to check every reading of a typed
+     * word in a handful of queries instead of one query per reading.
+     */
+    @Query("SELECT * FROM words WHERE language = :language AND word IN (:words)")
+    suspend fun findExactMany(words: List<String>, language: String): List<WordEntity>
+
+    /**
+     * Words in [lo, hi) — a binary range, i.e. "starts with lo" when
+     * hi = lo + U+FFFF. Unlike findByPrefix's LIKE this can walk
+     * idx_words_language_word directly. Most-used first; ties (all the
+     * bundled words share one frequency) fall back to corpus order.
+     */
+    @Query(
+        """
+        SELECT * FROM words
+        WHERE language = :language AND word >= :lo AND word < :hi
+        ORDER BY frequency DESC,
+                 CASE WHEN corpusRank = 0 THEN 2147483647 ELSE corpusRank END ASC
+        LIMIT :limit
+        """
+    )
+    suspend fun findByRange(lo: String, hi: String, language: String, limit: Int): List<WordEntity>
+
+    /** Sets the corpus position of a seeded word that doesn't have one yet (first occurrence wins). */
+    @Query("UPDATE words SET corpusRank = :rank WHERE word = :word AND language = :language AND corpusRank = 0")
+    suspend fun setCorpusRankIfUnset(word: String, language: String, rank: Int)
+
+    /**
      * Every word known for [language] (bundled base dictionary + anything
      * the user has typed/learned), ordered by frequency. Used only by
      * gesture typing's word matcher (GestureWordMatcher) — swipe input
