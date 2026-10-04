@@ -287,11 +287,11 @@ private fun SinKeyApp(prefs: PreferencesManager, initialTab: Tab = Tab.HOME) {
 
     // ── Home header badge medal tier ────────────────────────────────────────
     // Same points source/thresholds as ProfileScreen's Medals card (1 point
-    // per character typed; 500/1500/2500 = Bronze/Silver/Gold) so the header
-    // badge always matches whatever tier is shown there.
+    // per 1000 characters typed; 500/1500/2500 points = Bronze/Silver/Gold)
+    // so the header badge always matches whatever tier is shown there.
     val statsRepo = remember(context) { TypingStatsRepository(context) }
     val totalCharactersForMedal by statsRepo.totalCharacters.collectAsState(initial = 0L)
-    val headerMedalTier = medalTierForPoints(totalCharactersForMedal)
+    val headerMedalTier = medalTierForPoints(totalCharactersForMedal / 1000L)
 
     // ── Quick text shortcuts (Settings > Quick text) ───────────────────────
     // ── First-launch onboarding tutorial (see OnboardingScreen.kt) ─────────
