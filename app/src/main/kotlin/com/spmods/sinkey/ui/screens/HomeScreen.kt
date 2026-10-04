@@ -85,7 +85,8 @@ enum class HeaderMenuMode { PREMIUM, THEME_RESET, SETTINGS_RESET }
 
 /**
  * Matches ProfileScreen's medal thresholds (500/1500/2500 total points,
- * 1 point per character typed) so the Home header badge always reflects
+ * 1 point per 1000 characters typed — callers pass points, not raw
+ * character counts) so the Home header badge always reflects
  * the same tier shown on the Medals card in Profile — NONE falls back to
  * the header's original plain indigo look.
  */
