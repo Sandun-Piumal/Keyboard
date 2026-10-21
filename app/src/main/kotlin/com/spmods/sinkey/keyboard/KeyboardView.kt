@@ -3097,67 +3097,47 @@ private class KeyPreviewPositionProvider(
         val cx = if (keyCenterX.isNaN()) anchorBounds.center.x.toFloat() else keyCenterX
         val maxX = (screenWidthPx - popupContentSize.width).coerceAtLeast(0f)
         val x = (cx - popupContentSize.width / 2f).coerceIn(0f, maxX)
-        val y = anchorBounds.bottom - popupContentSize.height + bottomOverhangPx
+        val y = anchorBounds.top - popupContentSize.height + bottomOverhangPx
         return IntOffset(x.toInt(), y)
     }
 }
 
 /**
- * Builds the Gboard-style preview outline in one closed path: a wide,
- * rounded bubble on top, an S-curved "neck" that narrows down to the
- * key's own width, and a rounded key-shaped base that sits exactly over
- * the pressed key — so the key and the bubble read as one raised piece.
- *
- * [ox]/[oy] shift the whole shape (used to leave room for the soft shadow).
- * [keyCenterX] is the key's centre measured from the shape's left edge.
+ * Outline of the preview: a rounded bubble with a small pointer under it
+ * that points at the pressed key. The key itself stays visible.
  */
 private fun buildKeyPreviewPath(
     ox: Float, oy: Float,
     bubbleW: Float, bubbleH: Float,
-    keyW: Float, keyCenterX: Float,
-    totalH: Float, neckEndY: Float,
-    bubbleR: Float, keyR: Float
+    caretCenterX: Float, caretW: Float, caretH: Float,
+    radius: Float
 ): Path {
-    val kl = (keyCenterX - keyW / 2f).coerceIn(0f, (bubbleW - keyW).coerceAtLeast(0f))
-    val kr = kl + keyW
-    val y0 = bubbleH - bubbleR            // where the bubble's straight side ends
-    val y1 = neckEndY                     // where the neck meets the key's sides
-    val dy = (y1 - y0) * 0.55f            // control-point reach → vertical tangents at both ends
-    fun r(l: Float, t: Float, rr: Float, b: Float) =
+    val r = radius
+    fun rc(l: Float, t: Float, rr: Float, b: Float) =
         androidx.compose.ui.geometry.Rect(ox + l, oy + t, ox + rr, oy + b)
     return Path().apply {
-        moveTo(ox + bubbleR, oy)
-        lineTo(ox + bubbleW - bubbleR, oy)
-        arcTo(r(bubbleW - 2 * bubbleR, 0f, bubbleW, 2 * bubbleR), -90f, 90f, false)
-        lineTo(ox + bubbleW, oy + y0)
-        cubicTo(ox + bubbleW, oy + y0 + dy, ox + kr, oy + y1 - dy, ox + kr, oy + y1)
-        lineTo(ox + kr, oy + totalH - keyR)
-        arcTo(r(kr - 2 * keyR, totalH - 2 * keyR, kr, totalH), 0f, 90f, false)
-        lineTo(ox + kl + keyR, oy + totalH)
-        arcTo(r(kl, totalH - 2 * keyR, kl + 2 * keyR, totalH), 90f, 90f, false)
-        lineTo(ox + kl, oy + y1)
-        cubicTo(ox + kl, oy + y1 - dy, ox, oy + y0 + dy, ox, oy + y0)
-        lineTo(ox, oy + bubbleR)
-        arcTo(r(0f, 0f, 2 * bubbleR, 2 * bubbleR), 180f, 90f, false)
+        moveTo(ox + r, oy)
+        lineTo(ox + bubbleW - r, oy)
+        arcTo(rc(bubbleW - 2 * r, 0f, bubbleW, 2 * r), -90f, 90f, false)
+        lineTo(ox + bubbleW, oy + bubbleH - r)
+        arcTo(rc(bubbleW - 2 * r, bubbleH - 2 * r, bubbleW, bubbleH), 0f, 90f, false)
+        lineTo(ox + caretCenterX + caretW / 2f, oy + bubbleH)
+        lineTo(ox + caretCenterX, oy + bubbleH + caretH)
+        lineTo(ox + caretCenterX - caretW / 2f, oy + bubbleH)
+        lineTo(ox + r, oy + bubbleH)
+        arcTo(rc(0f, bubbleH - 2 * r, 2 * r, bubbleH), 90f, 90f, false)
+        lineTo(ox, oy + r)
+        arcTo(rc(0f, 0f, 2 * r, 2 * r), 180f, 90f, false)
         close()
     }
 }
 
 /**
- * Gboard-style key preview, shown the instant a key is pressed.
- *
- * Previously this was a small flat square (0.85x key height) floating
- * just above the key — it didn't look like a real keyboard's preview at
- * all. Now it is the same shape Gboard draws: a large rounded bubble
- * wider than the key, holding a big version of the character, which
- * flows down through a smooth neck into a key-shaped base that covers the
- * pressed key. It has a soft shadow, a light surface in light themes and
- * a raised grey surface in dark themes, and pops in with a very quick
- * scale-up from the key.
- *
- * The popup window is made non-touchable (see the SideEffect below) so
- * that the large bubble, which overlaps the row above, can never swallow
- * the next tap while it is still fading out during fast typing.
+ * Key preview shown the instant a key is pressed: a rounded bubble in the
+ * theme's accent colour (soft top-to-bottom gradient, white letter, drop
+ * shadow) floating just above the key with a small pointer toward it.
+ * Pops in with a quick scale-up. The popup window is non-touchable so the
+ * bubble never swallows the next tap during fast typing.
  */
 @Composable
 private fun KeyPreviewPopup(
@@ -3173,36 +3153,30 @@ private fun KeyPreviewPopup(
 
     val keyH = with(density) { keyHeight.toPx() }
     val keyW = if (keyWidthPx > 0) keyWidthPx.toFloat() else keyH * 0.8f
-    val overhang = with(density) { 8.dp.toPx() }      // bubble is wider than the key by this much per side
-    val pad = with(density) { 6.dp.toPx() }           // room around the shape for the shadow halo
-    val bubbleW = keyW + overhang * 2f
-    val bubbleH = keyH * 1.35f
-    val totalH = bubbleH + keyH                       // bubble + the key-sized base that covers the key
-    val neckEndY = bubbleH + keyH * 0.20f
+    val pad = with(density) { 8.dp.toPx() }
+    val gap = with(density) { 4.dp.toPx() }
+    val caretW = with(density) { 16.dp.toPx() }
+    val caretH = with(density) { 8.dp.toPx() }
+    val bubbleW = maxOf(keyW * 1.35f, keyH * 1.05f)
+    val bubbleH = keyH * 1.25f
+    val radius = (bubbleH * 0.30f).coerceAtMost(bubbleW / 2f)
     val contentW = bubbleW + pad * 2f
-    val contentH = totalH + pad * 2f
+    val contentH = bubbleH + caretH + pad * 2f
 
-    val keyR = keyShape.topStart
-        .toPx(androidx.compose.ui.geometry.Size(keyW, keyH), density)
-        .coerceAtMost(minOf(keyW, keyH) / 2f)
-    val bubbleR = maxOf(keyR * 1.6f, with(density) { 10.dp.toPx() })
-        .coerceAtMost(bubbleW / 2f)
-
-    // Same clamp the position provider applies, so the neck is drawn exactly over the key
     val cx = if (anchor.centerX.isNaN()) contentW / 2f else anchor.centerX
     val popupLeft = (cx - contentW / 2f).coerceIn(0f, (screenWidthPx - contentW).coerceAtLeast(0f))
-    val keyCenterInShape = (cx - popupLeft - pad).coerceIn(keyW / 2f, (bubbleW - keyW / 2f).coerceAtLeast(keyW / 2f))
+    val minC = radius + caretW / 2f
+    val caretX = (cx - popupLeft - pad).coerceIn(minC, (bubbleW - minC).coerceAtLeast(minC))
 
-    val isDarkTheme = colors.keyBg.luminance() < 0.5f
-    val fill = if (isDarkTheme) Color(0xFF5F6368) else Color.White
+    val accent = colors.accent
+    val top = androidx.compose.ui.graphics.lerp(accent, Color.White, 0.22f)
+    val textColor = if (accent.luminance() > 0.6f) Color(0xFF111111) else Color.White
 
-    val provider = remember(cx, screenWidthPx, pad) {
-        KeyPreviewPositionProvider(cx, screenWidthPx, pad.toInt())
+    val provider = remember(cx, screenWidthPx, pad, gap) {
+        KeyPreviewPositionProvider(cx, screenWidthPx, (pad - gap).toInt())
     }
 
     Popup(popupPositionProvider = provider) {
-        // Let touches fall through to the keyboard underneath — Gboard's own
-        // preview window is non-touchable for the same reason.
         val view = LocalView.current
         SideEffect {
             try {
@@ -3213,13 +3187,12 @@ private fun KeyPreviewPopup(
                         as android.view.WindowManager
                     wm.updateViewLayout(view.rootView, lp)
                 }
-            } catch (_: Throwable) { /* best effort only */ }
+            } catch (_: Throwable) { }
         }
 
-        // Quick pop-in from the key (Gboard: ~60ms scale-up)
-        val pop = remember { Animatable(0.80f) }
+        val pop = remember { Animatable(0.7f) }
         LaunchedEffect(Unit) {
-            pop.animateTo(1f, animationSpec = tween(70, easing = LinearOutSlowInEasing))
+            pop.animateTo(1f, animationSpec = spring(dampingRatio = 0.55f, stiffness = 900f))
         }
 
         Box(
@@ -3228,36 +3201,36 @@ private fun KeyPreviewPopup(
                 .graphicsLayer {
                     scaleX = pop.value
                     scaleY = pop.value
-                    transformOrigin = TransformOrigin(
-                        (pad + keyCenterInShape) / contentW, 1f
-                    )
+                    transformOrigin = TransformOrigin((pad + caretX) / contentW, 1f)
                 }
         ) {
             Canvas(modifier = Modifier.matchParentSize()) {
                 val path = buildKeyPreviewPath(
                     ox = pad, oy = pad,
                     bubbleW = bubbleW, bubbleH = bubbleH,
-                    keyW = keyW, keyCenterX = keyCenterInShape,
-                    totalH = totalH, neckEndY = neckEndY,
-                    bubbleR = bubbleR, keyR = keyR
+                    caretCenterX = caretX, caretW = caretW, caretH = caretH,
+                    radius = radius
                 )
-                // Soft shadow halo: three widening, fading outlines under the fill
-                val haloBase = if (isDarkTheme) 0.22f else 0.10f
-                val halos = listOf(10.dp.toPx() to 0.35f, 6.dp.toPx() to 0.6f, 3.dp.toPx() to 1f)
+                val halos = listOf(12.dp.toPx() to 0.04f, 7.dp.toPx() to 0.07f, 3.dp.toPx() to 0.12f)
                 for ((w, a) in halos) {
                     drawPath(
                         path = path,
-                        color = Color.Black.copy(alpha = haloBase * a),
+                        color = Color.Black.copy(alpha = a),
                         style = androidx.compose.ui.graphics.drawscope.Stroke(
                             width = w,
                             join = androidx.compose.ui.graphics.StrokeJoin.Round
                         )
                     )
                 }
-                drawPath(path = path, color = fill)
+                drawPath(
+                    path = path,
+                    brush = androidx.compose.ui.graphics.Brush.verticalGradient(
+                        colors = listOf(top, accent),
+                        startY = pad,
+                        endY = pad + bubbleH + caretH
+                    )
+                )
             }
-
-            // Big character, centred in the bubble part
             Box(
                 modifier = Modifier
                     .offset(with(density) { pad.toDp() }, with(density) { pad.toDp() })
@@ -3267,9 +3240,9 @@ private fun KeyPreviewPopup(
                 val single = label.codePointCount(0, label.length) <= 1
                 Text(
                     text = label,
-                    fontSize = (keyHeight.value * (if (single) 0.72f else 0.42f)).sp,
-                    color = colors.keyText,
-                    fontWeight = FontWeight.Normal,
+                    fontSize = (keyHeight.value * (if (single) 0.70f else 0.40f)).sp,
+                    color = textColor,
+                    fontWeight = FontWeight.Medium,
                     maxLines = 1,
                     softWrap = false,
                     overflow = TextOverflow.Clip
