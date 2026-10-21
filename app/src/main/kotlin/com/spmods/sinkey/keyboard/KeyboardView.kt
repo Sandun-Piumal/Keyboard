@@ -121,6 +121,15 @@ import androidx.compose.foundation.Canvas
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.drawscope.clipPath
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.luminance
+import androidx.compose.ui.layout.boundsInWindow
+import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.platform.LocalView
+import androidx.compose.ui.unit.IntRect
+import androidx.compose.ui.unit.IntSize
+import androidx.compose.ui.unit.LayoutDirection
+import androidx.compose.ui.window.PopupPositionProvider
+import androidx.compose.runtime.SideEffect
 import androidx.compose.ui.input.pointer.changedToUpIgnoreConsumed
 import androidx.compose.ui.input.pointer.PointerInputChange
 import androidx.compose.ui.layout.positionInParent
@@ -3058,37 +3067,215 @@ private fun rememberPreviewVisible(pressTick: Int, minVisibleMs: Long = 280L): B
 }
 
 /**
- * The small single-character bubble shown the instant a key is pressed.
+ * Plain (non-state) holder for a key's horizontal centre in window
+ * coordinates. Written from onGloballyPositioned (so it never triggers a
+ * recomposition while keys animate) and read once when the preview bubble
+ * is composed, which always happens long after the key was laid out.
+ */
+private class KeyAnchor {
+    @JvmField var centerX: Float = Float.NaN
+}
+
+/**
+ * Places the preview bubble so that its bottom edge lines up with the
+ * pressed key's bottom edge and its centre sits over the key — clamped
+ * to the screen so keys at the left/right edges don't push the bubble
+ * off-screen. The bubble's neck is drawn at the matching shifted position
+ * (see [KeyPreviewPopup]), so it always stays attached to the key.
+ */
+private class KeyPreviewPositionProvider(
+    private val keyCenterX: Float,
+    private val screenWidthPx: Float,
+    private val bottomOverhangPx: Int
+) : PopupPositionProvider {
+    override fun calculatePosition(
+        anchorBounds: IntRect,
+        windowSize: IntSize,
+        layoutDirection: LayoutDirection,
+        popupContentSize: IntSize
+    ): IntOffset {
+        val cx = if (keyCenterX.isNaN()) anchorBounds.center.x.toFloat() else keyCenterX
+        val maxX = (screenWidthPx - popupContentSize.width).coerceAtLeast(0f)
+        val x = (cx - popupContentSize.width / 2f).coerceIn(0f, maxX)
+        val y = anchorBounds.bottom - popupContentSize.height + bottomOverhangPx
+        return IntOffset(x.toInt(), y)
+    }
+}
+
+/**
+ * Builds the Gboard-style preview outline in one closed path: a wide,
+ * rounded bubble on top, an S-curved "neck" that narrows down to the
+ * key's own width, and a rounded key-shaped base that sits exactly over
+ * the pressed key — so the key and the bubble read as one raised piece.
  *
- * BUG FIX: this previously used its own separate sizing (1.8x key height,
- * 0.85x font, 4.dp elevation) tuned to look like Gboard/SwiftKey's
- * preview — but that meant the tap-preview bubble and the long-press
- * popup (LongPressPopupRow/PopupCell, 0.85x cell size, 0.5x-of-cell font,
- * 2.dp elevation) had two different, inconsistent looks for what's really
- * the same kind of element: a small floating bubble showing a key's
- * character. Matching PopupCell's own proportions here (single-cell
- * width/height at 0.85x keyHeight, font at 0.5x of that cell, 2.dp
- * elevation) means every key-popup on this keyboard — tap preview and
- * long-press alternates alike — shares one consistent style instead of
- * only some keys "having it right".
+ * [ox]/[oy] shift the whole shape (used to leave room for the soft shadow).
+ * [keyCenterX] is the key's centre measured from the shape's left edge.
+ */
+private fun buildKeyPreviewPath(
+    ox: Float, oy: Float,
+    bubbleW: Float, bubbleH: Float,
+    keyW: Float, keyCenterX: Float,
+    totalH: Float, neckEndY: Float,
+    bubbleR: Float, keyR: Float
+): Path {
+    val kl = (keyCenterX - keyW / 2f).coerceIn(0f, (bubbleW - keyW).coerceAtLeast(0f))
+    val kr = kl + keyW
+    val y0 = bubbleH - bubbleR            // where the bubble's straight side ends
+    val y1 = neckEndY                     // where the neck meets the key's sides
+    val dy = (y1 - y0) * 0.55f            // control-point reach → vertical tangents at both ends
+    fun r(l: Float, t: Float, rr: Float, b: Float) =
+        androidx.compose.ui.geometry.Rect(ox + l, oy + t, ox + rr, oy + b)
+    return Path().apply {
+        moveTo(ox + bubbleR, oy)
+        lineTo(ox + bubbleW - bubbleR, oy)
+        arcTo(r(bubbleW - 2 * bubbleR, 0f, bubbleW, 2 * bubbleR), -90f, 90f, false)
+        lineTo(ox + bubbleW, oy + y0)
+        cubicTo(ox + bubbleW, oy + y0 + dy, ox + kr, oy + y1 - dy, ox + kr, oy + y1)
+        lineTo(ox + kr, oy + totalH - keyR)
+        arcTo(r(kr - 2 * keyR, totalH - 2 * keyR, kr, totalH), 0f, 90f, false)
+        lineTo(ox + kl + keyR, oy + totalH)
+        arcTo(r(kl, totalH - 2 * keyR, kl + 2 * keyR, totalH), 90f, 90f, false)
+        lineTo(ox + kl, oy + y1)
+        cubicTo(ox + kl, oy + y1 - dy, ox, oy + y0 + dy, ox, oy + y0)
+        lineTo(ox, oy + bubbleR)
+        arcTo(r(0f, 0f, 2 * bubbleR, 2 * bubbleR), 180f, 90f, false)
+        close()
+    }
+}
+
+/**
+ * Gboard-style key preview, shown the instant a key is pressed.
+ *
+ * Previously this was a small flat square (0.85x key height) floating
+ * just above the key — it didn't look like a real keyboard's preview at
+ * all. Now it is the same shape Gboard draws: a large rounded bubble
+ * wider than the key, holding a big version of the character, which
+ * flows down through a smooth neck into a key-shaped base that covers the
+ * pressed key. It has a soft shadow, a light surface in light themes and
+ * a raised grey surface in dark themes, and pops in with a very quick
+ * scale-up from the key.
+ *
+ * The popup window is made non-touchable (see the SideEffect below) so
+ * that the large bubble, which overlaps the row above, can never swallow
+ * the next tap while it is still fading out during fast typing.
  */
 @Composable
-private fun KeyPreviewPopup(label: String, keyHeight: Dp, colors: KeyboardColors, keyShape: RoundedCornerShape) {
-    val cellSize = (keyHeight.value * 0.85f).dp
-    Box(
-        modifier = Modifier
-            .size(cellSize, cellSize)
-            .shadow(elevation = 2.dp, shape = keyShape)
-            .clip(keyShape)
-            .background(colors.specialKeyBg),
-        contentAlignment = Alignment.Center
-    ) {
-        Text(
-            text = label,
-            fontSize = (cellSize.value * 0.5f).sp,
-            color = colors.keyText,
-            fontWeight = FontWeight.Normal
-        )
+private fun KeyPreviewPopup(
+    label: String,
+    keyHeight: Dp,
+    keyWidthPx: Int,
+    anchor: KeyAnchor,
+    colors: KeyboardColors,
+    keyShape: RoundedCornerShape
+) {
+    val density = LocalDensity.current
+    val screenWidthPx = LocalConfiguration.current.screenWidthDp * density.density
+
+    val keyH = with(density) { keyHeight.toPx() }
+    val keyW = if (keyWidthPx > 0) keyWidthPx.toFloat() else keyH * 0.8f
+    val overhang = with(density) { 8.dp.toPx() }      // bubble is wider than the key by this much per side
+    val pad = with(density) { 6.dp.toPx() }           // room around the shape for the shadow halo
+    val bubbleW = keyW + overhang * 2f
+    val bubbleH = keyH * 1.35f
+    val totalH = bubbleH + keyH                       // bubble + the key-sized base that covers the key
+    val neckEndY = bubbleH + keyH * 0.20f
+    val contentW = bubbleW + pad * 2f
+    val contentH = totalH + pad * 2f
+
+    val keyR = keyShape.topStart
+        .toPx(androidx.compose.ui.geometry.Size(keyW, keyH), density)
+        .coerceAtMost(minOf(keyW, keyH) / 2f)
+    val bubbleR = maxOf(keyR * 1.6f, with(density) { 10.dp.toPx() })
+        .coerceAtMost(bubbleW / 2f)
+
+    // Same clamp the position provider applies, so the neck is drawn exactly over the key
+    val cx = if (anchor.centerX.isNaN()) contentW / 2f else anchor.centerX
+    val popupLeft = (cx - contentW / 2f).coerceIn(0f, (screenWidthPx - contentW).coerceAtLeast(0f))
+    val keyCenterInShape = (cx - popupLeft - pad).coerceIn(keyW / 2f, (bubbleW - keyW / 2f).coerceAtLeast(keyW / 2f))
+
+    val isDarkTheme = colors.keyBg.luminance() < 0.5f
+    val fill = if (isDarkTheme) Color(0xFF5F6368) else Color.White
+
+    val provider = remember(cx, screenWidthPx, pad) {
+        KeyPreviewPositionProvider(cx, screenWidthPx, pad.toInt())
+    }
+
+    Popup(popupPositionProvider = provider) {
+        // Let touches fall through to the keyboard underneath — Gboard's own
+        // preview window is non-touchable for the same reason.
+        val view = LocalView.current
+        SideEffect {
+            try {
+                val lp = view.rootView.layoutParams as? android.view.WindowManager.LayoutParams
+                if (lp != null && (lp.flags and android.view.WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE) == 0) {
+                    lp.flags = lp.flags or android.view.WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE
+                    val wm = view.context.getSystemService(android.content.Context.WINDOW_SERVICE)
+                        as android.view.WindowManager
+                    wm.updateViewLayout(view.rootView, lp)
+                }
+            } catch (_: Throwable) { /* best effort only */ }
+        }
+
+        // Quick pop-in from the key (Gboard: ~60ms scale-up)
+        val pop = remember { Animatable(0.80f) }
+        LaunchedEffect(Unit) {
+            pop.animateTo(1f, animationSpec = tween(70, easing = LinearOutSlowInEasing))
+        }
+
+        Box(
+            modifier = Modifier
+                .size(with(density) { contentW.toDp() }, with(density) { contentH.toDp() })
+                .graphicsLayer {
+                    scaleX = pop.value
+                    scaleY = pop.value
+                    transformOrigin = TransformOrigin(
+                        (pad + keyCenterInShape) / contentW, 1f
+                    )
+                }
+        ) {
+            Canvas(modifier = Modifier.matchParentSize()) {
+                val path = buildKeyPreviewPath(
+                    ox = pad, oy = pad,
+                    bubbleW = bubbleW, bubbleH = bubbleH,
+                    keyW = keyW, keyCenterX = keyCenterInShape,
+                    totalH = totalH, neckEndY = neckEndY,
+                    bubbleR = bubbleR, keyR = keyR
+                )
+                // Soft shadow halo: three widening, fading outlines under the fill
+                val haloBase = if (isDarkTheme) 0.22f else 0.10f
+                val halos = listOf(10.dp.toPx() to 0.35f, 6.dp.toPx() to 0.6f, 3.dp.toPx() to 1f)
+                for ((w, a) in halos) {
+                    drawPath(
+                        path = path,
+                        color = Color.Black.copy(alpha = haloBase * a),
+                        style = androidx.compose.ui.graphics.drawscope.Stroke(
+                            width = w,
+                            join = androidx.compose.ui.graphics.StrokeJoin.Round
+                        )
+                    )
+                }
+                drawPath(path = path, color = fill)
+            }
+
+            // Big character, centred in the bubble part
+            Box(
+                modifier = Modifier
+                    .offset(with(density) { pad.toDp() }, with(density) { pad.toDp() })
+                    .size(with(density) { bubbleW.toDp() }, with(density) { bubbleH.toDp() }),
+                contentAlignment = Alignment.Center
+            ) {
+                val single = label.codePointCount(0, label.length) <= 1
+                Text(
+                    text = label,
+                    fontSize = (keyHeight.value * (if (single) 0.72f else 0.42f)).sp,
+                    color = colors.keyText,
+                    fontWeight = FontWeight.Normal,
+                    maxLines = 1,
+                    softWrap = false,
+                    overflow = TextOverflow.Clip
+                )
+            }
+        }
     }
 }
 
@@ -3221,6 +3408,7 @@ private fun RowScope.NumberedLetterKey(
     var pressTick by remember { mutableStateOf(0) } // see LetterKey for why the preview triggers off this, not `pressed`
     val bumpScale = rememberKeyBumpScale(pressed)
     val bumpOffsetY = rememberKeyBumpOffsetY(pressed)
+    val keyAnchor = remember { KeyAnchor() }
 
     // Long-press popup (accented alternates PLUS this key's own row
     // number, inserted as an extra cell in the middle of the bottom row —
@@ -3290,6 +3478,7 @@ private fun RowScope.NumberedLetterKey(
             .keyEffectDecoration(colors, keyShape)
             .let { m -> if (onPositioned != null) m.onGloballyPositioned(onPositioned) else m }
             .onSizeChanged { keyWidthPx = it.width }
+            .onGloballyPositioned { keyAnchor.centerX = it.boundsInWindow().center.x }
             .pointerInput(alternates) {
                 awaitEachGesture {
                     val down = awaitFirstDown(requireUnconsumed = false)
@@ -3391,10 +3580,7 @@ private fun RowScope.NumberedLetterKey(
                 )
             }
         } else if (rememberPreviewVisible(pressTick)) {
-            Popup(alignment = Alignment.TopCenter,
-                offset = IntOffset(0, -((keyHeight.value * 1.0f).toInt()))) {
-                KeyPreviewPopup(label = label, keyHeight = keyHeight, colors = colors, keyShape = keyShape)
-            }
+            KeyPreviewPopup(label = label, keyHeight = keyHeight, keyWidthPx = keyWidthPx, anchor = keyAnchor, colors = colors, keyShape = keyShape)
         }
     }
 }
@@ -3445,6 +3631,7 @@ private fun RowScope.LetterKey(
     var pressTick by remember { mutableStateOf(0) }
     val bumpScale = rememberKeyBumpScale(pressed)
     val bumpOffsetY = rememberKeyBumpOffsetY(pressed)
+    val keyAnchor = remember { KeyAnchor() }
 
     // Long-press popup (accented alternates — see LongPressPopupData.kt).
     // Looked up from the key's own base (lowercase) character; empty when
@@ -3501,6 +3688,7 @@ private fun RowScope.LetterKey(
             .keyEffectDecoration(colors, keyShape)
             .let { m -> if (onPositioned != null) m.onGloballyPositioned(onPositioned) else m }
             .onSizeChanged { keyWidthPx = it.width }
+            .onGloballyPositioned { keyAnchor.centerX = it.boundsInWindow().center.x }
             .pointerInput(alternates) {
                 awaitEachGesture {
                     val down = awaitFirstDown(requireUnconsumed = false)
@@ -3648,10 +3836,7 @@ private fun RowScope.LetterKey(
                 )
             }
         } else if (rememberPreviewVisible(pressTick)) {
-            Popup(alignment = Alignment.TopCenter,
-                offset = IntOffset(0, -((keyHeight.value * 1.0f).toInt()))) {
-                KeyPreviewPopup(label = label, keyHeight = keyHeight, colors = colors, keyShape = keyShape)
-            }
+            KeyPreviewPopup(label = label, keyHeight = keyHeight, keyWidthPx = keyWidthPx, anchor = keyAnchor, colors = colors, keyShape = keyShape)
         }
     }
 }
@@ -3765,6 +3950,8 @@ private fun RowScope.SpecialKey(
     var pressTick by remember { mutableStateOf(0) } // see LetterKey for why the preview triggers off this, not `pressed`
     val bumpScale = rememberKeyBumpScale(pressed)
     val bumpOffsetY = rememberKeyBumpOffsetY(pressed)
+    val keyAnchor = remember { KeyAnchor() }
+    var keyWidthPx by remember { mutableStateOf(0) }
     Box(
         modifier = Modifier
             .height(keyHeight).weight(weight)
@@ -3772,6 +3959,8 @@ private fun RowScope.SpecialKey(
             .offset(y = bumpOffsetY)
             .clip(keyShape)
             .background(if (pressed) colors.specialKeyBg.copy(alpha = 0.6f) else colors.specialKeyBg)
+            .onSizeChanged { keyWidthPx = it.width }
+            .onGloballyPositioned { keyAnchor.centerX = it.boundsInWindow().center.x }
             .clickable { onTap() }
             .pointerInput(Unit) {
                 awaitEachGesture {
@@ -3786,10 +3975,7 @@ private fun RowScope.SpecialKey(
     ) {
         Text(text = label, fontSize = keyLabelFontSize(keyHeight), fontWeight = FontWeight.Medium, color = colors.specialKeyText)
         if (rememberPreviewVisible(pressTick)) {
-            Popup(alignment = Alignment.TopCenter,
-                offset = IntOffset(0, -((keyHeight.value * 1.0f).toInt()))) {
-                KeyPreviewPopup(label = label, keyHeight = keyHeight, colors = colors, keyShape = keyShape)
-            }
+            KeyPreviewPopup(label = label, keyHeight = keyHeight, keyWidthPx = keyWidthPx, anchor = keyAnchor, colors = colors, keyShape = keyShape)
         }
     }
 }
