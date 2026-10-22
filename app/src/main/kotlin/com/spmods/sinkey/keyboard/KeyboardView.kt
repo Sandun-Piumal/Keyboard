@@ -2945,6 +2945,13 @@ private fun KeyRow(
 private fun keyLabelFontSize(keyHeight: Dp): androidx.compose.ui.unit.TextUnit =
     (keyHeight.value * 0.50f).sp   // ~21sp @ 42dp, ~24sp @ 48dp, ~27sp @ 54dp, ~31sp @ 62dp
 
+/** Sinhala corner hint: a touch smaller than the number hint, so it never reaches the centre letter. */
+private fun keyHintFontSize(keyHeight: Dp): androidx.compose.ui.unit.TextUnit =
+    (keyHeight.value * 0.21f).sp
+
+/** How far to nudge the centre letter down on keys that carry a Sinhala hint. */
+private fun keyLabelDyWithHint(keyHeight: Dp): Dp = (keyHeight.value * 0.09f).dp
+
 private fun keyNumberFontSize(keyHeight: Dp): androidx.compose.ui.unit.TextUnit =
     (keyHeight.value * 0.25f).sp   // ~10sp @ 42dp, ~12sp @ 48dp, ~15sp @ 62dp
 
@@ -3533,12 +3540,14 @@ private fun RowScope.NumberedLetterKey(
         Text(text = number, fontSize = keyNumberFontSize(keyHeight), color = colors.subText,
             modifier = Modifier.align(Alignment.TopEnd).padding(top = 3.dp, end = 4.dp))
         if (!hint.isNullOrEmpty()) {
-            Text(text = hint, fontSize = keyNumberFontSize(keyHeight), color = colors.subText,
-                modifier = Modifier.align(Alignment.TopStart).padding(top = 3.dp, start = 4.dp))
+            Text(text = hint, fontSize = keyHintFontSize(keyHeight), lineHeight = keyHintFontSize(keyHeight),
+                color = colors.subText, maxLines = 1, softWrap = false,
+                modifier = Modifier.align(Alignment.TopStart).padding(top = 2.dp, start = 3.dp))
         }
         Text(text = label, fontSize = keyLabelFontSize(keyHeight), color = colors.keyText,
             fontWeight = FontWeight.Normal,
-            modifier = Modifier.align(Alignment.Center))
+            modifier = Modifier.align(Alignment.Center)
+                .offset(y = if (!hint.isNullOrEmpty()) keyLabelDyWithHint(keyHeight) else 0.dp))
         if (popupVisible && alternates.isNotEmpty()) {
             val rowCount = if (row1count > 0) 2 else 1
             val offsetYPx = -(cellHeightPx * rowCount + popupYOffsetPx)
@@ -3784,11 +3793,13 @@ private fun RowScope.LetterKey(
         contentAlignment = Alignment.Center
     ) {
         if (!hint.isNullOrEmpty()) {
-            Text(text = hint, fontSize = keyNumberFontSize(keyHeight), color = colors.subText,
-                modifier = Modifier.align(Alignment.TopEnd).padding(top = 3.dp, end = 4.dp))
+            Text(text = hint, fontSize = keyHintFontSize(keyHeight), lineHeight = keyHintFontSize(keyHeight),
+                color = colors.subText, maxLines = 1, softWrap = false,
+                modifier = Modifier.align(Alignment.TopEnd).padding(top = 2.dp, end = 3.dp))
         }
         Text(text = label, fontSize = keyLabelFontSize(keyHeight), color = colors.keyText,
-            fontWeight = FontWeight.Normal)
+            fontWeight = FontWeight.Normal,
+            modifier = Modifier.offset(y = if (!hint.isNullOrEmpty()) keyLabelDyWithHint(keyHeight) else 0.dp))
         if (popupVisible && alternates.isNotEmpty()) {
             // Popup height depends on row count (1 or 2 rows of
             // cellHeightPx each — see LongPressPopupRow) plus the fixed
