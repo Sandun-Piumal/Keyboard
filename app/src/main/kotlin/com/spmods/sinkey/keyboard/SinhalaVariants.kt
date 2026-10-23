@@ -37,18 +37,18 @@ object SinhalaVariants {
 
     // Ambiguous multi-letter tokens (default option first).
     private val multiTokens = listOf(
-        "th" to listOf("th", "TH", "thh"),
+        "th" to listOf("th", "Th"),
         "sh" to listOf("sh", "Sh"),
-        "dh" to listOf("dh", "DH"),
+        "dh" to listOf("dh", "Dh"),
         "nd" to listOf("nd", "nnd", "nxd"),
-        "ng" to listOf("ng", "nng"),
+        "ng" to listOf("ng", "xg"),
         "mb" to listOf("mb", "mxb")
     )
 
     // Ambiguous single letters (default option first).
     private val singleTokens = mapOf(
         't' to listOf("t", "T"),
-        'd' to listOf("d", "D"),
+        'd' to listOf("d", "D", "dh"),
         'n' to listOf("n", "N"),
         'l' to listOf("l", "L"),
         's' to listOf("s", "sh", "Sh")
@@ -61,10 +61,10 @@ object SinhalaVariants {
             val c = s[i]
 
             // Explicit case choices made by the user (Shift) are kept as typed.
-            if (s.startsWith("Sh", i) || s.startsWith("TH", i) || s.startsWith("DH", i)) {
+            if (s.startsWith("Sh", i) || s.startsWith("Th", i) || s.startsWith("Dh", i) || s.startsWith("Ch", i)) {
                 out.add(Token(listOf(s.substring(i, i + 2)))); i += 2; continue
             }
-            if (c == 'N' || c == 'T' || c == 'D' || c == 'L') {
+            if (c in "ABCDEHJLNPRSTX") {
                 out.add(Token(listOf(c.toString()))); i++; continue
             }
 
