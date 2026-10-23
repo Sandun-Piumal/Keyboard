@@ -268,47 +268,27 @@ object SinhalaTransliterator {
         "a"   to "අ"
     )
 
-    // ---- Consonant bases, longest key first so digraphs win over single letters ----
+    // ---- Consonant stems, longest key first so digraphs win over single letters ----
+    // Derived from Map.zip (see SinhalaPhoneticMap). Whole "stem + vowel"
+    // syllables are matched literally from that map first; these stems only
+    // serve the cases the map has no entry for (bare consonant -> hal kirima,
+    // implicit clusters, a stem followed by a vowel sign the map lacks).
     private val consonants = listOf(
-        "chh" to "ඡ",
-        "thh" to "ථ", "ddh" to "ධ", "dh" to "ධ",
-        "kh" to "ඛ", "gh" to "ඝ", "ng" to "ඞ",
+        "chh" to "ඡ", "thh" to "ථ", "ddh" to "ධ", "zdh" to "ඳ",
+        "Dh" to "ධ", "Th" to "ථ", "Ch" to "ඡ", "Sh" to "ෂ",
+        "dh" to "ද", "kh" to "ඛ", "gh" to "ඝ", "ng" to "ඟ",
         "ch" to "ච", "jh" to "ඣ", "ny" to "ඤ", "gn" to "ඥ",
-        "th" to "ත", "sh" to "ශ",
-        "ph" to "ඵ", "bh" to "භ",
-        "nd" to "ඳ",
-        "Sh" to "ෂ",
-        "TH" to "ඨ", "DH" to "ඪ",
-        "N"  to "ණ",
-        "T"  to "ත",
-        // "D" (uppercase) now maps to ඩ (murdhaja/hard da) — moved here
-        // from lowercase "d" (see that entry below for why), so ඩ is
-        // still fully reachable, just via the explicit uppercase key
-        // instead of being the bare-"d" default.
-        "D"  to "ඩ",
-        "L"  to "ළ",
-        "k" to "ක", "g" to "ග",
-        "j" to "ජ",
-        // Lowercase "d" -> ද (dantaja/soft da), not ඩ (murdhaja/hard da).
-        // Previously bare "d" mapped to ඩ, which meant every common word
-        // with the far more frequent soft ද — ගෙදර (gedara), දවස (dawasa),
-        // කොහොමද (kohomada), දෙන්න (denna) — transliterated wrong by
-        // default; only the rarer hard-ඩ words (කොඩිය, බැඩ්මින්ටන්) got the
-        // letter people actually expect from typing plain "d". Checked
-        // against the bundled 200K-word frequency corpus (see
-        // DictionarySeeder's v2->v3 note): words containing ද outnumber
-        // words containing ඩ by roughly 3.5 to 1, so ද is the correct
-        // default for the ambiguous bare-"d" case. ඩ is still reachable —
-        // via uppercase "D" (swapped above) — and remains offered as an
-        // alt-candidate in the suggestion strip (see
-        // SinKeyInputMethodService's onGetSuggestions Sinhala branch).
-        "t" to "ට", "d" to "ද", "n" to "න",
+        "th" to "ත", "sh" to "ශ", "ph" to "ඵ", "bh" to "භ",
+        "nd" to "ඳ", "mb" to "ඹ",
+        "zj" to "ඦ", "zk" to "ඤ", "zd" to "ඬ", "zh" to "ඥ", "zq" to "ඳ", "zb" to "ඹ",
+        "N" to "ණ", "T" to "ඨ", "D" to "ඪ", "L" to "ළ", "S" to "ෂ",
+        "J" to "ඣ", "P" to "ඵ", "B" to "ඹ", "X" to "ඞ",
+        "k" to "ක", "g" to "ග", "j" to "ජ",
+        "t" to "ට", "d" to "ඩ", "n" to "න",
         "p" to "ප", "b" to "බ", "m" to "ම",
         "y" to "ය", "r" to "ර", "l" to "ල", "v" to "ව", "w" to "ව",
         "s" to "ස", "h" to "හ", "f" to "ෆ", "q" to "ද",
-        // "z" key is labelled ෂ on the keyboard (sinhalaKeyHints) — it used
-        // to be missing here, so it fell through and typed a Latin "z".
-        "z" to "ෂ"
+        "c" to "ච", "z" to "ෂ"
     )
 
     // Prenasalized letters — tried before the plain consonant list
@@ -322,21 +302,22 @@ object SinhalaTransliterator {
 
     // ---- Dependent vowel signs (pillam) that attach to a consonant base ----
     private val vowelSigns = listOf(
-        "aee" to "ෑ",
+        "ruu" to "ෲ",
+        "ru"  to "ෘ",
         "aa"  to "ා",
-        "ae"  to "ැ",
+        "AA"  to "ෑ",
+        "Aa"  to "ෑ",
+        "A"   to "ැ",
         "ii"  to "ී",
         "i"   to "ි",
         "uu"  to "ූ",
         "u"   to "ු",
-        "ruu" to "ෲ",
-        "ru"  to "ෘ",
-        "luu" to "෣",
-        "lu"  to "෢",
         "ee"  to "ේ",
-        "ai"  to "ෛ",
+        "ei"  to "ේ",
+        "E"   to "ෛ",
         "e"   to "ෙ",
         "oo"  to "ෝ",
+        "oe"  to "ෝ",
         "au"  to "ෞ",
         "o"   to "ො"
         // bare "a" = inherent vowel — no sign emitted
@@ -357,17 +338,13 @@ object SinhalaTransliterator {
      * typing — is folded to lowercase so it reaches the normal consonant
      * table instead of falling through unmatched.
      */
+    /** Uppercase letters that carry meaning in the phonetic map (Map.zip). */
+    private const val CASE_LETTERS = "ABCDEHJLNPRSTX"
+
     private fun normalizeCaseForTransliteration(input: String): String {
         val out = StringBuilder(input.length)
-        var i = 0
-        while (i < input.length) {
-            when {
-                input.startsWith("Sh", i) -> { out.append("Sh"); i += 2 }
-                input.startsWith("TH", i) -> { out.append("TH"); i += 2 }
-                input.startsWith("DH", i) -> { out.append("DH"); i += 2 }
-                input[i] in "NTDL" -> { out.append(input[i]); i += 1 }
-                else -> { out.append(input[i].lowercaseChar()); i += 1 }
-            }
+        for (ch in input) {
+            out.append(if (ch in CASE_LETTERS) ch else ch.lowercaseChar())
         }
         return out.toString()
     }
@@ -412,6 +389,16 @@ object SinhalaTransliterator {
 
             // ---- kunda (෴) ----
             if (input.startsWith("kunda", i)) { out.append("\u0DF4"); i += 5; continue }
+
+            // ---- Literal phonetic map (Map.zip), longest match first ----
+            // Every entry of the supplied mapping is matched exactly as
+            // given, before any of the heuristic rules below run.
+            val literalLen = longestLiteralMatch(input, i)
+            if (literalLen > 0) {
+                out.append(SinhalaPhoneticMap.entries[input.substring(i, i + literalLen)])
+                i += literalLen
+                continue
+            }
 
             // ---- Anusvara context rule for bare "ng" (spec §16) ----
             // Mid-word "ng" followed by a vowel letter renders as ං + the
@@ -463,9 +450,7 @@ object SinhalaTransliterator {
                     when {
                         v != null -> { out.append(v.second); i = afterSh + v.first.length }
                         afterSh < input.length && input[afterSh] == 'a' &&
-                            !input.startsWith("aa", afterSh) && !input.startsWith("ae", afterSh) &&
-                            !input.startsWith("aee", afterSh) && !input.startsWith("ai", afterSh) &&
-                            !input.startsWith("au", afterSh) -> { i = afterSh + 1 }
+                            !input.startsWith("aa", afterSh) && !input.startsWith("au", afterSh) -> { i = afterSh + 1 }
                         else -> i = afterSh
                     }
                     continue
@@ -484,9 +469,7 @@ object SinhalaTransliterator {
                     val afterR = pos + 1
                     val v = tryMatch(input, afterR, vowelSigns)
                     val bareA = afterR < input.length && input[afterR] == 'a' &&
-                        !input.startsWith("aa", afterR) && !input.startsWith("ae", afterR) &&
-                        !input.startsWith("aee", afterR) && !input.startsWith("ai", afterR) &&
-                        !input.startsWith("au", afterR)
+                        !input.startsWith("aa", afterR) && !input.startsWith("au", afterR)
                     val atBoundary = afterR >= input.length || input[afterR].isWhitespace()
                     if (v != null || bareA || atBoundary) {
                         out.append(glyph).append(HAL).append(ZWJ).append("ර")
@@ -505,9 +488,7 @@ object SinhalaTransliterator {
                     val afterY = pos + 1
                     val v = tryMatch(input, afterY, vowelSigns)
                     val bareA = afterY < input.length && input[afterY] == 'a' &&
-                        !input.startsWith("aa", afterY) && !input.startsWith("ae", afterY) &&
-                        !input.startsWith("aee", afterY) && !input.startsWith("ai", afterY) &&
-                        !input.startsWith("au", afterY)
+                        !input.startsWith("aa", afterY) && !input.startsWith("au", afterY)
                     if (v != null || bareA) {
                         out.append(glyph).append(HAL).append(ZWJ).append("ය")
                         if (v != null) { out.append(v.second); i = afterY + v.first.length }
@@ -555,9 +536,7 @@ object SinhalaTransliterator {
 
                 // Bare 'a' → inherent vowel, consonant alone
                 if (pos < input.length && input[pos] == 'a' &&
-                    !input.startsWith("aa", pos) && !input.startsWith("ae", pos) &&
-                    !input.startsWith("aee", pos) && !input.startsWith("ai", pos) &&
-                    !input.startsWith("au", pos)
+                    !input.startsWith("aa", pos) && !input.startsWith("au", pos)
                 ) {
                     out.append(glyph)
                     i = pos + 1
@@ -596,6 +575,17 @@ object SinhalaTransliterator {
         }
 
         return out.toString()
+    }
+
+    /** Length of the longest map key starting at [pos], or 0 when none matches. */
+    private fun longestLiteralMatch(input: String, pos: Int): Int {
+        val map = SinhalaPhoneticMap.entries
+        var len = minOf(SinhalaPhoneticMap.maxKeyLength, input.length - pos)
+        while (len >= 1) {
+            if (map.containsKey(input.substring(pos, pos + len))) return len
+            len--
+        }
+        return 0
     }
 
     private fun tryMatch(
