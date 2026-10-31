@@ -222,385 +222,192 @@ object WijesekaraLayout {
 }
 
 /**
- * Singlish → Sinhala Unicode transliterator.
+ * Latin → Sinhala transliterator.
  *
- * Rules (user-defined):
- *   consonant + "a"        → bare consonant (inherent vowel)   ka → ක
- *   consonant + vowel sign → consonant + sign                  ki → කි
- *   consonant alone        → consonant + hal kirima            k  → ක්
- *   standalone vowel       → independent vowel                 a  → අ
- *   n/m before a different consonant → anusvara               nk → ංක
- *   ruu / ru / lu          → special standalone forms
- */
-/**
- * Romanized-Singlish → Sinhala Unicode transliterator.
+ * Layer 1 — the supplied phonetic map (Map.zip → [SinhalaPhoneticMap]),
+ * case-sensitive, longest match first, used as given except for the
+ * adjustments listed on [phoneticMap] (d-family, ru/ruu).
  *
- * Rebuilt to follow the full "SINKEY — COMPLETE SINHALA PHONETIC RULESET"
- * spec: longest-match-first, context-aware parsing, ZWJ conjuncts
- * (rakaransaya/yansaya/kSha), explicit virama via 'x', productive
- * consonant-cluster support, and context-sensitive anusvara handling.
+ * Layer 2 — the standard Singlish completion rules, used ONLY where the
+ * map has no entry (the same structure the common Singlish→Sinhala
+ * converters use: consonant+vowel, bare consonant → hal kirima, and
+ * consonant+r → rakaransaya):
+ *   • bare consonant (no vowel after it)   m  → ම්      amma  → අම්ම
+ *   • consonant + vowel sign (stem + any vowel suffix of the map)
+ *   • consonant + r + vowel → rakaransaya  tra → ට්‍ර   kraa  → ක්‍රා
+ *   • consonant + y + vowel → yansaya      thya → ත්‍ය  sathya → සත්‍ය
+ *   • aliases  ae → ඇ / ැ ,  aee → ඈ / ෑ ,  x → ං ,  H → ඃ ,  zn → ං
+ *   • n / m before a different consonant follows its place of articulation:
+ *       m + p/b → ම්  (sampath → සම්පත්),   n + t/d → න්  (antha → අන්ත),
+ *       otherwise → ං  (sinhala → සිංහල, lanka → ලංක).  x forces ං, _ forces hal.
+ * A candidate from layer 2 is only used when it consumes MORE input than
+ * the map's own longest match, so the map always wins ties.
+ *
+ * Anything else (space, digits, punctuation) passes through unchanged.
  */
 object SinhalaTransliterator {
 
-    private const val ZWJ = "\u200D"
-    private const val HAL = "\u0DCA"           // ්
-    private const val ANUSVARA = "\u0D82"      // ං
+    private const val HAL = "\u0DCA"
+    private const val RAKARANSAYA = "\u0DCA\u200D\u0DBB"   // ්‍ර
+    private const val YANSAYA = "\u0DCA\u200D\u0DBA"       // ්‍ය
+    private const val ANUSVARA = "\u0D82"                    // ං
 
-    // ---- Independent vowels (word-initial / standalone), longest first ----
-    private val independentVowels = listOf(
-        "aee" to "ඈ",
-        "aa"  to "ආ",
-        "ae"  to "ඇ",
-        "ii"  to "ඊ",
-        "i"   to "ඉ",
-        "uu"  to "ඌ",
-        "u"   to "උ",
-        "ruu" to "ඎ",
-        "ru"  to "ඍ",
-        "luu" to "ඐ",
-        "lu"  to "ඏ",
-        "ee"  to "ඒ",
-        "ai"  to "ඓ",
-        "e"   to "එ",
-        "oo"  to "ඕ",
-        "au"  to "ඖ",
-        "o"   to "ඔ",
-        "a"   to "අ"
-    )
-
-    // ---- Consonant stems, longest key first so digraphs win over single letters ----
-    // Derived from Map.zip (see SinhalaPhoneticMap). Whole "stem + vowel"
-    // syllables are matched literally from that map first; these stems only
-    // serve the cases the map has no entry for (bare consonant -> hal kirima,
-    // implicit clusters, a stem followed by a vowel sign the map lacks).
-    private val consonants = listOf(
-        "chh" to "ඡ", "thh" to "ථ", "ddh" to "ධ", "zdh" to "ඳ",
-        "Dh" to "ධ", "Th" to "ථ", "Ch" to "ඡ", "Sh" to "ෂ",
-        "dh" to "ද", "kh" to "ඛ", "gh" to "ඝ", "ng" to "ඟ",
-        "ch" to "ච", "jh" to "ඣ", "ny" to "ඤ", "gn" to "ඥ",
-        "th" to "ත", "sh" to "ශ", "ph" to "ඵ", "bh" to "භ",
-        "nd" to "ඳ", "mb" to "ඹ",
-        "zj" to "ඦ", "zk" to "ඤ", "zd" to "ඬ", "zh" to "ඥ", "zq" to "ඳ", "zb" to "ඹ",
-        "N" to "ණ", "T" to "ඨ", "D" to "ඪ", "L" to "ළ", "S" to "ෂ",
-        "J" to "ඣ", "P" to "ඵ", "B" to "ඹ", "X" to "ඞ",
-        "k" to "ක", "g" to "ග", "j" to "ජ",
-        "t" to "ට", "d" to "ඩ", "n" to "න",
-        "p" to "ප", "b" to "බ", "m" to "ම",
-        "y" to "ය", "r" to "ර", "l" to "ල", "v" to "ව", "w" to "ව",
-        "s" to "ස", "h" to "හ", "f" to "ෆ", "q" to "ද",
-        "c" to "ච", "z" to "ෂ"
-    )
-
-    // Prenasalized letters — tried before the plain consonant list
-    // (e.g. "nng" -> ඟ before "ng" -> ඞ, "nnd" -> ඬ before "nd" -> ඳ).
-    private val prenasalized = listOf(
-        "nng"  to "ඟ",
-        "nyny" to "ඦ",
-        "nnd"  to "ඬ",
-        "mb"   to "ඹ"
-    )
-
-    // ---- Dependent vowel signs (pillam) that attach to a consonant base ----
-    private val vowelSigns = listOf(
-        "ruu" to "ෲ",
-        "ru"  to "ෘ",
-        "aa"  to "ා",
-        "AA"  to "ෑ",
-        "Aa"  to "ෑ",
-        "A"   to "ැ",
-        "ii"  to "ී",
-        "i"   to "ි",
-        "uu"  to "ූ",
-        "u"   to "ු",
-        "ee"  to "ේ",
-        "ei"  to "ේ",
-        "E"   to "ෛ",
-        "e"   to "ෙ",
-        "oo"  to "ෝ",
-        "oe"  to "ෝ",
-        "au"  to "ෞ",
-        "o"   to "ො"
-        // bare "a" = inherent vowel — no sign emitted
+    /** Entries added on top of the supplied map (none of these keys exist in it). */
+    private val extras = mapOf(
+        "ae" to "\u0D87",   // ඇ
+        "aee" to "\u0D88",  // ඈ
+        "x" to "\u0D82",    // ං
+        "zn" to "\u0D82",   // ං
+        "H" to "\u0D83"     // ඃ
     )
 
     /**
-     * Transliterates a romanized Singlish string into Sinhala Unicode
-     * following the longest-match, context-aware ruleset.
+     * The supplied map with the practical adjustments agreed for typing:
+     *  - d-family: d -> ද, dh -> ධ, D -> ඩ, Dh -> ඪ  (ද is the commonest "d";
+     *    the file's d -> ඩ made "gedara" come out ගෙඩර)
+     *  - ru / ruu -> රු / රූ  (the file lists both ඍ and රු; ඍ/ඎ are Ru / Ruu)
+     * Everything else is the file, untouched.
      */
-    /**
-     * Lowercases [input] except where an uppercase letter is part of one of
-     * the scheme's deliberately case-sensitive tokens: the digraphs "Sh",
-     * "TH", "DH" (checked longest-first so they don't get shadowed by the
-     * single-letter "T"/"D" rule below), and the single letters "N", "T",
-     * "D", "L" when not followed by lowercase letters that would make them
-     * part of a different, already-lowercase word/digraph. Everything else
-     * — including a capital first letter from auto-capitalize, or ALL-CAPS
-     * typing — is folded to lowercase so it reaches the normal consonant
-     * table instead of falling through unmatched.
-     */
-    /** Uppercase letters that carry meaning in the phonetic map (Map.zip). */
-    private const val CASE_LETTERS = "ABCDEHJLNPRSTX"
-
-    private fun normalizeCaseForTransliteration(input: String): String {
-        val out = StringBuilder(input.length)
-        for (ch in input) {
-            out.append(if (ch in CASE_LETTERS) ch else ch.lowercaseChar())
+    private val phoneticMap: Map<String, String> by lazy {
+        val m = HashMap<String, String>(SinhalaPhoneticMap.entries)
+        for ((k, v) in SinhalaPhoneticMap.entries) {
+            val first = v.firstOrNull() ?: continue
+            val swapped: Char = when {
+                k.startsWith("dh") && first == '\u0DAF' -> '\u0DB0'   // ද -> ධ
+                k.startsWith("Dh") && first == '\u0DB0' -> '\u0DAA'   // ධ -> ඪ
+                k.startsWith("d") && !k.startsWith("dh") && first == '\u0DA9' -> '\u0DAF'   // ඩ -> ද
+                k.startsWith("D") && !k.startsWith("Dh") && first == '\u0DAA' -> '\u0DA9'   // ඪ -> ඩ
+                else -> continue
+            }
+            m[k] = swapped + v.substring(1)
         }
-        return out.toString()
+        m["ru"] = "\u0DBB\u0DD4"; m["ruu"] = "\u0DBB\u0DD6"
+        m["Ru"] = "\u0D8D"; m["Ruu"] = "\u0D8E"
+        m
     }
 
-    /** Public wrapper — keeps meaningful case (N/T/D/L, Sh/TH/DH), lowercases the rest. */
-    fun normalizeCase(rawInput: String): String = normalizeCaseForTransliteration(rawInput)
-
-    fun transliterate(rawInput: String): String {
-
-        if (rawInput.isEmpty()) return ""
-        // Normalize case first: only a specific, deliberate set of letters
-        // carries case-meaning in this scheme — N/T/D/L as single letters
-        // (ණ/ත/ද/ළ vs n/t/d/l -> න/ට/ද/ල) and the Sh/TH/DH digraphs (ෂ/ඨ/ඪ
-        // vs sh/th/dh -> ශ/ත/ධ). Any other uppercase letter reaching this
-        // function (e.g. from auto-capitalize at the start of a sentence,
-        // or a user just typing with caps lock on for emphasis) has no
-        // separate mapping in `consonants` and would otherwise fall
-        // through unmatched, corrupting the output. So: lowercase
-        // everything by default, then restore case only where one of the
-        // known case-sensitive digraphs/letters actually appears.
-        val input = normalizeCaseForTransliteration(rawInput)
-        val out = StringBuilder()
-        var i = 0
-
-        while (i < input.length) {
-            val c = input[i]
-
-            if (c.isWhitespace()) {
-                out.append(c); i++; continue
-            }
-
-            // ---- Explicit special-sign tokens ----
-            if (input.startsWith("ng_", i)) { out.append(ANUSVARA); i += 3; continue }
-            if (input.startsWith("h_", i))  { out.append("\u0D83"); i += 2; continue } // ඃ visarga
-            if (input.startsWith("h.", i))  { out.append("\u0D81"); i += 2; continue } // ඁ candrabindu
-
-            // ---- Sinhala Lith digits: "<digit>s" ----
-            if (i + 1 < input.length && input[i + 1] == 's' && c in '0'..'9') {
-                val lith = "\u0DE6\u0DE7\u0DE8\u0DE9\u0DEA\u0DEB\u0DEC\u0DED\u0DEE\u0DEF"
-                out.append(lith[c - '0']); i += 2; continue
-            }
-
-            // ---- kunda (෴) ----
-            if (input.startsWith("kunda", i)) { out.append("\u0DF4"); i += 5; continue }
-
-            // ---- Literal phonetic map (Map.zip), longest match first ----
-            // Every entry of the supplied mapping is matched exactly as
-            // given, before any of the heuristic rules below run.
-            val literalLen = longestLiteralMatch(input, i)
-            if (literalLen > 0) {
-                out.append(SinhalaPhoneticMap.entries[input.substring(i, i + literalLen)])
-                i += literalLen
-                continue
-            }
-
-            // ---- Anusvara context rule for bare "ng" (spec §16) ----
-            // Mid-word "ng" followed by a vowel letter renders as ං + the
-            // 'g' continuing on as an ordinary consonant with that vowel
-            // (sinhala, ganga, ranga); at buffer start or before a
-            // consonant it falls through to the explicit ඞ consonant
-            // instead. Only the 'n' is consumed here — 'g' is deliberately
-            // left for the next loop iteration to process normally.
-            if (input.startsWith("ng", i) && i > 0) {
-                val afterNg = i + 2
-                val nextIsVowelLetter = afterNg < input.length && input[afterNg] in "aeiouAEIOU"
-                if (nextIsVowelLetter) {
-                    out.append(ANUSVARA); i += 1; continue
-                }
-            }
-
-            // ---- Generalized anusvara: bare n/m before a DIFFERENT ----
-            // ---- consonant that isn't part of a known multi-letter   ----
-            // ---- compound (nd, ndh, ng, mb, nng, nnd, nyny…) (spec §16) --
-            // e.g. "sinhala" -> සිංහල (n before h becomes ං).
-            if ((c == 'n' || c == 'm') && i > 0) {
-                val compound = tryMatch(input, i, prenasalized) ?: tryMatch(input, i, consonants)
-                val isMultiLetterCompound = compound != null && compound.first.length > 1
-                if (!isMultiLetterCompound) {
-                    val next = i + 1
-                    if (next < input.length &&
-                        input[next].isLetter() &&
-                        input[next] !in "aeiouAEIOU" &&
-                        input[next] != 'x' &&
-                        input[next] != c
-                    ) {
-                        out.append(ANUSVARA); i = next; continue
-                    }
-                }
-            }
-
-            // ---- Consonant base (prenasalized first, then normal) ----
-            val baseMatch = tryMatch(input, i, prenasalized) ?: tryMatch(input, i, consonants)
-
-            if (baseMatch != null) {
-                val (key, glyph) = baseMatch
-                val pos = i + key.length
-
-                // ksha conjunct: k + "sha"/"sh" -> ක්‍ෂ (+ vowel sign)
-                if (key == "k" && (input.startsWith("sha", pos) || input.startsWith("sh", pos))) {
-                    val afterSh = pos + if (input.startsWith("sha", pos)) 2 else 2
-                    out.append("ක").append(HAL).append(ZWJ).append("ෂ")
-                    val v = tryMatch(input, afterSh, vowelSigns)
-                    when {
-                        v != null -> { out.append(v.second); i = afterSh + v.first.length }
-                        afterSh < input.length && input[afterSh] == 'a' &&
-                            !input.startsWith("aa", afterSh) && !input.startsWith("au", afterSh) -> { i = afterSh + 1 }
-                        else -> i = afterSh
-                    }
-                    continue
-                }
-
-                // Try a vowel-sign match on the base first — this must win
-                // over the implicit rakaransaya heuristic below so that
-                // "ru"/"ruu" (dependent vowel signs) aren't mistaken for
-                // consonant+r ligatures, e.g. "kru" -> කෘ, not ක්‍රු.
-                val vowelEarly = tryMatch(input, pos, vowelSigns)
-
-                // Implicit rakaransaya (no explicit 'x'): C + r + vowel/end
-                // -> C + ් + ZWJ + ර [+ vowel]. Per spec §8/§32 examples
-                // such as "kra", "kri", "kree", "pra" which omit the 'x'.
-                if (vowelEarly == null && pos < input.length && input[pos] == 'r' && glyph != "ර") {
-                    val afterR = pos + 1
-                    val v = tryMatch(input, afterR, vowelSigns)
-                    val bareA = afterR < input.length && input[afterR] == 'a' &&
-                        !input.startsWith("aa", afterR) && !input.startsWith("au", afterR)
-                    val atBoundary = afterR >= input.length || input[afterR].isWhitespace()
-                    if (v != null || bareA || atBoundary) {
-                        out.append(glyph).append(HAL).append(ZWJ).append("ර")
-                        when {
-                            v != null -> { out.append(v.second); i = afterR + v.first.length }
-                            bareA -> i = afterR + 1
-                            else -> i = afterR
-                        }
-                        continue
-                    }
-                }
-
-                // Implicit yansaya (no explicit 'x'): C + y + vowel/'a'
-                // -> C + ් + ZWJ + ය [+ vowel].
-                if (pos < input.length && input[pos] == 'y' && glyph != "ය") {
-                    val afterY = pos + 1
-                    val v = tryMatch(input, afterY, vowelSigns)
-                    val bareA = afterY < input.length && input[afterY] == 'a' &&
-                        !input.startsWith("aa", afterY) && !input.startsWith("au", afterY)
-                    if (v != null || bareA) {
-                        out.append(glyph).append(HAL).append(ZWJ).append("ය")
-                        if (v != null) { out.append(v.second); i = afterY + v.first.length }
-                        else i = afterY + 1
-                        continue
-                    }
-                }
-
-                // Virama / pure consonant, and ZWJ conjuncts: C + x [+ r|y]
-                if (pos < input.length && input[pos] == 'x') {
-                    val afterX = pos + 1
-
-                    // Rakaransaya: C + x + r -> C + ් + ZWJ + ර
-                    if (afterX < input.length && input[afterX] == 'r') {
-                        out.append(glyph).append(HAL).append(ZWJ).append("ර")
-                        val afterR = afterX + 1
-                        val v = tryMatch(input, afterR, vowelSigns)
-                        if (v != null) { out.append(v.second); i = afterR + v.first.length }
-                        else i = afterR
-                        continue
-                    }
-                    // Yansaya: C + x + y -> C + ් + ZWJ + ය
-                    if (afterX < input.length && input[afterX] == 'y') {
-                        out.append(glyph).append(HAL).append(ZWJ).append("ය")
-                        val afterY = afterX + 1
-                        val v = tryMatch(input, afterY, vowelSigns)
-                        if (v != null) { out.append(v.second); i = afterY + v.first.length }
-                        else i = afterY
-                        continue
-                    }
-                    // Rephaya: r + x + ZWJ (bare rephaya form)
-                    if (glyph == "ර" && afterX >= input.length) {
-                        out.append("ර").append(HAL).append(ZWJ)
-                        i = afterX
-                        continue
-                    }
-                    // Productive conjunct: C1 + x + C2 -> C1 + ් + C2.
-                    // Nothing more to consume here — the next loop
-                    // iteration naturally re-processes C2 (and any vowel
-                    // that follows it) via the normal consonant path.
-                    out.append(glyph).append(HAL)
-                    i = afterX
-                    continue
-                }
-
-                // Bare 'a' → inherent vowel, consonant alone
-                if (pos < input.length && input[pos] == 'a' &&
-                    !input.startsWith("aa", pos) && !input.startsWith("au", pos)
-                ) {
-                    out.append(glyph)
-                    i = pos + 1
-                    continue
-                }
-
-                // Vowel sign follows
-                if (vowelEarly != null) {
-                    out.append(glyph).append(vowelEarly.second)
-                    i = pos + vowelEarly.first.length
-                    continue
-                }
-
-                // Implicit cluster: consonant directly followed by another
-                // consonant with no vowel between them → hal kirima, and let
-                // the next loop iteration render the following consonant.
-                out.append(glyph).append(HAL)
-                i = pos
-                continue
-            }
-
-            // ---- Independent vowel (word-initial or standalone) ----
-            val vowel = tryMatch(input, i, independentVowels)
-            if (vowel != null) {
-                out.append(vowel.second); i += vowel.first.length; continue
-            }
-
-            // ---- Standalone "x" -> anusvara ං (matches the key's ං label).
-            // After a consonant, "x" is consumed earlier as the explicit
-            // virama / conjunct joiner, so only a free-standing x lands here.
-            if (c == 'x') { out.append(ANUSVARA); i++; continue }
-
-            // ---- Fallback: unknown input, preserve original character ----
-            out.append(c)
-            i++
-        }
-
-        return out.toString()
+    private val literal: Map<String, String> by lazy {
+        val m = HashMap<String, String>(1024)
+        m.putAll(extras)
+        m.putAll(phoneticMap)                    // the (adjusted) file always wins
+        m
     }
+    private val literalMax: Int by lazy { literal.keys.maxOf { it.length } }
 
-    /** Length of the longest map key starting at [pos], or 0 when none matches. */
-    private fun longestLiteralMatch(input: String, pos: Int): Int {
-        val map = SinhalaPhoneticMap.entries
-        var len = minOf(SinhalaPhoneticMap.maxKeyLength, input.length - pos)
+    /** Consonant stems derived from the map itself: "k" for ka→ක, "ny" for nya→ඤ … */
+    private val stems: Map<String, String> by lazy {
+        val m = HashMap<String, String>()
+        for ((k, v) in phoneticMap) {
+            if (k.length >= 2 && k.endsWith("a") && v.length == 1 && v[0] in '\u0D9A'..'\u0DC6') {
+                m[k.dropLast(1)] = v
+            }
+        }
+        m["X"] = "\u0D9E"   // ඞ (the map only has it inside "kaXa")
+        m
+    }
+    private val stemMax: Int by lazy { stems.keys.maxOf { it.length } }
+
+    /** Vowel signs exactly as the map uses them ("a" = inherent vowel, no sign) + ae/aee aliases. */
+    private val vowelSuffixes: List<Pair<String, String>> = listOf(
+        "a" to "", "aa" to "\u0DCF", "A" to "\u0DD0", "Aa" to "\u0DD1", "AA" to "\u0DD1",
+        "ae" to "\u0DD0", "aee" to "\u0DD1",
+        "i" to "\u0DD2", "ii" to "\u0DD3", "u" to "\u0DD4", "uu" to "\u0DD6",
+        "ru" to "\u0DD8", "ruu" to "\u0DF2",
+        "e" to "\u0DD9", "ee" to "\u0DDA", "ei" to "\u0DDA", "E" to "\u0DDB",
+        "o" to "\u0DDC", "oo" to "\u0DDD", "oe" to "\u0DDD", "au" to "\u0DDE"
+    ).sortedByDescending { it.first.length }
+
+    /** The map is case-sensitive, so input is never case-folded. */
+    fun normalizeCase(rawInput: String): String = rawInput
+
+    private fun literalLen(s: String, i: Int): Int {
+        var len = minOf(literalMax, s.length - i)
         while (len >= 1) {
-            if (map.containsKey(input.substring(pos, pos + len))) return len
+            if (literal.containsKey(s.substring(i, i + len))) return len
             len--
         }
         return 0
     }
 
-    private fun tryMatch(
-        input: String,
-        pos: Int,
-        rules: List<Pair<String, String>>
-    ): Pair<String, String>? {
-        if (pos >= input.length) return null
-        for (rule in rules) {
-            val key = rule.first
-            if (pos + key.length <= input.length &&
-                input.regionMatches(pos, key, 0, key.length)
-            ) return rule
+    private fun stemAt(s: String, i: Int): String? {
+        var len = minOf(stemMax, s.length - i)
+        while (len >= 1) {
+            val k = s.substring(i, i + len)
+            if (stems.containsKey(k)) return k
+            len--
         }
         return null
+    }
+
+    private fun suffixAt(s: String, j: Int): Pair<Int, String>? {
+        for ((key, sign) in vowelSuffixes) {
+            if (s.startsWith(key, j)) return key.length to sign
+        }
+        return null
+    }
+
+    private class Syllable(val len: Int, val text: String)
+
+    private fun syllableAt(s: String, i: Int): Syllable? {
+        val stem = stemAt(s, i) ?: return null
+        val glyph = stems.getValue(stem)
+        val j = i + stem.length
+        // consonant + r / y + vowel → rakaransaya / yansaya, generalising the map's
+        // own kra / kya (never after r or y themselves: "arra", "ayya")
+        if (stem != "r" && stem != "y" && j < s.length && (s[j] == 'r' || s[j] == 'y')) {
+            val suf = suffixAt(s, j + 1)
+            if (suf != null) {
+                val conjunct = if (s[j] == 'r') RAKARANSAYA else YANSAYA
+                return Syllable(j + 1 + suf.first - i, glyph + conjunct + suf.second)
+            }
+        }
+        val suf = suffixAt(s, j)
+        if (suf != null) return Syllable(j + suf.first - i, glyph + suf.second)
+        // no vowel follows:
+        //  - m_ / n_ ... force hal kirima (the underscore is consumed): m_pa -> ම්ප
+        if (j < s.length && s[j] == '_') return Syllable(stem.length + 1, glyph + HAL)
+        //  - n / m directly before a DIFFERENT consonant: the nasal follows the place of
+        //    the next consonant, as in Sinhala spelling —
+        //      m before p / b family   -> ම් (hal)    sampath -> සම්පත්, sambandha -> සම්බන්ධ
+        //      n before t / d family   -> න් (hal)    antha -> අන්ත, sandhya -> සන්ධ්‍ය
+        //      anything else           -> ං           sinhala -> සිංහල, lanka -> ලංක
+        //    (a doubled letter stays hal kirima: amma -> අම්ම)
+        if ((stem == "n" || stem == "m") && j < s.length && s[j] != s[i]) {
+            val next = stemAt(s, j)
+            if (next != null) {
+                val c = next[0]
+                val keepHal = (stem == "m" && (c == 'p' || c == 'P' || c == 'b' || c == 'B')) ||
+                              (stem == "n" && (c == 't' || c == 'T' || c == 'd' || c == 'D'))
+                if (!keepHal) return Syllable(stem.length, ANUSVARA)
+            }
+        }
+        return Syllable(stem.length, glyph + HAL)        // bare consonant -> hal kirima
+    }
+
+    fun transliterate(rawInput: String): String {
+        var s = rawInput
+        val out = StringBuilder(s.length * 2)
+        var i = 0
+        while (i < s.length) {
+            val litLen = literalLen(s, i)
+            val syl = syllableAt(s, i)
+            when {
+                litLen > 0 && (syl == null || litLen >= syl.len) -> {
+                    out.append(literal.getValue(s.substring(i, i + litLen)))
+                    i += litLen
+                }
+                syl != null -> {
+                    out.append(syl.text)
+                    i += syl.len
+                }
+                s[i].isUpperCase() && s[i].lowercaseChar() != s[i] -> {
+                    // unmapped capital (e.g. an accidental Shift): retry as lowercase
+                    s = s.substring(0, i) + s[i].lowercaseChar() + s.substring(i + 1)
+                }
+                else -> { out.append(s[i]); i++ }
+            }
+        }
+        return out.toString()
     }
 }
 
