@@ -3141,8 +3141,9 @@ private fun buildKeyPreviewPath(
 
 /**
  * Key preview shown the instant a key is pressed: a rounded bubble in the
- * theme's accent colour (soft top-to-bottom gradient, white letter, drop
- * shadow) floating just above the key with a small pointer toward it.
+ * same neutral surface as the keys (white / raised grey), with the keyboard's
+ * own letter colour and a drop shadow, floating just above the key with a
+ * small pointer toward it.
  * Pops in with a quick scale-up. The popup window is non-touchable so the
  * bubble never swallows the next tap during fast typing.
  */
@@ -3175,9 +3176,11 @@ private fun KeyPreviewPopup(
     val minC = radius + caretW / 2f
     val caretX = (cx - popupLeft - pad).coerceIn(minC, (bubbleW - minC).coerceAtLeast(minC))
 
-    val accent = colors.accent
-    val top = androidx.compose.ui.graphics.lerp(accent, Color.White, 0.22f)
-    val textColor = if (accent.luminance() > 0.6f) Color(0xFF111111) else Color.White
+    // Neutral key-like surface (not the accent colour): white on light themes,
+    // a raised grey on dark themes; the letter keeps the keyboard's own letter colour.
+    val isDarkTheme = colors.keyBg.luminance() < 0.5f
+    val fill = if (isDarkTheme) Color(0xFF4F5257) else Color.White
+    val textColor = colors.keyText
 
     val provider = remember(cx, screenWidthPx, pad, gap) {
         KeyPreviewPositionProvider(cx, screenWidthPx, (pad - gap).toInt())
@@ -3218,7 +3221,7 @@ private fun KeyPreviewPopup(
                     caretCenterX = caretX, caretW = caretW, caretH = caretH,
                     radius = radius
                 )
-                val halos = listOf(12.dp.toPx() to 0.04f, 7.dp.toPx() to 0.07f, 3.dp.toPx() to 0.12f)
+                val halos = listOf(12.dp.toPx() to 0.05f, 7.dp.toPx() to 0.09f, 3.dp.toPx() to 0.16f)
                 for ((w, a) in halos) {
                     drawPath(
                         path = path,
@@ -3229,14 +3232,7 @@ private fun KeyPreviewPopup(
                         )
                     )
                 }
-                drawPath(
-                    path = path,
-                    brush = androidx.compose.ui.graphics.Brush.verticalGradient(
-                        colors = listOf(top, accent),
-                        startY = pad,
-                        endY = pad + bubbleH + caretH
-                    )
-                )
+                drawPath(path = path, color = fill)
             }
             Box(
                 modifier = Modifier
