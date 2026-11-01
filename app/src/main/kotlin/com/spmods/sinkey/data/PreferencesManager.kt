@@ -230,11 +230,11 @@ class PreferencesManager(private val context: Context) {
     }
 
     val keySoundEnabled: Flow<Boolean> = context.dataStore.data.map { prefs ->
-        prefs[Keys.KEY_SOUND] ?: true
+        prefs[Keys.KEY_SOUND] ?: false
     }
 
     val keyVibrateEnabled: Flow<Boolean> = context.dataStore.data.map { prefs ->
-        prefs[Keys.KEY_VIBRATE] ?: true
+        prefs[Keys.KEY_VIBRATE] ?: false
     }
 
     /** Vibration duration in ms for key-press haptics. Default 14. */
@@ -656,8 +656,8 @@ class PreferencesManager(private val context: Context) {
         context.dataStore.edit { prefs ->
             prefs[Keys.THEME_MODE] = ThemeMode.SYSTEM.name
             prefs[Keys.DEFAULT_LANG] = "mix"
-            prefs[Keys.KEY_SOUND] = true
-            prefs[Keys.KEY_VIBRATE] = true
+            prefs[Keys.KEY_SOUND] = false
+            prefs[Keys.KEY_VIBRATE] = false
             prefs[Keys.KEY_VIBRATION_MS] = 14f
             prefs[Keys.MIX_AUTO_SINHALA] = false
             prefs[Keys.SWIPE_TYPING_ENABLED] = false
