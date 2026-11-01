@@ -119,6 +119,14 @@ class SinKeyInputMethodService : InputMethodService() {
 
     /** True when the buffer typing engine should run in Sinhala/phonetic mode ("si" or "mix"). */
     private fun isSinhalaTyping(): Boolean = currentLanguage.value != "en"
+
+    /**
+     * Auto-shift (capital at field start / after a sentence end) is for English only.
+     * In Sinhala and mix mode the phonetic map is case-sensitive (A = ඇ, D = ඪ …), so
+     * a shift that switches itself on would make the first letter come out wrong and
+     * show a capital keyboard nobody asked for. Shift there is always an explicit tap.
+     */
+    private fun autoShiftAllowed(): Boolean = currentLanguage.value == "en"
     private var suggestions = mutableStateOf<List<String>>(emptyList())
     // Set right after an autocorrect silently swaps what the user typed for
     // a dictionary/spell-checker word at SPACE — holds the original typed
@@ -251,7 +259,7 @@ class SinKeyInputMethodService : InputMethodService() {
         val correctedWord: String,
         val hadTrailingSpace: Boolean
     )
-    private var shiftState = mutableStateOf(ShiftState.ONE_SHOT) // default: first letter capital
+    private var shiftState = mutableStateOf(ShiftState.OFF) // auto-shift only in English (see autoShiftAllowed)
     // True only when the current ONE_SHOT came from the user tapping SHIFT
     // themselves, not from auto-capitalize at sentence/field start. Sinhala
     // mode needs this distinction since case there selects a different
@@ -1387,7 +1395,7 @@ class SinKeyInputMethodService : InputMethodService() {
         // the same field re-focused, so we keep the current board in that case.
         if (!restarting) {
             boardStack.value = listOf(Board.MAIN)
-            shiftState.value = ShiftState.ONE_SHOT // auto-shift: capitalize first letter of new field
+            shiftState.value = if (autoShiftAllowed()) ShiftState.ONE_SHOT else ShiftState.OFF // auto-shift: English only
 
             // BUG FIX: isTranslateMode is hoisted independently of boardStack
             // (see its doc comment), so it was never reset here — leaving the
@@ -1666,7 +1674,7 @@ class SinKeyInputMethodService : InputMethodService() {
      * 'd', plus 'n' and 'l') covers all of them.
      */
     private fun isCaseSensitiveSinhalaLetter(key: String): Boolean =
-        key.lowercase() in setOf("n", "l", "t", "d", "s")
+        key.length == 1 && key[0].isLetter()
 
     private fun handleKey(key: String) {
         // Translate row active (TOOL_TRANSLATE) — route entirely to its
@@ -1873,8 +1881,8 @@ class SinKeyInputMethodService : InputMethodService() {
                         appendTrailingAfterHiddenMessageCommit(ic, "\n")
                     }
                 }
-                // New line = sentence start → auto-shift
-                if (shiftState.value == ShiftState.OFF) shiftState.value = ShiftState.ONE_SHOT
+                // New line = sentence start → auto-shift (English only)
+                if (autoShiftAllowed() && shiftState.value == ShiftState.OFF) shiftState.value = ShiftState.ONE_SHOT
             }
             "SHIFT" -> {
                 // Single tap cycles: OFF → ONE_SHOT → OFF
@@ -1929,6 +1937,7 @@ class SinKeyInputMethodService : InputMethodService() {
                     else  -> "mix" // "si" -> "mix"
                 }
                 currentLanguage.value = newLang
+                if (!autoShiftAllowed() && shiftState.value == ShiftState.ONE_SHOT && !wasExplicitShift) shiftState.value = ShiftState.OFF
                 // BUG FIX (toggled language silently reverts mid-session,
                 // both in normal typing and inside the translate row): this
                 // only ever updated currentLanguage.value in memory. The
@@ -1958,7 +1967,7 @@ class SinKeyInputMethodService : InputMethodService() {
                 ic.commitText(key, 1)
                 // Period → next word should be capitalized
                 if (key == ".") {
-                    if (shiftState.value == ShiftState.OFF) shiftState.value = ShiftState.ONE_SHOT
+                    if (autoShiftAllowed() && shiftState.value == ShiftState.OFF) shiftState.value = ShiftState.ONE_SHOT
                 }
             }
             else -> {
@@ -1986,7 +1995,7 @@ class SinKeyInputMethodService : InputMethodService() {
                     ic.commitText(key, 1)
                     // Check sentence-ending punctuation (! ?)
                     if (key == "!" || key == "?") {
-                        if (shiftState.value == ShiftState.OFF) shiftState.value = ShiftState.ONE_SHOT
+                        if (autoShiftAllowed() && shiftState.value == ShiftState.OFF) shiftState.value = ShiftState.ONE_SHOT
                     }
                     syncExpectedCursorPosition(ic)
                     return
@@ -2100,6 +2109,11 @@ class SinKeyInputMethodService : InputMethodService() {
     /** Auto-shift: if the text before cursor ends with ". ", "! ", "? " or is empty → ONE_SHOT */
     private fun updateAutoShift(ic: android.view.inputmethod.InputConnection) {
         if (shiftState.value == ShiftState.LOCKED) return
+        if (!autoShiftAllowed()) {
+            // Sinhala / mix: never auto-shift; drop a leftover automatic one-shot
+            if (shiftState.value == ShiftState.ONE_SHOT && !wasExplicitShift) shiftState.value = ShiftState.OFF
+            return
+        }
         val before = ic.getTextBeforeCursor(3, 0)?.toString() ?: ""
         val shouldShift = before.isEmpty() ||
             before.endsWith(". ") || before.endsWith("! ") || before.endsWith("? ") ||
@@ -2463,6 +2477,7 @@ class SinKeyInputMethodService : InputMethodService() {
                     else  -> "mix"
                 }
                 currentLanguage.value = newLang
+                if (!autoShiftAllowed() && shiftState.value == ShiftState.ONE_SHOT && !wasExplicitShift) shiftState.value = ShiftState.OFF
                 // Same persistence fix as the main LANG_TOGGLE handler in
                 // handleKey — see its comment for the full reasoning. Both
                 // handlers must persist via prefs.setDefaultLanguage, or
@@ -3921,7 +3936,7 @@ class SinKeyInputMethodService : InputMethodService() {
             var dictionaryAmbiguousAlt: String? = null
             for (idx in raw.indices) {
                 val ch = raw[idx]
-                if (ch.lowercaseChar() !in "ntdl" || ch.isUpperCase()) continue
+                if (ch.lowercaseChar() !in "ntdlsjpbcae" || ch.isUpperCase()) continue
                 val swapped = raw.substring(0, idx) + ch.uppercaseChar() + raw.substring(idx + 1)
                 val altCandidate = SinhalaTransliterator.transliterate(swapped)
                 if (altCandidate == primary) continue
