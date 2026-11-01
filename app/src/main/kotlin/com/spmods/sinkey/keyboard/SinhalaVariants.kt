@@ -31,7 +31,7 @@ object SinhalaVariants {
     // Fixed multi-letter tokens that must not be split or varied.
     // Longest first so e.g. "nyny" wins over "ny".
     private val fixedTokens = listOf(
-        "kunda", "nyny", "chh", "thh", "ddh", "nng", "nnd", "ng_",
+        "kunda", "nyny", "chh", "thh", "ddh", "nng", "nnd", "mmb", "ng_",
         "kh", "gh", "ch", "jh", "ny", "gn", "ph", "bh", "h_", "h."
     )
 
@@ -40,9 +40,9 @@ object SinhalaVariants {
         "th" to listOf("th", "Th"),
         "sh" to listOf("sh", "Sh"),
         "dh" to listOf("dh", "Dh"),
-        "nd" to listOf("nd", "nnd", "nxd"),
-        "ng" to listOf("ng", "xg"),
-        "mb" to listOf("mb", "mxb")
+        "nd" to listOf("nd", "nnd"),
+        "ng" to listOf("ng", "nng", "xg"),
+        "mb" to listOf("mb", "mmb")
     )
 
     // Ambiguous single letters (default option first).
