@@ -266,6 +266,7 @@ object SinhalaTransliterator {
      *  - d-family: d -> ද, dh -> ධ, D -> ඩ, Dh -> ඪ  (ද is the commonest "d";
      *    the file's d -> ඩ made "gedara" come out ගෙඩර)
      *  - ru / ruu -> රු / රූ  (the file lists both ඍ and රු; ඍ/ඎ are Ru / Ruu)
+ *  - ඳ ඹ ඟ: nda/mba/nga -> nnda/mmba/nnga (so plain nd/mb/ng are two letters)
      * Everything else is the file, untouched.
      */
     private val phoneticMap: Map<String, String> by lazy {
@@ -280,6 +281,19 @@ object SinhalaTransliterator {
                 else -> continue
             }
             m[k] = swapped + v.substring(1)
+        }
+        // prenasalised letters ඳ ඹ ඟ are typed with the nasal doubled (nnda, mmba, nnga);
+        // plain nd / mb / ng are then just two consonants (sandesaya, sambandha, sangeetha)
+        for ((k, v) in SinhalaPhoneticMap.entries) {
+            val first = v.firstOrNull() ?: continue
+            val doubled: String = when {
+                k.startsWith("nd") && first == '\u0DB3' -> "n$k"
+                k.startsWith("mb") && first == '\u0DB9' -> "m$k"
+                k.startsWith("ng") && first == '\u0D9F' -> "n$k"
+                else -> continue
+            }
+            m.remove(k)
+            m[doubled] = v
         }
         m["ru"] = "\u0DBB\u0DD4"; m["ruu"] = "\u0DBB\u0DD6"
         m["Ru"] = "\u0D8D"; m["Ruu"] = "\u0D8E"
