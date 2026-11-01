@@ -282,7 +282,7 @@ class SinKeyInputMethodService : InputMethodService() {
     // Eliminates runBlocking on every key tap (was causing main-thread lag / ANR).
     // Also enables key sound which was previously unimplemented.
     private var cachedVibrateEnabled = false
-    private var cachedSoundEnabled = true
+    private var cachedSoundEnabled = false
     private var cachedVibrationMs = 14L
 
     // Fancy-text style (TOOL_FONT) applied to committed ENGLISH text only —
