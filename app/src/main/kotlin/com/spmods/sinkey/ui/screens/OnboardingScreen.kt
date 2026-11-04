@@ -97,25 +97,30 @@ private fun isImeDefault(context: Context): Boolean {
 }
 
 // ── Onboarding palette ──────────────────────────────────────────────
-// Light = the original light-purple look. Dark = deep violet-night variant.
+// Background = the About Developer page's (blobs, sparkles, bottom wave).
+// Light / Dark values are copied from its LightDev / DarkDev palettes.
 // Which one is used follows the app theme (SinKeyTheme → MaterialTheme), so
 // both the system dark mode and the in-app Light/Dark/System override work.
 // The artwork PNGs have transparent backgrounds, so they sit fine on either.
 @Immutable
 private class ObColors(
-    val bgTop: Color,
-    val bgBottom: Color,
+    val bg: Color,
     val title: Color,
     val body: Color,
     val accent: Color,
     val buttonStart: Color,
     val buttonEnd: Color,
     val dotIdle: Color,
-    val blob: Color,
-    val sparkle: Color,
-    val waveBack: Color,
-    val waveFrontStart: Color,
-    val waveFrontEnd: Color,
+    // background — same values as AboutDeveloperScreen's LightDev / DarkDev
+    val blobL: Color,
+    val blobR: Color,
+    val sparkleBig: Color,
+    val sparkleSmall: Color,
+    val waveLightTop: Color,
+    val waveLightBottom: Color,
+    val waveDeepTop: Color,
+    val waveDeepBottom: Color,
+    val waveSwell: Color,
     val stepRowBg: Color,
     val stepRowBorder: Color,
     val link: Color,        // Skip / Finish text buttons
@@ -125,19 +130,22 @@ private class ObColors(
 }
 
 private val ObLight = ObColors(
-    bgTop = Color(0xFFFBF8FF),
-    bgBottom = Color(0xFFEFE6FF),
+    bg = Color(0xFFF8F6FC),
     title = Color(0xFF1E0B6E),
     body = Color(0xFF2B1A7A),
     accent = Color(0xFF7B2FFF),
     buttonStart = Color(0xFF5B2BEF),
     buttonEnd = Color(0xFF8A1FFF),
     dotIdle = Color(0xFFD3C2F7),
-    blob = Color(0xFFB794FF),
-    sparkle = Color(0xFF7B4DF5),
-    waveBack = Color(0xFFB79CFF).copy(alpha = 0.28f),
-    waveFrontStart = Color(0xFF7B3FF2),
-    waveFrontEnd = Color(0xFFA57CFF),
+    blobL = Color(0xFFE6DBFE),
+    blobR = Color(0xFFE4D9FD),
+    sparkleBig = Color(0xFF6D3CF0),
+    sparkleSmall = Color(0xFF8B62F5),
+    waveLightTop = Color(0xFFE2D4FE),
+    waveLightBottom = Color(0xFFDACAFD),
+    waveDeepTop = Color(0xFFB684FC),
+    waveDeepBottom = Color(0xFF9450FB),
+    waveSwell = Color(0xFF672DDE),
     stepRowBg = Color.White.copy(alpha = 0.65f),
     stepRowBorder = Color.White,
     link = Color(0xFF5B2BEF),
@@ -145,19 +153,22 @@ private val ObLight = ObColors(
 )
 
 private val ObDark = ObColors(
-    bgTop = Color(0xFF0F0C1D),
-    bgBottom = Color(0xFF1B1438),
+    bg = Color(0xFF0F0C1D),
     title = Color(0xFFF2EEFF),
     body = Color(0xFFCFC8F2),
     accent = Color(0xFFB093FF),
     buttonStart = Color(0xFF6D3BF5),
     buttonEnd = Color(0xFF9B4DFF),
     dotIdle = Color(0xFF3A2F66),
-    blob = Color(0xFF6D3FD6),
-    sparkle = Color(0xFFB093FF),
-    waveBack = Color(0xFF6D3FD6).copy(alpha = 0.30f),
-    waveFrontStart = Color(0xFF4B22B8),
-    waveFrontEnd = Color(0xFF7C4DE0),
+    blobL = Color(0xFF231A49),
+    blobR = Color(0xFF20174A),
+    sparkleBig = Color(0xFF9B7BFF),
+    sparkleSmall = Color(0xFF7F5FE0),
+    waveLightTop = Color(0xFF30246A),
+    waveLightBottom = Color(0xFF281E5C),
+    waveDeepTop = Color(0xFF5E38CC),
+    waveDeepBottom = Color(0xFF3F20A3),
+    waveSwell = Color(0xFF2B1580),
     stepRowBg = Color(0xFF251D47).copy(alpha = 0.85f),
     stepRowBorder = Color(0xFF3A2F66),
     link = Color(0xFFB093FF),
@@ -506,69 +517,145 @@ private fun PagerDots(colors: ObColors, pageCount: Int, currentPage: Int, modifi
     }
 }
 
-// ── Static decorative background (identical on every page) ─────────
+// ── Background — same artwork as the About Developer page ───────────
+// Geometry uses that page's design coordinates (852 px reference width),
+// scaled by p = width / 852, so it looks identical on every screen size.
+
+private const val ObRefWidth = 852f
 
 @Composable
 private fun OnboardingBackground(colors: ObColors) {
     Canvas(modifier = Modifier.fillMaxSize()) {
-        val w = size.width
-        val h = size.height
-
-        drawRect(Brush.verticalGradient(listOf(colors.bgTop, colors.bgBottom)))
-
-        // Soft blobs
-        fun blob(cx: Float, cy: Float, rx: Float, ry: Float, alpha: Float) {
-            drawOval(
-                brush = Brush.radialGradient(
-                    colors = listOf(colors.blob.copy(alpha = alpha), Color.Transparent),
-                    center = Offset(cx, cy),
-                    radius = maxOf(rx, ry)
-                ),
-                topLeft = Offset(cx - rx, cy - ry),
-                size = Size(rx * 2, ry * 2)
-            )
-        }
-        blob(0f, h * 0.05f, w * 0.45f, h * 0.10f, 0.55f)
-        blob(w, h * 0.17f, w * 0.40f, h * 0.09f, 0.45f)
-        blob(0f, h * 0.72f, w * 0.40f, h * 0.10f, 0.45f)
-        blob(w, h * 0.68f, w * 0.40f, h * 0.10f, 0.40f)
-
-        // Sparkles
-        val sparkleColor = colors.sparkle
-        sparkle(Offset(w * 0.24f, h * 0.12f), 14.dp.toPx(), sparkleColor)
-        sparkle(Offset(w * 0.15f, h * 0.16f), 11.dp.toPx(), sparkleColor)
-        sparkle(Offset(w * 0.80f, h * 0.15f), 11.dp.toPx(), sparkleColor)
-        sparkle(Offset(w * 0.86f, h * 0.76f), 12.dp.toPx(), sparkleColor)
-
-        // Bottom waves
-        val waveH = 120.dp.toPx()
-        val top = h - waveH
-        val back = Path().apply {
-            moveTo(0f, top + waveH * 0.25f)
-            cubicTo(w * 0.25f, top - waveH * 0.05f, w * 0.55f, top + waveH * 0.55f, w, top + waveH * 0.10f)
-            lineTo(w, h); lineTo(0f, h); close()
-        }
-        drawPath(back, colors.waveBack)
-        val front = Path().apply {
-            moveTo(0f, top + waveH * 0.55f)
-            cubicTo(w * 0.30f, top + waveH * 0.25f, w * 0.65f, top + waveH * 0.85f, w, top + waveH * 0.40f)
-            lineTo(w, h); lineTo(0f, h); close()
-        }
-        drawPath(
-            front,
-            Brush.horizontalGradient(listOf(colors.waveFrontStart, colors.waveFrontEnd))
-        )
+        val p = size.width / ObRefWidth
+        drawRect(colors.bg)
+        drawHeroDecor(p, colors)
+        drawBottomWave(p, colors)
     }
 }
 
-private fun DrawScope.sparkle(c: Offset, r: Float, color: Color) {
-    val p = Path().apply {
-        moveTo(c.x, c.y - r)
-        quadraticBezierTo(c.x, c.y, c.x + r, c.y)
-        quadraticBezierTo(c.x, c.y, c.x, c.y + r)
-        quadraticBezierTo(c.x, c.y, c.x - r, c.y)
-        quadraticBezierTo(c.x, c.y, c.x, c.y - r)
+private fun DrawScope.drawHeroDecor(p: Float, c: ObColors) {
+    // coordinates are the design's own, minus the 70 px status-bar offset
+    fun pt(x: Float, y: Float) = Offset(x * p, (y - 70f) * p)
+
+    // top-left lavender blob
+    val left = Path().apply {
+        smoothThrough(
+            listOf(
+                pt(0f, 100f), pt(45f, 118f), pt(100f, 128f), pt(124f, 148f), pt(125f, 170f),
+                pt(118f, 195f), pt(98f, 225f), pt(62f, 255f), pt(32f, 270f), pt(0f, 288f)
+            ),
+            moveFirst = true
+        )
         close()
     }
-    drawPath(p, color)
+    drawPath(left, c.blobL)
+
+    // top-right lavender blob
+    val right = Path().apply {
+        smoothThrough(
+            listOf(
+                pt(852f, 135f), pt(818f, 145f), pt(793f, 160f), pt(776f, 175f), pt(765f, 190f),
+                pt(757f, 205f), pt(752f, 220f), pt(749f, 235f), pt(749f, 250f), pt(752f, 265f),
+                pt(757f, 280f), pt(765f, 295f), pt(775f, 310f), pt(782f, 325f), pt(785f, 340f),
+                pt(785f, 355f), pt(780f, 370f), pt(803f, 385f), pt(827f, 400f), pt(852f, 412f)
+            ),
+            moveFirst = true
+        )
+        close()
+    }
+    drawPath(right, c.blobR)
+
+    // sparkles
+    sparkle(pt(180f, 258f), 28f * p, c.sparkleBig)
+    sparkle(pt(120f, 306f), 9f * p, c.sparkleSmall)
+    sparkle(pt(716f, 313f), 28f * p, c.sparkleBig)
+    sparkle(pt(671f, 236f), 9f * p, c.sparkleSmall)
+}
+
+/** Purple wave pinned to the bottom edge (196 design units tall, like the About page). */
+private fun DrawScope.drawBottomWave(p: Float, c: ObColors) {
+    val waveTop = size.height - 196f * p       // where the About page's wave canvas starts
+    val designTop = 1650f                       // design y of that canvas's top edge
+    fun pt(x: Float, y: Float) = Offset(x * p, waveTop + (y - designTop) * p)
+    val bottom = size.height
+
+    val lightEdge = listOf(
+        pt(0f, 1689f), pt(43f, 1702f), pt(86f, 1725f), pt(129f, 1753f), pt(172f, 1776f),
+        pt(215f, 1788f), pt(258f, 1791f), pt(301f, 1787f), pt(344f, 1780f), pt(387f, 1773f),
+        pt(430f, 1769f), pt(473f, 1773f), pt(516f, 1780f), pt(559f, 1786f), pt(602f, 1789f),
+        pt(645f, 1783f), pt(688f, 1766f), pt(731f, 1739f), pt(774f, 1707f), pt(817f, 1683f),
+        pt(852f, 1670f)
+    )
+    val deepEdge = listOf(
+        pt(0f, 1730f), pt(43f, 1737f), pt(86f, 1755f), pt(129f, 1781f), pt(172f, 1803f),
+        pt(215f, 1813f), pt(258f, 1811f), pt(301f, 1800f), pt(344f, 1786f), pt(387f, 1775f),
+        pt(430f, 1771f), pt(473f, 1775f), pt(516f, 1787f), pt(559f, 1801f), pt(602f, 1810f),
+        pt(645f, 1811f), pt(688f, 1799f), pt(731f, 1775f), pt(774f, 1750f), pt(817f, 1734f),
+        pt(852f, 1722f)
+    )
+
+    // light lavender wave behind
+    val light = Path().apply {
+        smoothThrough(lightEdge, moveFirst = true)
+        lineTo(size.width, bottom); lineTo(0f, bottom); close()
+    }
+    drawPath(light, Brush.verticalGradient(listOf(c.waveLightTop, c.waveLightBottom)))
+
+    // main purple wave
+    val deep = Path().apply {
+        smoothThrough(deepEdge, moveFirst = true)
+        lineTo(size.width, bottom); lineTo(0f, bottom); close()
+    }
+    drawPath(
+        deep,
+        Brush.verticalGradient(
+            listOf(c.waveDeepTop, c.waveDeepBottom),
+            startY = pt(0f, 1730f).y,
+            endY = bottom
+        )
+    )
+
+    // darker swell in the bottom-left corner
+    val swell = Path().apply {
+        smoothThrough(listOf(pt(0f, 1795f), pt(200f, 1824f), pt(430f, 1846f)), moveFirst = true)
+        lineTo(pt(430f, 1846f).x, bottom); lineTo(0f, bottom); close()
+    }
+    drawPath(
+        swell,
+        Brush.horizontalGradient(
+            listOf(c.waveSwell, c.waveSwell.copy(alpha = 0f)),
+            startX = 0f,
+            endX = 440f * p
+        )
+    )
+}
+
+private fun DrawScope.sparkle(c: Offset, r: Float, color: Color) {
+    val i = r * 0.14f
+    val path = Path().apply {
+        moveTo(c.x, c.y - r)
+        quadraticBezierTo(c.x + i, c.y - i, c.x + r, c.y)
+        quadraticBezierTo(c.x + i, c.y + i, c.x, c.y + r)
+        quadraticBezierTo(c.x - i, c.y + i, c.x - r, c.y)
+        quadraticBezierTo(c.x - i, c.y - i, c.x, c.y - r)
+        close()
+    }
+    drawPath(path, color)
+}
+
+/** Catmull-Rom spline through [pts] expressed as cubic Béziers. */
+private fun Path.smoothThrough(pts: List<Offset>, moveFirst: Boolean) {
+    if (pts.isEmpty()) return
+    if (moveFirst) moveTo(pts[0].x, pts[0].y) else lineTo(pts[0].x, pts[0].y)
+    for (i in 0 until pts.size - 1) {
+        val p0 = pts[maxOf(i - 1, 0)]
+        val p1 = pts[i]
+        val p2 = pts[i + 1]
+        val p3 = pts[minOf(i + 2, pts.size - 1)]
+        cubicTo(
+            p1.x + (p2.x - p0.x) / 6f, p1.y + (p2.y - p0.y) / 6f,
+            p2.x - (p3.x - p1.x) / 6f, p2.y - (p3.y - p1.y) / 6f,
+            p2.x, p2.y
+        )
+    }
 }
