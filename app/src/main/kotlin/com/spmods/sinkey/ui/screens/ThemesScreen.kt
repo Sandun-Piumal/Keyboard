@@ -62,9 +62,9 @@ import com.spmods.sinkey.data.TypingAnimation
 private data class ThemeOption(val label: String, val siLabel: String, val bg: Color, val fg: Color, val emoji: String, val mode: ThemeMode?)
 
 private val themeOptions = listOf(
-    ThemeOption("Cream Light", "ආලෝකය", Color(0xFFF4F2ED), Color(0xFF241C14), "☀️", ThemeMode.LIGHT),
-    ThemeOption("Night", "අඳුර", Color(0xFF15130F), Color(0xFFF2EDE4), "🌙", ThemeMode.DARK),
-    ThemeOption("Follow system", "පද්ධතිය", Color(0xFFEFE6D8), Color(0xFF7A2038), "⚙️", ThemeMode.SYSTEM)
+    ThemeOption("Light", "ආලෝකය", Color(0xFFF8F6FC), Color(0xFF0A0D2C), "☀️", ThemeMode.LIGHT),
+    ThemeOption("Night", "අඳුර", Color(0xFF0F0C1D), Color(0xFFF2EEFF), "🌙", ThemeMode.DARK),
+    ThemeOption("Follow system", "පද්ධතිය", Color(0xFFE4DAFB), Color(0xFF4A1FC6), "⚙️", ThemeMode.SYSTEM)
 )
 
 /**
@@ -281,7 +281,7 @@ private fun DefaultThemeCard(
                     .align(Alignment.CenterEnd)
                     .fillMaxHeight()
                     .fillMaxWidth(0.5f)
-                    .background(Color(0xFF15130F))
+                    .background(Color(0xFF0F0C1D))
             )
         }
         Box(
