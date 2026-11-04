@@ -63,6 +63,7 @@ import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.withTransform
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.graphics.vector.PathParser
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalConfiguration
@@ -90,18 +91,59 @@ import com.spmods.sinkey.R
  * same proportions on every phone.
  */
 
-// ── Palette (sampled from the design) ───────────────────────────────────────
-private val DevBg        = Color(0xFFF8F6FC)
-private val DevInk       = Color(0xFF0A0D2C)
-private val DevPurple    = Color(0xFF6D28F2)
-private val DevPurpleDk  = Color(0xFF4A1FC6)
-private val DevSub       = Color(0xFF7173AF)
-private val DevTile      = Color(0xFFEFE8FD)
-private val DevPill      = Color(0xFFE4DAFB)
-private val DevCardFill  = Color(0xFFFCFBFE)
-private val DevCardLine  = Color(0xFFE8DEFB)
-private val DevBlobL     = Color(0xFFE6DBFE)
-private val DevBlobR     = Color(0xFFE4D9FD)
+// ── Palette: light = sampled from the design, dark = same hues on a deep purple-black ──
+private class DevColors(
+    val dark: Boolean,
+    val bg: Color, val ink: Color, val title: Color,
+    val purple: Color, val pillText: Color, val sub: Color, val label: Color,
+    val tile: Color, val tileTop: Color, val pill: Color,
+    val cardFill: Color, val cardLine: Color, val blobL: Color, val blobR: Color,
+    val miniTop: Color, val miniBottom: Color, val miniLine: Color,
+    val miniBlob1: Color, val miniBlob2: Color,
+    val codeTile: Color, val codeGlyph: Color, val avatarGap: Color,
+    val sparkleBig: Color, val sparkleSmall: Color,
+    val groupIcon: Color, val megaIcon: Color, val globeIcon: Color, val contactIcon: Color,
+    val quote: Color, val divider: Color, val footer: Color, val logoHalo: Color,
+    val waveLightTop: Color, val waveLightBottom: Color,
+    val waveDeepTop: Color, val waveDeepBottom: Color, val waveSwell: Color,
+    val shadow: Color
+)
+
+private val LightDev = DevColors(
+    dark = false,
+    bg = Color(0xFFF8F6FC), ink = Color(0xFF0A0D2C), title = Color(0xFF08071F),
+    purple = Color(0xFF6D28F2), pillText = Color(0xFF4A1FC6), sub = Color(0xFF7173AF), label = Color(0xFF5B5C9A),
+    tile = Color(0xFFEFE8FD), tileTop = Color(0xFFF2ECFE), pill = Color(0xFFE4DAFB),
+    cardFill = Color(0xFFFCFBFE), cardLine = Color(0xFFE8DEFB), blobL = Color(0xFFE6DBFE), blobR = Color(0xFFE4D9FD),
+    miniTop = Color(0xFFF4EEFE), miniBottom = Color(0xFFFAF8FE), miniLine = Color(0xFFDCCEFB),
+    miniBlob1 = Color(0xFFEBE2FC), miniBlob2 = Color(0xFFF0E8FD),
+    codeTile = Color(0xFFEAE1FC), codeGlyph = Color(0xFF6A33E0), avatarGap = Color.White,
+    sparkleBig = Color(0xFF6D3CF0), sparkleSmall = Color(0xFF8B62F5),
+    groupIcon = Color(0xFF6C2BD9), megaIcon = Color(0xFF742AF8), globeIcon = Color(0xFF7A2FF0), contactIcon = Color(0xFF6D28F2),
+    quote = Color(0xFF1B1740), divider = Color(0xFFD9CCFA), footer = Color(0xFF55528D), logoHalo = Color.White,
+    waveLightTop = Color(0xFFE2D4FE), waveLightBottom = Color(0xFFDACAFD),
+    waveDeepTop = Color(0xFFB684FC), waveDeepBottom = Color(0xFF9450FB), waveSwell = Color(0xFF672DDE),
+    shadow = Color(0x226D28F2)
+)
+
+private val DarkDev = DevColors(
+    dark = true,
+    bg = Color(0xFF0F0C1D), ink = Color(0xFFF2EEFF), title = Color(0xFFFFFFFF),
+    purple = Color(0xFFA78BFA), pillText = Color(0xFFD6C8FF), sub = Color(0xFFA9A6D6), label = Color(0xFFB9B6E0),
+    tile = Color(0xFF251D47), tileTop = Color(0xFF2B2252), pill = Color(0xFF34285F),
+    cardFill = Color(0xFF181331), cardLine = Color(0xFF2D2452), blobL = Color(0xFF231A49), blobR = Color(0xFF20174A),
+    miniTop = Color(0xFF211A43), miniBottom = Color(0xFF1A1534), miniLine = Color(0xFF3A2F6C),
+    miniBlob1 = Color(0xFF2A2056), miniBlob2 = Color(0xFF251C4E),
+    codeTile = Color(0xFF34285F), codeGlyph = Color(0xFFC4B0FF), avatarGap = Color(0xFF1A1534),
+    sparkleBig = Color(0xFF9B7BFF), sparkleSmall = Color(0xFF7F5FE0),
+    groupIcon = Color(0xFFA98BFF), megaIcon = Color(0xFFAE8CFF), globeIcon = Color(0xFFB093FF), contactIcon = Color(0xFFB093FF),
+    quote = Color(0xFFE6E1FF), divider = Color(0xFF3A2F6C), footer = Color(0xFF9C99D0), logoHalo = Color(0xFF2A2150),
+    waveLightTop = Color(0xFF30246A), waveLightBottom = Color(0xFF281E5C),
+    waveDeepTop = Color(0xFF5E38CC), waveDeepBottom = Color(0xFF3F20A3), waveSwell = Color(0xFF2B1580),
+    shadow = Color(0x66000000)
+)
+
+private val LocalDevColors = compositionLocalOf { LightDev }
 
 /** The design uses a rounded geometric sans. Drop a TTF into res/font and point this at it to match exactly. */
 private val DevFont: FontFamily = FontFamily.Default
@@ -147,10 +189,12 @@ fun AboutDeveloperScreen(
 ) {
     val screenW = LocalConfiguration.current.screenWidthDp
     val unit = DevUnit(screenW / REF_WIDTH)
+    // follows the app's own theme (System / Light / Dark setting), not just the OS
+    val pal = if (MaterialTheme.colorScheme.background.luminance() < 0.5f) DarkDev else LightDev
     var showTelegramSheet by remember { mutableStateOf(false) }
 
-    CompositionLocalProvider(LocalDevUnit provides unit) {
-        Scaffold(containerColor = DevBg) { padding ->
+    CompositionLocalProvider(LocalDevUnit provides unit, LocalDevColors provides pal) {
+        Scaffold(containerColor = pal.bg) { padding ->
             Box(
                 modifier = Modifier
                     .fillMaxSize()
@@ -208,10 +252,11 @@ fun AboutDeveloperScreen(
 @Composable
 private fun HeroSection(onBack: () -> Unit) {
     val u = LocalDevUnit.current
+    val pal = LocalDevColors.current
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .drawBehind { drawHeroDecor(u.k * density) },
+            .drawBehind { drawHeroDecor(u.k * density, pal) },
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
         // Top bar (design y 70..146)
@@ -232,18 +277,18 @@ private fun HeroSection(onBack: () -> Unit) {
                 Icon(
                     Icons.Filled.ArrowBack,
                     contentDescription = "Back",
-                    tint = DevInk,
+                    tint = pal.ink,
                     modifier = Modifier.size(u.d(46f))
                 )
             }
             Spacer(Modifier.width(u.d(31f)))
-            DevText("About Developer", 28f, color = DevInk, weight = FontWeight.SemiBold)
+            DevText("About Developer", 28f, color = pal.ink, weight = FontWeight.SemiBold)
         }
 
         Spacer(Modifier.height(u.d(16f)))
         SinkeyLogo()
         Spacer(Modifier.height(u.d(1f)))
-        DevText("Sinkey", 66f, color = Color(0xFF08071F), weight = FontWeight.Bold, lineH = 84f)
+        DevText("Sinkey", 66f, color = pal.title, weight = FontWeight.Bold, lineH = 84f)
         Spacer(Modifier.height(u.d(2f)))
 
         // Tagline with the two fading rules
@@ -256,15 +301,15 @@ private fun HeroSection(onBack: () -> Unit) {
             Text(
                 text = buildAnnotatedString {
                     append("Code  ")
-                    withStyle(SpanStyle(color = DevPurple)) { append("\u2022") }
+                    withStyle(SpanStyle(color = pal.purple)) { append("\u2022") }
                     append("  Create  ")
-                    withStyle(SpanStyle(color = DevPurple)) { append("\u2022") }
+                    withStyle(SpanStyle(color = pal.purple)) { append("\u2022") }
                     append("  Improve")
                 },
                 fontFamily = DevFont,
                 fontSize = u.sp(31f),
                 lineHeight = u.sp(40f),
-                color = Color(0xFF7173AF),
+                color = pal.sub,
                 maxLines = 1
             )
             Spacer(Modifier.width(u.d(21f)))
@@ -276,6 +321,7 @@ private fun HeroSection(onBack: () -> Unit) {
 @Composable
 private fun TaglineRule(fadeLeft: Boolean) {
     val u = LocalDevUnit.current
+    val pal = LocalDevColors.current
     val strong = Color(0xFF8F63F6)
     val faint = Color(0xFFB899F9).copy(alpha = 0.25f)
     Box(
@@ -294,6 +340,7 @@ private fun TaglineRule(fadeLeft: Boolean) {
 @Composable
 private fun SinkeyLogo() {
     val u = LocalDevUnit.current
+    val pal = LocalDevColors.current
     Box(
         modifier = Modifier.size(u.d(270f)),
         contentAlignment = Alignment.Center
@@ -312,7 +359,7 @@ private fun SinkeyLogo() {
                 radius = 135f * p,
                 center = c
             )
-            drawCircle(Color.White, radius = 111f * p, center = c)
+            drawCircle(pal.logoHalo, radius = 111f * p, center = c)
             drawCircle(
                 brush = Brush.linearGradient(
                     listOf(Color(0xFF8B55FF), Color(0xFF6430F9)),
@@ -338,7 +385,7 @@ private fun SinkeyLogo() {
 /** Box.matchParentSize() is only available inside BoxScope; this keeps the Canvas call site simple. */
 private fun Modifier.matchParentSizeCompat(): Modifier = this.fillMaxSize()
 
-private fun DrawScope.drawHeroDecor(p: Float) {
+private fun DrawScope.drawHeroDecor(p: Float, pal: DevColors) {
     // coordinates are the design's own, minus the 70 px status-bar offset
     fun pt(x: Float, y: Float) = Offset(x * p, (y - 70f) * p)
 
@@ -353,7 +400,7 @@ private fun DrawScope.drawHeroDecor(p: Float) {
         )
         close()
     }
-    drawPath(left, DevBlobL)
+    drawPath(left, pal.blobL)
 
     // top-right lavender blob
     val right = Path().apply {
@@ -368,13 +415,13 @@ private fun DrawScope.drawHeroDecor(p: Float) {
         )
         close()
     }
-    drawPath(right, DevBlobR)
+    drawPath(right, pal.blobR)
 
     // sparkles
-    sparkle(pt(180f, 258f), 28f * p, Color(0xFF6D3CF0))
-    sparkle(pt(120f, 306f), 9f * p, Color(0xFF8B62F5))
-    sparkle(pt(716f, 313f), 28f * p, Color(0xFF6D3CF0))
-    sparkle(pt(671f, 236f), 9f * p, Color(0xFF8B62F5))
+    sparkle(pt(180f, 258f), 28f * p, pal.sparkleBig)
+    sparkle(pt(120f, 306f), 9f * p, pal.sparkleSmall)
+    sparkle(pt(716f, 313f), 28f * p, pal.sparkleBig)
+    sparkle(pt(671f, 236f), 9f * p, pal.sparkleSmall)
 }
 
 private fun DrawScope.sparkle(c: Offset, r: Float, color: Color) {
@@ -414,6 +461,7 @@ private fun Path.smoothThrough(pts: List<Offset>, moveFirst: Boolean) {
 @Composable
 private fun DevelopersCard() {
     val u = LocalDevUnit.current
+    val pal = LocalDevColors.current
     SectionCard(
         decor = { },
         contentPadding = { Modifier.padding(start = u.d(12f), end = u.d(12f), top = u.d(25f), bottom = u.d(7f)) }
@@ -427,7 +475,7 @@ private fun DevelopersCard() {
                 Icon(
                     Icons.Filled.Groups,
                     contentDescription = null,
-                    tint = Color(0xFF6C2BD9),
+                    tint = pal.groupIcon,
                     modifier = Modifier.requiredSize(u.d(86f))
                 )
             }
@@ -435,7 +483,7 @@ private fun DevelopersCard() {
             Column {
                 DevText("Our Developers", 29f, weight = FontWeight.Bold, lineH = 40f)
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    DevText("Meet the minds behind Sinkey ", 22f, color = DevSub, lineH = 30f)
+                    DevText("Meet the minds behind Sinkey ", 22f, color = pal.sub, lineH = 30f)
                     Text("\u2764\uFE0F", fontSize = u.sp(20f))
                 }
             }
@@ -472,18 +520,19 @@ private fun DeveloperMiniCard(
     quote: String
 ) {
     val u = LocalDevUnit.current
+    val pal = LocalDevColors.current
     val shape = RoundedCornerShape(u.d(34f))
     Box(
         modifier = modifier
             .height(u.d(408f))
             .clip(shape)
-            .background(Brush.verticalGradient(listOf(Color(0xFFF4EEFE), Color(0xFFFAF8FE))))
-            .border(u.d(2f), Color(0xFFDCCEFB), shape)
+            .background(Brush.verticalGradient(listOf(pal.miniTop, pal.miniBottom)))
+            .border(u.d(2f), pal.miniLine, shape)
             .drawBehind {
                 val p = u.k * density
-                drawCircle(Color(0xFFEBE2FC), radius = 74f * p, center = Offset(-4f * p, size.height - 26f * p))
-                drawCircle(Color(0xFFF0E8FD), radius = 62f * p, center = Offset(size.width + 8f * p, size.height * 0.5f))
-                drawCircle(Color(0xFFF0E8FD), radius = 44f * p, center = Offset(-6f * p, size.height * 0.40f))
+                drawCircle(pal.miniBlob1, radius = 74f * p, center = Offset(-4f * p, size.height - 26f * p))
+                drawCircle(pal.miniBlob2, radius = 62f * p, center = Offset(size.width + 8f * p, size.height * 0.5f))
+                drawCircle(pal.miniBlob2, radius = 44f * p, center = Offset(-6f * p, size.height * 0.40f))
             }
     ) {
         // "</>" tile, top-left
@@ -492,10 +541,10 @@ private fun DeveloperMiniCard(
                 .offset(u.d(14f), u.d(13f))
                 .size(u.d(62f), u.d(58f))
                 .clip(RoundedCornerShape(u.d(16f)))
-                .background(Color(0xFFEAE1FC)),
+                .background(pal.codeTile),
             contentAlignment = Alignment.Center
         ) {
-            CodeGlyph(u.d(36f), Color(0xFF6A33E0))
+            CodeGlyph(u.d(36f), pal.codeGlyph)
         }
 
         Column(
@@ -515,7 +564,7 @@ private fun DeveloperMiniCard(
                         ),
                         radius = 108f * p
                     )
-                    drawCircle(Color.White, radius = 103f * p)
+                    drawCircle(pal.avatarGap, radius = 103f * p)
                 }
                 Box(
                     modifier = Modifier
@@ -537,7 +586,7 @@ private fun DeveloperMiniCard(
                         .offset(u.d(171f), u.d(154f))
                         .size(u.d(50f))
                         .clip(CircleShape)
-                        .background(Color.White)
+                        .background(pal.avatarGap)
                         .padding(u.d(3f))
                         .clip(CircleShape)
                         .background(Brush.linearGradient(listOf(Color(0xFF7B3CF5), Color(0xFF5A22E0)))),
@@ -553,16 +602,16 @@ private fun DeveloperMiniCard(
                 modifier = Modifier
                     .height(u.d(38f))
                     .clip(RoundedCornerShape(percent = 50))
-                    .background(DevPill)
+                    .background(pal.pill)
                     .padding(horizontal = u.d(17f)),
                 contentAlignment = Alignment.Center
             ) {
-                DevText(role, 21f, color = DevPurpleDk, weight = FontWeight.Bold, lineH = 28f)
+                DevText(role, 21f, color = pal.pillText, weight = FontWeight.Bold, lineH = 28f)
             }
             Spacer(Modifier.height(u.d(14f)))
             DevText(
                 quote, 22f,
-                color = Color(0xFF1B1740),
+                color = pal.quote,
                 italic = true,
                 lineH = 31f,
                 align = TextAlign.Center
@@ -583,6 +632,7 @@ private fun FollowCard(
     onTikTok: () -> Unit
 ) {
     val u = LocalDevUnit.current
+    val pal = LocalDevColors.current
     SectionCard(
         decor = { },
         contentPadding = { Modifier.padding(start = u.d(32f), end = u.d(32f), top = u.d(24f), bottom = u.d(24f)) }
@@ -592,14 +642,14 @@ private fun FollowCard(
                 Icon(
                     Icons.Filled.Campaign,
                     contentDescription = null,
-                    tint = Color(0xFF742AF8),
+                    tint = pal.megaIcon,
                     modifier = Modifier.requiredSize(u.d(72f))
                 )
             }
             Spacer(Modifier.width(u.d(27f)))
             Column {
                 DevText("Follow Us", 29f, weight = FontWeight.Bold, lineH = 40f)
-                DevText("Stay connected with us for the latest updates!", 20f, color = DevSub, lineH = 28f)
+                DevText("Stay connected with us for the latest updates!", 20f, color = pal.sub, lineH = 28f)
             }
         }
         Spacer(Modifier.height(u.d(14f)))
@@ -608,7 +658,7 @@ private fun FollowCard(
                 Icon(
                     Icons.Filled.Language,
                     contentDescription = null,
-                    tint = Color(0xFF7A2FF0),
+                    tint = pal.globeIcon,
                     modifier = Modifier.requiredSize(u.d(70f))
                 )
             }
@@ -627,12 +677,13 @@ private fun FollowTile(
     icon: @Composable () -> Unit
 ) {
     val u = LocalDevUnit.current
+    val pal = LocalDevColors.current
     val shape = RoundedCornerShape(u.d(28f))
     Column(
         modifier = modifier
             .height(u.d(145f))
             .clip(shape)
-            .background(Brush.verticalGradient(listOf(Color(0xFFF2ECFE), DevTile)))
+            .background(Brush.verticalGradient(listOf(pal.tileTop, pal.tile)))
             .clickable { onClick() },
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
@@ -650,10 +701,11 @@ private fun FollowTile(
 @Composable
 private fun ContactCard(onEmail: () -> Unit) {
     val u = LocalDevUnit.current
+    val pal = LocalDevColors.current
     SectionCard(
         decor = { p ->
             // soft lavender blob bottom-right
-            drawCircle(DevBlobR, radius = 82f * p, center = Offset(size.width + 6f * p, size.height + 4f * p))
+            drawCircle(pal.blobR, radius = 82f * p, center = Offset(size.width + 6f * p, size.height + 4f * p))
         },
         contentPadding = { Modifier.padding(start = u.d(30f), end = u.d(30f), top = u.d(26f), bottom = u.d(22f)) }
     ) {
@@ -684,7 +736,7 @@ private fun ContactCard(onEmail: () -> Unit) {
         }
         DevText(
             "Feel free to reach out for collaboration or just to say hi!",
-            19f, color = DevSub, lineH = 28f
+            19f, color = pal.sub, lineH = 28f
         )
         Spacer(Modifier.height(u.d(18f)))
         Row(verticalAlignment = Alignment.CenterVertically) {
@@ -700,7 +752,7 @@ private fun ContactCard(onEmail: () -> Unit) {
                 ContactTile(Icons.Filled.Email)
                 Spacer(Modifier.width(u.d(23f)))
                 Column {
-                    DevText("Email", 20f, color = Color(0xFF5B5C9A), lineH = 28f)
+                    DevText("Email", 20f, color = pal.label, lineH = 28f)
                     DevText(EMAIL_ADDRESS, 20f, weight = FontWeight.Bold, lineH = 32f, maxLines = 1)
                 }
             }
@@ -709,7 +761,7 @@ private fun ContactCard(onEmail: () -> Unit) {
                 Modifier
                     .width(u.d(2f))
                     .height(u.d(65f))
-                    .background(Color(0xFFD9CCFA))
+                    .background(pal.divider)
             )
             Spacer(Modifier.width(u.d(20f)))
             // Location
@@ -717,7 +769,7 @@ private fun ContactCard(onEmail: () -> Unit) {
                 ContactTile(Icons.Filled.LocationOn)
                 Spacer(Modifier.width(u.d(21f)))
                 Column {
-                    DevText("Location", 20f, color = Color(0xFF5B5C9A), lineH = 28f)
+                    DevText("Location", 20f, color = pal.label, lineH = 28f)
                     DevText("Sri Lanka", 22f, weight = FontWeight.Bold, lineH = 32f, maxLines = 1)
                 }
             }
@@ -728,14 +780,15 @@ private fun ContactCard(onEmail: () -> Unit) {
 @Composable
 private fun ContactTile(icon: androidx.compose.ui.graphics.vector.ImageVector) {
     val u = LocalDevUnit.current
+    val pal = LocalDevColors.current
     Box(
         modifier = Modifier
             .size(u.d(82f), u.d(80f))
             .clip(RoundedCornerShape(u.d(22f)))
-            .background(DevTile),
+            .background(pal.tile),
         contentAlignment = Alignment.Center
     ) {
-        Icon(icon, contentDescription = null, tint = Color(0xFF6D28F2), modifier = Modifier.size(u.d(44f)))
+        Icon(icon, contentDescription = null, tint = pal.contactIcon, modifier = Modifier.size(u.d(44f)))
     }
 }
 
@@ -746,6 +799,7 @@ private fun ContactTile(icon: androidx.compose.ui.graphics.vector.ImageVector) {
 @Composable
 private fun FooterThanks() {
     val u = LocalDevUnit.current
+    val pal = LocalDevColors.current
     Column(
         modifier = Modifier.fillMaxWidth(),
         horizontalAlignment = Alignment.CenterHorizontally
@@ -768,7 +822,7 @@ private fun FooterThanks() {
                 fontSize = u.sp(24f),
                 lineHeight = u.sp(36f),
                 letterSpacing = u.sp(3f),
-                color = Color(0xFF55528D),
+                color = pal.footer,
                 maxLines = 1
             )
             Text("  \uD83D\uDE0A", fontSize = u.sp(24f))
@@ -779,6 +833,7 @@ private fun FooterThanks() {
 @Composable
 private fun FooterRule(width: Float, fadeLeft: Boolean) {
     val u = LocalDevUnit.current
+    val pal = LocalDevColors.current
     val strong = Color(0xFF8F63F6)
     val faint = Color(0xFFB899F9).copy(alpha = 0.2f)
     Box(
@@ -792,6 +847,7 @@ private fun FooterRule(width: Float, fadeLeft: Boolean) {
 @Composable
 private fun BottomWave(modifier: Modifier) {
     val u = LocalDevUnit.current
+    val pal = LocalDevColors.current
     Canvas(modifier) {
         val p = size.width / REF_WIDTH           // design px → real px (wave spans the full width)
         val top = 1650f                           // design y where this canvas starts
@@ -818,7 +874,7 @@ private fun BottomWave(modifier: Modifier) {
             smoothThrough(lightEdge, moveFirst = true)
             lineTo(size.width, bottom); lineTo(0f, bottom); close()
         }
-        drawPath(light, Brush.verticalGradient(listOf(Color(0xFFE2D4FE), Color(0xFFDACAFD))))
+        drawPath(light, Brush.verticalGradient(listOf(pal.waveLightTop, pal.waveLightBottom)))
 
         // main purple wave
         val deep = Path().apply {
@@ -828,7 +884,7 @@ private fun BottomWave(modifier: Modifier) {
         drawPath(
             deep,
             Brush.verticalGradient(
-                listOf(Color(0xFFB684FC), Color(0xFF9450FB)),
+                listOf(pal.waveDeepTop, pal.waveDeepBottom),
                 startY = pt(0f, 1730f).y,
                 endY = bottom
             )
@@ -842,7 +898,7 @@ private fun BottomWave(modifier: Modifier) {
         drawPath(
             swell,
             Brush.horizontalGradient(
-                listOf(Color(0xFF672DDE), Color(0xFF672DDE).copy(alpha = 0f)),
+                listOf(pal.waveSwell, pal.waveSwell.copy(alpha = 0f)),
                 startX = 0f,
                 endX = 440f * p
             )
@@ -861,6 +917,7 @@ private fun SectionCard(
     content: @Composable ColumnScope.() -> Unit
 ) {
     val u = LocalDevUnit.current
+    val pal = LocalDevColors.current
     val shape = RoundedCornerShape(u.d(28f))
     Column(
         modifier = Modifier
@@ -869,12 +926,12 @@ private fun SectionCard(
             .shadow(
                 elevation = u.d(8f),
                 shape = shape,
-                ambientColor = Color(0x226D28F2),
-                spotColor = Color(0x226D28F2)
+                ambientColor = pal.shadow,
+                spotColor = pal.shadow
             )
             .clip(shape)
-            .background(DevCardFill)
-            .border(u.d(1.5f), DevCardLine, shape)
+            .background(pal.cardFill)
+            .border(u.d(1.5f), pal.cardLine, shape)
             .drawBehind { decor(u.k * density) }
             .then(contentPadding()),
         content = content
@@ -886,7 +943,7 @@ private fun DevText(
     text: String,
     size: Float,
     modifier: Modifier = Modifier,
-    color: Color = DevInk,
+    color: Color = LocalDevColors.current.ink,
     weight: FontWeight = FontWeight.Normal,
     lineH: Float = size * 1.35f,
     align: TextAlign? = null,
@@ -894,6 +951,7 @@ private fun DevText(
     maxLines: Int = Int.MAX_VALUE
 ) {
     val u = LocalDevUnit.current
+    val pal = LocalDevColors.current
     Text(
         text = text,
         modifier = modifier,
@@ -988,6 +1046,7 @@ private fun TelegramChannelsSheet(
     onDismiss: () -> Unit,
     onOpenLink: (url: String) -> Unit
 ) {
+    val pal = LocalDevColors.current
     ModalBottomSheet(
         onDismissRequest = onDismiss,
         containerColor = MaterialTheme.colorScheme.surface
@@ -1001,7 +1060,7 @@ private fun TelegramChannelsSheet(
         ) {
             Text("Telegram channels", fontSize = 17.sp, fontWeight = FontWeight.Bold)
             Spacer(Modifier.height(4.dp))
-            Text("Choose a channel to open", fontSize = 13.sp, color = DevSub)
+            Text("Choose a channel to open", fontSize = 13.sp, color = pal.sub)
             Spacer(Modifier.height(16.dp))
             TelegramChannelRow(
                 title = "SPMods Sandun",
@@ -1030,11 +1089,12 @@ private fun TelegramChannelRow(
     subtitle: String,
     onClick: () -> Unit
 ) {
+    val pal = LocalDevColors.current
     Row(
         modifier = Modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(16.dp))
-            .background(DevTile)
+            .background(pal.tile)
             .clickable { onClick() }
             .padding(horizontal = 14.dp, vertical = 14.dp),
         verticalAlignment = Alignment.CenterVertically,
@@ -1050,13 +1110,13 @@ private fun TelegramChannelRow(
             Icon(Icons.Filled.Send, contentDescription = null, tint = Color(0xFF2AA9E0), modifier = Modifier.size(19.dp))
         }
         Column(modifier = Modifier.weight(1f)) {
-            Text(title, fontSize = 14.sp, fontWeight = FontWeight.SemiBold, color = DevInk)
-            Text(subtitle, fontSize = 12.sp, color = DevSub)
+            Text(title, fontSize = 14.sp, fontWeight = FontWeight.SemiBold, color = pal.ink)
+            Text(subtitle, fontSize = 12.sp, color = pal.sub)
         }
         Icon(
             Icons.Filled.ArrowForwardIos,
             contentDescription = null,
-            tint = DevSub,
+            tint = pal.sub,
             modifier = Modifier.size(13.dp)
         )
     }
