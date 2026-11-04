@@ -29,8 +29,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.spmods.sinkey.ui.theme.Gold
-import com.spmods.sinkey.ui.theme.Maroon
+import com.spmods.sinkey.ui.theme.BrandPrimary
 
 /**
  * One tappable row destination the drawer can open. Each maps directly to
@@ -51,7 +50,7 @@ enum class DrawerDestination { PROFILE, PERSONAL_DICTIONARY, QUICK_TEXT, ABOUT }
  * SettingsSubScreen enum, which already treats these as standalone
  * destinations reachable independent of which bottom tab is selected.
  *
- * Styled with the app's own brand tokens (Gold/Maroon — see Theme.kt's
+ * Styled with the app's own brand tokens (violet — see Theme.kt's
  * "warm cream / gold / maroon, lotus-and-brass" palette comment) rather
  * than default Material drawer colors, so it reads as part of this app
  * rather than generic scaffolding: a maroon header band under the brand
@@ -71,24 +70,24 @@ fun SinKeyDrawer(
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .background(Maroon)
+                .background(BrandPrimary)
                 .padding(20.dp, 28.dp, 20.dp, 20.dp)
         ) {
             Box(
                 modifier = Modifier
                     .size(52.dp)
-                    .background(Gold, CircleShape),
+                    .background(Color.White, CircleShape),
                 contentAlignment = Alignment.Center
             ) {
                 Text(
                     // First letter of the user's name as a simple
-                    // monogram avatar — matches the maroon/gold pairing
+                    // monogram avatar — matches the violet/white pairing
                     // rather than pulling in a photo picker just for the
                     // drawer header.
                     text = userDisplayName.trim().firstOrNull()?.uppercase() ?: "S",
                     fontSize = 22.sp,
                     fontWeight = FontWeight.Bold,
-                    color = Maroon
+                    color = BrandPrimary
                 )
             }
             Spacer(modifier = Modifier.height(14.dp))
@@ -150,13 +149,13 @@ private fun DrawerRow(
         Box(
             modifier = Modifier
                 .size(36.dp)
-                .background(Gold.copy(alpha = 0.15f), RoundedCornerShape(10.dp)),
+                .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.15f), RoundedCornerShape(10.dp)),
             contentAlignment = Alignment.Center
         ) {
             Icon(
                 imageVector = icon,
                 contentDescription = null,
-                tint = Gold,
+                tint = MaterialTheme.colorScheme.primary,
                 modifier = Modifier.size(20.dp)
             )
         }
