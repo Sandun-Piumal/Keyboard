@@ -36,9 +36,11 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.KeyboardArrowRight
 import androidx.compose.material3.Icon
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -54,6 +56,7 @@ import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.Stroke
@@ -94,17 +97,77 @@ private fun isImeDefault(context: Context): Boolean {
 }
 
 // ── Onboarding palette ──────────────────────────────────────────────
-// Fixed light-purple palette so all 5 pages look identical regardless of
-// the app's light/dark theme (the artwork is designed for a light background).
-private val ObBgTop = Color(0xFFFBF8FF)
-private val ObBgBottom = Color(0xFFEFE6FF)
-private val ObTitle = Color(0xFF1E0B6E)
-private val ObBody = Color(0xFF2B1A7A)
-private val ObAccent = Color(0xFF7B2FFF)
-private val ObButtonStart = Color(0xFF5B2BEF)
-private val ObButtonEnd = Color(0xFF8A1FFF)
-private val ObDotIdle = Color(0xFFD3C2F7)
-private val ObButtonBrush = Brush.horizontalGradient(listOf(ObButtonStart, ObButtonEnd))
+// Light = the original light-purple look. Dark = deep violet-night variant.
+// Which one is used follows the app theme (SinKeyTheme → MaterialTheme), so
+// both the system dark mode and the in-app Light/Dark/System override work.
+// The artwork PNGs have transparent backgrounds, so they sit fine on either.
+@Immutable
+private class ObColors(
+    val bgTop: Color,
+    val bgBottom: Color,
+    val title: Color,
+    val body: Color,
+    val accent: Color,
+    val buttonStart: Color,
+    val buttonEnd: Color,
+    val dotIdle: Color,
+    val blob: Color,
+    val sparkle: Color,
+    val waveBack: Color,
+    val waveFrontStart: Color,
+    val waveFrontEnd: Color,
+    val stepRowBg: Color,
+    val stepRowBorder: Color,
+    val link: Color,        // Skip / Finish text buttons
+    val onButton: Color     // text/icon on the gradient button
+) {
+    val buttonBrush: Brush get() = Brush.horizontalGradient(listOf(buttonStart, buttonEnd))
+}
+
+private val ObLight = ObColors(
+    bgTop = Color(0xFFFBF8FF),
+    bgBottom = Color(0xFFEFE6FF),
+    title = Color(0xFF1E0B6E),
+    body = Color(0xFF2B1A7A),
+    accent = Color(0xFF7B2FFF),
+    buttonStart = Color(0xFF5B2BEF),
+    buttonEnd = Color(0xFF8A1FFF),
+    dotIdle = Color(0xFFD3C2F7),
+    blob = Color(0xFFB794FF),
+    sparkle = Color(0xFF7B4DF5),
+    waveBack = Color(0xFFB79CFF).copy(alpha = 0.28f),
+    waveFrontStart = Color(0xFF7B3FF2),
+    waveFrontEnd = Color(0xFFA57CFF),
+    stepRowBg = Color.White.copy(alpha = 0.65f),
+    stepRowBorder = Color.White,
+    link = Color(0xFF5B2BEF),
+    onButton = Color.White
+)
+
+private val ObDark = ObColors(
+    bgTop = Color(0xFF0F0C1D),
+    bgBottom = Color(0xFF1B1438),
+    title = Color(0xFFF2EEFF),
+    body = Color(0xFFCFC8F2),
+    accent = Color(0xFFB093FF),
+    buttonStart = Color(0xFF6D3BF5),
+    buttonEnd = Color(0xFF9B4DFF),
+    dotIdle = Color(0xFF3A2F66),
+    blob = Color(0xFF6D3FD6),
+    sparkle = Color(0xFFB093FF),
+    waveBack = Color(0xFF6D3FD6).copy(alpha = 0.30f),
+    waveFrontStart = Color(0xFF4B22B8),
+    waveFrontEnd = Color(0xFF7C4DE0),
+    stepRowBg = Color(0xFF251D47).copy(alpha = 0.85f),
+    stepRowBorder = Color(0xFF3A2F66),
+    link = Color(0xFFB093FF),
+    onButton = Color.White
+)
+
+/** Picks the palette from the app's active colour scheme (respects the in-app theme override). */
+@Composable
+private fun obColors(): ObColors =
+    if (MaterialTheme.colorScheme.background.luminance() < 0.5f) ObDark else ObLight
 
 /**
  * One tutorial slide. The title is split in three so the middle part can
@@ -208,9 +271,10 @@ fun OnboardingScreen(
     val pagerState = rememberPagerState(pageCount = { slides.size })
     val scope = rememberCoroutineScope()
     val isLastSlide = pagerState.currentPage == slides.lastIndex
+    val colors = obColors()
 
     Box(modifier = Modifier.fillMaxSize()) {
-        OnboardingBackground()
+        OnboardingBackground(colors)
 
         Column(
             modifier = Modifier
@@ -227,8 +291,8 @@ fun OnboardingScreen(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 TextButton(onClick = onFinish) {
-                    Text("Skip", color = ObButtonStart, fontSize = 17.sp, fontWeight = FontWeight.Bold)
-                    Icon(Icons.Filled.KeyboardArrowRight, contentDescription = null, tint = ObButtonStart)
+                    Text("Skip", color = colors.link, fontSize = 17.sp, fontWeight = FontWeight.Bold)
+                    Icon(Icons.Filled.KeyboardArrowRight, contentDescription = null, tint = colors.link)
                 }
             }
 
@@ -236,10 +300,11 @@ fun OnboardingScreen(
                 state = pagerState,
                 modifier = Modifier.weight(1f)
             ) { page ->
-                OnboardingSlideContent(slides[page])
+                OnboardingSlideContent(slides[page], colors)
             }
 
             PagerDots(
+                colors = colors,
                 pageCount = slides.size,
                 currentPage = pagerState.currentPage,
                 modifier = Modifier
@@ -256,12 +321,14 @@ fun OnboardingScreen(
             ) {
                 if (isLastSlide) {
                     SetupStepRow(
+                        colors = colors,
                         label = "Enable SinKey",
                         done = enabled,
                         onClick = { context.startActivity(Intent(Settings.ACTION_INPUT_METHOD_SETTINGS)) }
                     )
                     Spacer(modifier = Modifier.height(10.dp))
                     SetupStepRow(
+                        colors = colors,
                         label = "Set as default keyboard",
                         done = isDefault,
                         onClick = {
@@ -275,13 +342,14 @@ fun OnboardingScreen(
                     ) {
                         Text(
                             if (enabled && isDefault) "Finish" else "Finish setup later",
-                            color = ObButtonStart,
+                            color = colors.link,
                             fontSize = 20.sp,
                             fontWeight = FontWeight.Bold
                         )
                     }
                 } else {
                     GradientPillButton(
+                        colors = colors,
                         text = "Next",
                         onClick = {
                             scope.launch {
@@ -300,7 +368,7 @@ fun OnboardingScreen(
 
 /** Shared page template: illustration → title + swoosh → description. */
 @Composable
-private fun OnboardingSlideContent(slide: OnboardingSlide) {
+private fun OnboardingSlideContent(slide: OnboardingSlide, colors: ObColors) {
     BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
         val illustrationHeight: Dp = (maxHeight * 0.50f).coerceIn(170.dp, 300.dp)
 
@@ -322,20 +390,20 @@ private fun OnboardingSlideContent(slide: OnboardingSlide) {
             Text(
                 text = buildAnnotatedString {
                     append(slide.titleStart)
-                    withStyle(SpanStyle(color = ObAccent)) { append(slide.titleHighlight) }
+                    withStyle(SpanStyle(color = colors.accent)) { append(slide.titleHighlight) }
                     append(slide.titleEnd)
                 },
-                color = ObTitle,
+                color = colors.title,
                 fontSize = 30.sp,
                 fontWeight = FontWeight.ExtraBold,
                 textAlign = TextAlign.Center
             )
             Spacer(modifier = Modifier.height(6.dp))
-            TitleSwoosh()
+            TitleSwoosh(colors.accent)
             Spacer(modifier = Modifier.height(18.dp))
             Text(
                 text = slide.description,
-                color = ObBody,
+                color = colors.body,
                 fontSize = 17.sp,
                 lineHeight = 26.sp,
                 textAlign = TextAlign.Center,
@@ -347,7 +415,7 @@ private fun OnboardingSlideContent(slide: OnboardingSlide) {
 
 /** Curved underline drawn under every title. */
 @Composable
-private fun TitleSwoosh() {
+private fun TitleSwoosh(color: Color) {
     Canvas(modifier = Modifier.width(170.dp).height(12.dp)) {
         val path = Path().apply {
             moveTo(0f, size.height * 0.85f)
@@ -355,28 +423,28 @@ private fun TitleSwoosh() {
         }
         drawPath(
             path = path,
-            color = ObAccent,
+            color = color,
             style = Stroke(width = 3.5.dp.toPx(), cap = StrokeCap.Round)
         )
     }
 }
 
 @Composable
-private fun GradientPillButton(text: String, onClick: () -> Unit) {
+private fun GradientPillButton(colors: ObColors, text: String, onClick: () -> Unit) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
             .height(60.dp)
-            .shadow(12.dp, CircleShape, ambientColor = ObButtonStart, spotColor = ObButtonStart)
+            .shadow(12.dp, CircleShape, ambientColor = colors.buttonStart, spotColor = colors.buttonStart)
             .clip(CircleShape)
-            .background(ObButtonBrush)
+            .background(colors.buttonBrush)
             .clickable(onClick = onClick),
         horizontalArrangement = Arrangement.Center,
         verticalAlignment = Alignment.CenterVertically
     ) {
-        Text(text, color = Color.White, fontSize = 20.sp, fontWeight = FontWeight.Bold)
+        Text(text, color = colors.onButton, fontSize = 20.sp, fontWeight = FontWeight.Bold)
         Spacer(modifier = Modifier.width(8.dp))
-        Icon(Icons.Filled.KeyboardArrowRight, contentDescription = null, tint = Color.White)
+        Icon(Icons.Filled.KeyboardArrowRight, contentDescription = null, tint = colors.onButton)
     }
 }
 
@@ -387,15 +455,15 @@ private fun GradientPillButton(text: String, onClick: () -> Unit) {
  * OnboardingScreen is what flips [done] after the user returns.
  */
 @Composable
-private fun SetupStepRow(label: String, done: Boolean, onClick: () -> Unit) {
+private fun SetupStepRow(colors: ObColors, label: String, done: Boolean, onClick: () -> Unit) {
     val shape = RoundedCornerShape(28.dp)
     Row(
         modifier = Modifier
             .fillMaxWidth()
             .height(56.dp)
             .clip(shape)
-            .background(Color.White.copy(alpha = 0.65f))
-            .border(1.dp, Color.White, shape)
+            .background(colors.stepRowBg)
+            .border(1.dp, colors.stepRowBorder, shape)
             .then(if (done) Modifier else Modifier.clickable(onClick = onClick))
             .padding(horizontal = 12.dp),
         verticalAlignment = Alignment.CenterVertically
@@ -405,23 +473,23 @@ private fun SetupStepRow(label: String, done: Boolean, onClick: () -> Unit) {
                 .size(36.dp)
                 .clip(CircleShape)
                 .then(
-                    if (done) Modifier.background(ObButtonBrush)
-                    else Modifier.border(2.dp, ObAccent.copy(alpha = 0.45f), CircleShape)
+                    if (done) Modifier.background(colors.buttonBrush)
+                    else Modifier.border(2.dp, colors.accent.copy(alpha = 0.45f), CircleShape)
                 ),
             contentAlignment = Alignment.Center
         ) {
             if (done) {
-                Icon(Icons.Filled.Check, contentDescription = null, tint = Color.White, modifier = Modifier.size(20.dp))
+                Icon(Icons.Filled.Check, contentDescription = null, tint = colors.onButton, modifier = Modifier.size(20.dp))
             }
         }
         Spacer(modifier = Modifier.width(16.dp))
-        Text(label, color = ObTitle, fontSize = 18.sp, fontWeight = FontWeight.Medium)
+        Text(label, color = colors.title, fontSize = 18.sp, fontWeight = FontWeight.Medium)
     }
 }
 
 /** Dot indicator — selected dot is a wider pill. Same position on every page. */
 @Composable
-private fun PagerDots(pageCount: Int, currentPage: Int, modifier: Modifier = Modifier) {
+private fun PagerDots(colors: ObColors, pageCount: Int, currentPage: Int, modifier: Modifier = Modifier) {
     Row(modifier = modifier, horizontalArrangement = Arrangement.Center) {
         repeat(pageCount) { index ->
             val isSelected = index == currentPage
@@ -432,7 +500,7 @@ private fun PagerDots(pageCount: Int, currentPage: Int, modifier: Modifier = Mod
                     .width(width.dp)
                     .height(10.dp)
                     .clip(CircleShape)
-                    .background(if (isSelected) ObButtonStart else ObDotIdle)
+                    .background(if (isSelected) colors.buttonStart else colors.dotIdle)
             )
         }
     }
@@ -441,18 +509,18 @@ private fun PagerDots(pageCount: Int, currentPage: Int, modifier: Modifier = Mod
 // ── Static decorative background (identical on every page) ─────────
 
 @Composable
-private fun OnboardingBackground() {
+private fun OnboardingBackground(colors: ObColors) {
     Canvas(modifier = Modifier.fillMaxSize()) {
         val w = size.width
         val h = size.height
 
-        drawRect(Brush.verticalGradient(listOf(ObBgTop, ObBgBottom)))
+        drawRect(Brush.verticalGradient(listOf(colors.bgTop, colors.bgBottom)))
 
         // Soft blobs
         fun blob(cx: Float, cy: Float, rx: Float, ry: Float, alpha: Float) {
             drawOval(
                 brush = Brush.radialGradient(
-                    colors = listOf(Color(0xFFB794FF).copy(alpha = alpha), Color.Transparent),
+                    colors = listOf(colors.blob.copy(alpha = alpha), Color.Transparent),
                     center = Offset(cx, cy),
                     radius = maxOf(rx, ry)
                 ),
@@ -466,7 +534,7 @@ private fun OnboardingBackground() {
         blob(w, h * 0.68f, w * 0.40f, h * 0.10f, 0.40f)
 
         // Sparkles
-        val sparkleColor = Color(0xFF7B4DF5)
+        val sparkleColor = colors.sparkle
         sparkle(Offset(w * 0.24f, h * 0.12f), 14.dp.toPx(), sparkleColor)
         sparkle(Offset(w * 0.15f, h * 0.16f), 11.dp.toPx(), sparkleColor)
         sparkle(Offset(w * 0.80f, h * 0.15f), 11.dp.toPx(), sparkleColor)
@@ -480,7 +548,7 @@ private fun OnboardingBackground() {
             cubicTo(w * 0.25f, top - waveH * 0.05f, w * 0.55f, top + waveH * 0.55f, w, top + waveH * 0.10f)
             lineTo(w, h); lineTo(0f, h); close()
         }
-        drawPath(back, Color(0xFFB79CFF).copy(alpha = 0.28f))
+        drawPath(back, colors.waveBack)
         val front = Path().apply {
             moveTo(0f, top + waveH * 0.55f)
             cubicTo(w * 0.30f, top + waveH * 0.25f, w * 0.65f, top + waveH * 0.85f, w, top + waveH * 0.40f)
@@ -488,7 +556,7 @@ private fun OnboardingBackground() {
         }
         drawPath(
             front,
-            Brush.horizontalGradient(listOf(Color(0xFF7B3FF2), Color(0xFFA57CFF)))
+            Brush.horizontalGradient(listOf(colors.waveFrontStart, colors.waveFrontEnd))
         )
     }
 }
