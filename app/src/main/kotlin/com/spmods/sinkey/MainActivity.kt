@@ -69,6 +69,7 @@ import com.spmods.sinkey.ui.screens.SoundVibrationScreen
 import com.spmods.sinkey.ui.screens.QuickTextScreen
 import com.spmods.sinkey.ui.screens.PersonalDictionaryScreen
 import com.spmods.sinkey.ui.screens.OnboardingScreen
+import com.spmods.sinkey.ui.screens.rememberImeStatus
 import com.spmods.sinkey.ui.screens.UserGuideScreen
 import com.spmods.sinkey.ui.screens.LegalTextScreen
 import com.spmods.sinkey.ui.screens.AboutDeveloperScreen
@@ -491,13 +492,31 @@ private fun SinKeyApp(prefs: PreferencesManager, initialTab: Tab = Tab.HOME) {
     if (hasSeenOnboarding == null) {
         return
     }
-    if (hasSeenOnboarding == false) {
+
+    // ── Setup gate ──────────────────────────────────────────────────────────
+    // Like other keyboard apps: if SinKey isn't enabled, isn't the default
+    // keyboard, or there's no profile — at any time, not just first launch —
+    // the app can't be used and the setup page is shown again. Once shown it
+    // stays until the user taps Finish (otherwise it would vanish the instant
+    // the last step flips to done). Not evaluated until the profile flag has
+    // loaded, to avoid flashing the gate for a user who is fully set up.
+    val imeStatus = rememberImeStatus()
+    val setupComplete = imeStatus.enabled && imeStatus.isDefault && profileSetupComplete == true
+    var setupGateLatched by remember { mutableStateOf(false) }
+    val gateNeeded = hasSeenOnboarding == true && profileSetupComplete != null && !setupComplete
+    LaunchedEffect(gateNeeded) { if (gateNeeded) setupGateLatched = true }
+
+    if (hasSeenOnboarding == false || gateNeeded || setupGateLatched) {
         OnboardingScreen(
             profileDone = profileSetupComplete == true,
+            setupOnly = hasSeenOnboarding == true,
             onSaveProfile = { firstName, lastName, gender, birthday ->
                 prefs.saveProfileSetup(firstName, lastName, gender, birthday)
             },
-            onFinish = { scope.launch { prefs.setHasSeenOnboarding(true) } }
+            onFinish = {
+                setupGateLatched = false
+                scope.launch { prefs.setHasSeenOnboarding(true) }
+            }
         )
         return
     }
