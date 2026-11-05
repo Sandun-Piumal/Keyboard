@@ -8,6 +8,7 @@ import android.os.Looper
 import android.provider.Settings
 import android.database.ContentObserver
 import android.view.inputmethod.InputMethodManager
+import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
@@ -44,6 +45,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.Immutable
+import androidx.compose.runtime.Stable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -98,6 +100,57 @@ private fun isImeDefault(context: Context): Boolean {
         context.contentResolver, Settings.Secure.DEFAULT_INPUT_METHOD
     )
     return defaultIme?.startsWith(context.packageName) == true
+}
+
+/** Live "is SinKey enabled / default" flags; see [rememberImeStatus]. */
+@Stable
+internal class ImeStatus {
+    var enabled by mutableStateOf(false)
+    var isDefault by mutableStateOf(false)
+
+    fun refresh(context: Context) {
+        enabled = isImeEnabled(context)
+        isDefault = isImeDefault(context)
+    }
+}
+
+/**
+ * Keeps [ImeStatus] current: re-checked on every ON_RESUME (coming back from
+ * the system settings / keyboard picker) and whenever the system's enabled or
+ * default input-method settings change. Used by the onboarding screen and by
+ * MainActivity's "setup must stay complete" gate.
+ */
+@Composable
+internal fun rememberImeStatus(): ImeStatus {
+    val context = LocalContext.current
+    val lifecycleOwner = LocalLifecycleOwner.current
+    val status = remember { ImeStatus().also { it.refresh(context) } }
+
+    DisposableEffect(lifecycleOwner) {
+        val handler = Handler(Looper.getMainLooper())
+        val contentObserver = object : ContentObserver(handler) {
+            override fun onChange(selfChange: Boolean) = status.refresh(context)
+        }
+        context.contentResolver.registerContentObserver(
+            Settings.Secure.getUriFor(Settings.Secure.DEFAULT_INPUT_METHOD),
+            false, contentObserver
+        )
+        context.contentResolver.registerContentObserver(
+            Settings.Secure.getUriFor(Settings.Secure.ENABLED_INPUT_METHODS),
+            false, contentObserver
+        )
+
+        val lifecycleObserver = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_RESUME) status.refresh(context)
+        }
+        lifecycleOwner.lifecycle.addObserver(lifecycleObserver)
+
+        onDispose {
+            context.contentResolver.unregisterContentObserver(contentObserver)
+            lifecycleOwner.lifecycle.removeObserver(lifecycleObserver)
+        }
+    }
+    return status
 }
 
 // ── Onboarding palette ──────────────────────────────────────────────
@@ -234,6 +287,15 @@ private val slides = listOf(
     )
 )
 
+/** Shown alone (no tutorial pages) when the setup has to be redone — see `setupOnly`. */
+private val setupOnlySlide = OnboardingSlide(
+    illustration = R.drawable.onb_keyboard,
+    titleStart = "Complete ",
+    titleHighlight = "setup",
+    titleEnd = "",
+    description = "SinKey must be enabled, set as your default keyboard and have a profile before you can use the app."
+)
+
 /**
  * First-launch onboarding tutorial (see MainActivity's hasSeenOnboarding
  * gate). All five pages share ONE template so nothing jumps around when
@@ -246,6 +308,8 @@ private val slides = listOf(
  * all three are done. The setup logic (isImeEnabled / isImeDefault,
  * ContentObserver + ON_RESUME refresh) is unchanged.
  *
+ * [setupOnly] = true shows just the last (setup) page with no tutorial pages — used
+ * when the app is opened later and a step is no longer satisfied.
  * [profileDone] mirrors PreferencesManager.profileSetupComplete and
  * [onSaveProfile] persists the form (PreferencesManager.saveProfileSetup) —
  * both are supplied by MainActivity so this screen stays storage-agnostic.
@@ -253,47 +317,22 @@ private val slides = listOf(
 @Composable
 fun OnboardingScreen(
     profileDone: Boolean,
+    setupOnly: Boolean = false,
     onSaveProfile: suspend (firstName: String, lastName: String, gender: String, birthday: String) -> Unit,
     onFinish: () -> Unit
 ) {
     val context = LocalContext.current
-    val lifecycleOwner = LocalLifecycleOwner.current
-    var enabled by remember { mutableStateOf(isImeEnabled(context)) }
-    var isDefault by remember { mutableStateOf(isImeDefault(context)) }
+    val imeStatus = rememberImeStatus()
+    val enabled = imeStatus.enabled
+    val isDefault = imeStatus.isDefault
 
-    DisposableEffect(lifecycleOwner) {
-        fun refresh() {
-            enabled = isImeEnabled(context)
-            isDefault = isImeDefault(context)
-        }
-
-        val handler = Handler(Looper.getMainLooper())
-        val contentObserver = object : ContentObserver(handler) {
-            override fun onChange(selfChange: Boolean) = refresh()
-        }
-        context.contentResolver.registerContentObserver(
-            Settings.Secure.getUriFor(Settings.Secure.DEFAULT_INPUT_METHOD),
-            false, contentObserver
-        )
-        context.contentResolver.registerContentObserver(
-            Settings.Secure.getUriFor(Settings.Secure.ENABLED_INPUT_METHODS),
-            false, contentObserver
-        )
-
-        val lifecycleObserver = LifecycleEventObserver { _, event ->
-            if (event == Lifecycle.Event.ON_RESUME) refresh()
-        }
-        lifecycleOwner.lifecycle.addObserver(lifecycleObserver)
-
-        onDispose {
-            context.contentResolver.unregisterContentObserver(contentObserver)
-            lifecycleOwner.lifecycle.removeObserver(lifecycleObserver)
-        }
-    }
-
-    val pagerState = rememberPagerState(pageCount = { slides.size })
+    val pagerState = rememberPagerState(pageCount = { if (setupOnly) 1 else slides.size })
     val scope = rememberCoroutineScope()
-    val isLastSlide = pagerState.currentPage == slides.lastIndex
+    val isLastSlide = setupOnly || pagerState.currentPage == slides.lastIndex
+    // Next sits where it always did (168dp area); the setup page needs a taller
+    // area and extra bottom room so its buttons clear the wave.
+    val actionHeight by animateDpAsState(if (isLastSlide) 232.dp else 168.dp, label = "actionHeight")
+    val bottomGap by animateDpAsState(if (isLastSlide) 84.dp else 40.dp, label = "bottomGap")
     val colors = obColors()
     var showProfileSetup by remember { mutableStateOf(false) }
     val allDone = enabled && isDefault && profileDone
@@ -333,23 +372,27 @@ fun OnboardingScreen(
                 state = pagerState,
                 modifier = Modifier.weight(1f)
             ) { page ->
-                OnboardingSlideContent(slides[page], colors)
+                OnboardingSlideContent(if (setupOnly) setupOnlySlide else slides[page], colors)
             }
 
-            PagerDots(
-                colors = colors,
-                pageCount = slides.size,
-                currentPage = pagerState.currentPage,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(vertical = 14.dp)
-            )
+            if (setupOnly) {
+                Spacer(modifier = Modifier.height(38.dp))   // same height the dots row takes
+            } else {
+                PagerDots(
+                    colors = colors,
+                    pageCount = slides.size,
+                    currentPage = pagerState.currentPage,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(vertical = 14.dp)
+                )
+            }
 
             // Fixed-height action area → dots and content never shift between pages.
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(232.dp)
+                    .height(actionHeight)
                     .padding(horizontal = 24.dp)
             ) {
                 if (isLastSlide) {
@@ -397,7 +440,7 @@ fun OnboardingScreen(
             }
 
             // Leaves room for the decorative wave at the very bottom.
-            Spacer(modifier = Modifier.height(40.dp))
+            Spacer(modifier = Modifier.height(bottomGap))
         }
 
         // "Create profile" — the same form the Profile screen uses, shown
