@@ -1,6 +1,7 @@
 package com.spmods.sinkey.ui.screens
 
 import android.content.Context
+import androidx.activity.compose.BackHandler
 import android.content.Intent
 import android.os.Handler
 import android.os.Looper
@@ -25,6 +26,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -35,6 +37,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.KeyboardArrowRight
+import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -56,6 +59,7 @@ import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.DrawScope
@@ -236,12 +240,20 @@ private val slides = listOf(
  * swiping: same background, Skip button, illustration box, title + swoosh,
  * 3-line description, dots, and a fixed-height bottom action area.
  *
- * Pages 1–4 show a "Next" button in the bottom area; page 5 shows the two
- * setup steps + "Finish" in that same area. The setup logic (isImeEnabled /
- * isImeDefault, ContentObserver + ON_RESUME refresh) is unchanged.
+ * Pages 1–4 show a "Next" button in the bottom area; "Skip" jumps straight to
+ * page 5. Page 5 shows three setup steps — Enable SinKey, Set as default
+ * keyboard, Create profile — and a "Finish" button that stays disabled until
+ * all three are done. The setup logic (isImeEnabled / isImeDefault,
+ * ContentObserver + ON_RESUME refresh) is unchanged.
+ *
+ * [profileDone] mirrors PreferencesManager.profileSetupComplete and
+ * [onSaveProfile] persists the form (PreferencesManager.saveProfileSetup) —
+ * both are supplied by MainActivity so this screen stays storage-agnostic.
  */
 @Composable
 fun OnboardingScreen(
+    profileDone: Boolean,
+    onSaveProfile: suspend (firstName: String, lastName: String, gender: String, birthday: String) -> Unit,
     onFinish: () -> Unit
 ) {
     val context = LocalContext.current
@@ -283,6 +295,9 @@ fun OnboardingScreen(
     val scope = rememberCoroutineScope()
     val isLastSlide = pagerState.currentPage == slides.lastIndex
     val colors = obColors()
+    var showProfileSetup by remember { mutableStateOf(false) }
+    val allDone = enabled && isDefault && profileDone
+    val stepsLeft = listOf(enabled, isDefault, profileDone).count { !it }
 
     Box(modifier = Modifier.fillMaxSize()) {
         OnboardingBackground(colors)
@@ -292,7 +307,8 @@ fun OnboardingScreen(
                 .fillMaxSize()
                 .windowInsetsPadding(WindowInsets.systemBars)
         ) {
-            // Skip — same place on every page, including the last.
+            // Skip — jumps to the last (setup) page. Hidden there, but the row
+            // keeps its height so nothing shifts between pages.
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -301,9 +317,15 @@ fun OnboardingScreen(
                 horizontalArrangement = Arrangement.End,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                TextButton(onClick = onFinish) {
-                    Text("Skip", color = colors.link, fontSize = 17.sp, fontWeight = FontWeight.Bold)
-                    Icon(Icons.Filled.KeyboardArrowRight, contentDescription = null, tint = colors.link)
+                if (!isLastSlide) {
+                    TextButton(
+                        onClick = {
+                            scope.launch { pagerState.animateScrollToPage(slides.lastIndex) }
+                        }
+                    ) {
+                        Text("Skip", color = colors.link, fontSize = 17.sp, fontWeight = FontWeight.Bold)
+                        Icon(Icons.Filled.KeyboardArrowRight, contentDescription = null, tint = colors.link)
+                    }
                 }
             }
 
@@ -327,7 +349,7 @@ fun OnboardingScreen(
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(168.dp)
+                    .height(232.dp)
                     .padding(horizontal = 24.dp)
             ) {
                 if (isLastSlide) {
@@ -337,7 +359,7 @@ fun OnboardingScreen(
                         done = enabled,
                         onClick = { context.startActivity(Intent(Settings.ACTION_INPUT_METHOD_SETTINGS)) }
                     )
-                    Spacer(modifier = Modifier.height(10.dp))
+                    Spacer(modifier = Modifier.height(8.dp))
                     SetupStepRow(
                         colors = colors,
                         label = "Set as default keyboard",
@@ -347,17 +369,20 @@ fun OnboardingScreen(
                             imm.showInputMethodPicker()
                         }
                     )
-                    TextButton(
-                        onClick = onFinish,
-                        modifier = Modifier.fillMaxWidth()
-                    ) {
-                        Text(
-                            if (enabled && isDefault) "Finish" else "Finish setup later",
-                            color = colors.link,
-                            fontSize = 20.sp,
-                            fontWeight = FontWeight.Bold
-                        )
-                    }
+                    Spacer(modifier = Modifier.height(8.dp))
+                    SetupStepRow(
+                        colors = colors,
+                        label = "Create profile",
+                        done = profileDone,
+                        onClick = { showProfileSetup = true }
+                    )
+                    Spacer(modifier = Modifier.height(14.dp))
+                    FinishButton(
+                        colors = colors,
+                        enabled = allDone,
+                        stepsLeft = stepsLeft,
+                        onClick = onFinish
+                    )
                 } else {
                     GradientPillButton(
                         colors = colors,
@@ -373,6 +398,28 @@ fun OnboardingScreen(
 
             // Leaves room for the decorative wave at the very bottom.
             Spacer(modifier = Modifier.height(40.dp))
+        }
+
+        // "Create profile" — the same form the Profile screen uses, shown
+        // full-screen over the onboarding. Back dismisses it; saving closes it
+        // and profileDone flips to true via PreferencesManager.
+        if (showProfileSetup) {
+            BackHandler { showProfileSetup = false }
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(MaterialTheme.colorScheme.background)
+                    .windowInsetsPadding(WindowInsets.systemBars)
+                    .imePadding()
+            ) {
+                ProfileSetupScreen(
+                    onComplete = { first, last, gender, birthday ->
+                        onSaveProfile(first, last, gender, birthday)
+                        showProfileSetup = false
+                    },
+                    isDark = colors === ObDark
+                )
+            }
         }
     }
 }
@@ -460,6 +507,51 @@ private fun GradientPillButton(colors: ObColors, text: String, onClick: () -> Un
 }
 
 /**
+ * Final button. Disabled (muted, lock icon, "N steps left") until every setup
+ * step is done; then it lights up as the brand gradient pill with a glow and a
+ * check mark. The shadow/colour change is animated so the unlock is noticeable.
+ */
+@Composable
+private fun FinishButton(colors: ObColors, enabled: Boolean, stepsLeft: Int, onClick: () -> Unit) {
+    val unlock by animateFloatAsState(if (enabled) 1f else 0f, label = "finishUnlock")
+    val brush: Brush = if (enabled) colors.buttonBrush else SolidColor(colors.dotIdle.copy(alpha = 0.55f))
+    val content = if (enabled) colors.onButton else colors.title.copy(alpha = 0.45f)
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(52.dp)
+            .shadow(
+                elevation = (14f * unlock).dp,
+                shape = CircleShape,
+                ambientColor = colors.buttonStart,
+                spotColor = colors.buttonStart
+            )
+            .clip(CircleShape)
+            .background(brush)
+            .then(
+                if (enabled) Modifier.clickable(onClick = onClick)
+                else Modifier.border(1.dp, colors.stepRowBorder, CircleShape)
+            ),
+        horizontalArrangement = Arrangement.Center,
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Icon(
+            if (enabled) Icons.Filled.Check else Icons.Filled.Lock,
+            contentDescription = null,
+            tint = content,
+            modifier = Modifier.size(20.dp)
+        )
+        Spacer(modifier = Modifier.width(8.dp))
+        Text(
+            text = if (enabled) "Finish" else "Finish  ·  $stepsLeft ${if (stepsLeft == 1) "step" else "steps"} left",
+            color = content,
+            fontSize = 18.sp,
+            fontWeight = FontWeight.Bold
+        )
+    }
+}
+
+/**
  * One setup step on the last page. [done] → filled purple circle with a
  * check and no click; otherwise an empty outlined circle and tappable row.
  * [onClick] only launches the system flow — the ContentObserver refresh in
@@ -471,7 +563,7 @@ private fun SetupStepRow(colors: ObColors, label: String, done: Boolean, onClick
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .height(56.dp)
+            .height(50.dp)
             .clip(shape)
             .background(colors.stepRowBg)
             .border(1.dp, colors.stepRowBorder, shape)
