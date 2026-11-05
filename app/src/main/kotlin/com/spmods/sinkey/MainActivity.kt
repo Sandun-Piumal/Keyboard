@@ -493,6 +493,10 @@ private fun SinKeyApp(prefs: PreferencesManager, initialTab: Tab = Tab.HOME) {
     }
     if (hasSeenOnboarding == false) {
         OnboardingScreen(
+            profileDone = profileSetupComplete == true,
+            onSaveProfile = { firstName, lastName, gender, birthday ->
+                prefs.saveProfileSetup(firstName, lastName, gender, birthday)
+            },
             onFinish = { scope.launch { prefs.setHasSeenOnboarding(true) } }
         )
         return
