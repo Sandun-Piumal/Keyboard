@@ -66,8 +66,7 @@ import com.spmods.sinkey.ui.screens.AppHeader
 import com.spmods.sinkey.ui.screens.HeaderMenuMode
 import com.spmods.sinkey.ui.screens.HomeScreen
 import com.spmods.sinkey.ui.screens.SinKeyBottomBar
-import com.spmods.sinkey.ui.screens.homeBackgroundBrush
-import com.spmods.sinkey.ui.screens.homeStatusBarColor
+import com.spmods.sinkey.ui.screens.DeveloperBackground
 import com.spmods.sinkey.ui.screens.KeyboardHeightScreen
 import com.spmods.sinkey.ui.screens.SoundVibrationScreen
 import com.spmods.sinkey.ui.screens.QuickTextScreen
@@ -559,26 +558,18 @@ private fun SinKeyApp(prefs: PreferencesManager, initialTab: Tab = Tab.HOME) {
             )
         }
     ) {
-    // Home + Settings tabs: lavender gradient behind header + content + floating bottom bar
-    // (all transparent over it). Every other screen keeps the plain background.
+    // Home + Settings tabs: the About Developer page background (blobs,
+    // sparkles, bottom wave) sits behind header + content + floating bottom bar,
+    // which are all transparent over it. Every other screen keeps the plain
+    // background. The status bar is untouched (normal theme background colour).
     val homeLook = (tab == Tab.HOME || tab == Tab.SETTINGS) && settingsSubScreen == SettingsSubScreen.MAIN &&
         photoEditStep == PhotoEditStep.NONE && !showKeyboardPreview && !showTypingTest && !showProfile
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .background(
-                if (homeLook) homeBackgroundBrush(isDark)
-                else androidx.compose.ui.graphics.SolidColor(MaterialTheme.colorScheme.background)
-            )
+            .background(MaterialTheme.colorScheme.background)
     ) {
-    // Status bar takes the gradient's top colour on Home so it blends into the
-    // page; everywhere else it stays the normal background colour (the outer
-    // SideEffect in onCreate sets that — this one runs after it and wins).
-    val statusView = LocalView.current
-    val statusColor = if (homeLook) homeStatusBarColor(isDark) else MaterialTheme.colorScheme.background
-    SideEffect {
-        (statusView.context as Activity).window.statusBarColor = statusColor.toArgb()
-    }
+    if (homeLook) DeveloperBackground(dark = isDark)
     Scaffold(
         containerColor = Color.Transparent,
         floatingActionButton = {
