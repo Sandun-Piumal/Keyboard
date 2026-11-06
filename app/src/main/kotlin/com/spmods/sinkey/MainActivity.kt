@@ -559,9 +559,9 @@ private fun SinKeyApp(prefs: PreferencesManager, initialTab: Tab = Tab.HOME) {
             )
         }
     ) {
-    // Home tab: lavender gradient behind header + content + floating bottom bar
+    // Home + Settings tabs: lavender gradient behind header + content + floating bottom bar
     // (all transparent over it). Every other screen keeps the plain background.
-    val homeLook = tab == Tab.HOME && settingsSubScreen == SettingsSubScreen.MAIN &&
+    val homeLook = (tab == Tab.HOME || tab == Tab.SETTINGS) && settingsSubScreen == SettingsSubScreen.MAIN &&
         photoEditStep == PhotoEditStep.NONE && !showKeyboardPreview && !showTypingTest && !showProfile
     Box(
         modifier = Modifier
