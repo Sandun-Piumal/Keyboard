@@ -295,16 +295,6 @@ internal fun homePalette(dark: Boolean) = if (dark) HomePalette(
     glow = Color(0xFF7B4DF5)
 )
 
-/** Page background used behind the whole Home tab (also behind header + bottom bar). */
-internal fun homeBackgroundBrush(dark: Boolean): Brush = Brush.verticalGradient(homeBackgroundColors(dark))
-
-private fun homeBackgroundColors(dark: Boolean): List<Color> =
-    if (dark) listOf(Color(0xFF0F0C1D), Color(0xFF1B1438), Color(0xFF140F2B))
-    else listOf(Color(0xFFE6D9FD), Color(0xFFF1E9FF), Color(0xFFE0D0FC))
-
-/** Status-bar colour that continues the gradient's top edge, so the bar blends into the page. */
-internal fun homeStatusBarColor(dark: Boolean): Color = homeBackgroundColors(dark).first()
-
 private val ButtonGradient = listOf(Color(0xFF4A1FB8), Color(0xFF6A34F0))
 internal val GlossyWhite = Brush.linearGradient(listOf(Color.White, Color.White.copy(alpha = 0.25f)))
 
@@ -320,7 +310,7 @@ fun HomeScreen(
     val isDefault = ime.isDefault
     val p = remember(isDark) { homePalette(isDark) }
 
-    // No solid background here: MainActivity paints homeBackgroundBrush behind
+    // No solid background here: MainActivity paints the About-Developer background behind
     // the header, this scroll area and the bottom bar so it reads as one page.
     Column(
         modifier = Modifier
