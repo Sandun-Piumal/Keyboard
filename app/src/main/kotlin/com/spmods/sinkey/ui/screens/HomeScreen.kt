@@ -74,6 +74,17 @@ import androidx.compose.ui.unit.sp
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import com.spmods.sinkey.R
+import androidx.compose.foundation.layout.IntrinsicSize
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.foundation.layout.requiredSize
+import androidx.compose.material.icons.filled.Home
+import androidx.compose.material.icons.filled.Person
+import androidx.compose.material.icons.filled.Settings
+import androidx.compose.runtime.Immutable
+import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.graphics.luminance
+import androidx.compose.ui.text.TextStyle
 
 /**
  * Which action the header's trailing icon performs, driven by which tab is
@@ -99,136 +110,132 @@ fun medalTierForPoints(totalPoints: Long): MedalTier = when {
     else -> MedalTier.NONE
 }
 
+
 /**
- * Shared top bar for all three tabs (Home/Themes/Settings) — kept in this
- * file since Home originally owned this exact look (SinKey/Board title,
- * tagline, trailing action box). MainActivity now hosts a single instance
- * of this above the Scaffold's tab content instead of each screen drawing
- * its own, so it stays visually fixed (non-scrolling) while the tab content
- * scrolls underneath it — see SinKeyApp's Column(header, then Box(content)).
+ * Shared top bar for all three tabs (Home/Themes/Settings). Transparent so the
+ * page behind it shows through (Home paints a lavender gradient there —
+ * MainActivity). Layout: menu · logo + "SinKey <Board|Themes|Settings>" with
+ * tagline · trailing control.
  *
- * The trailing box's icon/behavior swaps with [menuMode]:
- *  - PREMIUM: static WorkspacePremium glyph, no click action (Home tab).
- *  - THEME_RESET / SETTINGS_RESET: a MoreVert (⋮) icon that opens a small
- *    dropdown with one destructive-ish "Reset theme"/"Reset settings" item;
- *    tapping it calls [onResetClick] and closes the menu.
+ * Trailing control by [menuMode]:
+ *  - PREMIUM (Home): round glossy profile button → [onProfileClick]. Its fill
+ *    follows [medalTier] (Gold/Silver/Bronze) once a medal is earned.
+ *  - THEME_RESET / SETTINGS_RESET: ⋮ menu with one "Reset …" item.
  */
 @Composable
 fun AppHeader(
     menuMode: HeaderMenuMode = HeaderMenuMode.PREMIUM,
     medalTier: MedalTier = MedalTier.NONE,
     onResetClick: () -> Unit = {},
-    // Opens the side drawer (SinKeyDrawer, in MainActivity.kt) — the Menu
-    // glyph was already sitting here with no click handler at all before
-    // this, unused chrome with no drawer behind it.
-    onMenuClick: () -> Unit = {}
+    onMenuClick: () -> Unit = {},
+    onProfileClick: () -> Unit = {}
 ) {
     var menuExpanded by remember { mutableStateOf(false) }
+    val dark = MaterialTheme.colorScheme.background.luminance() < 0.5f
+    val p = remember(dark) { homePalette(dark) }
 
-    // Second word of the title swaps with the tab so the header reads
-    // "SinKey Board" on Home, "SinKey Theme" on Themes, "SinKey Settings"
-    // on Settings — same first word/color, only the accent word changes.
     val titleSecondWord = when (menuMode) {
         HeaderMenuMode.PREMIUM -> "Board"
         HeaderMenuMode.THEME_RESET -> "Themes"
         HeaderMenuMode.SETTINGS_RESET -> "Settings"
     }
+    val accent = Brush.horizontalGradient(listOf(Color(0xFF5B2BEF), Color(0xFF9B4DFF)))
 
-    // Badge background/icon tint follow the user's earned medal tier —
-    // same solid Gold/Silver/Bronze colors as the medal circles in Profile
-    // (white icon on a solid color card) — so this glyph doubles as an
-    // at-a-glance rank indicator. NONE (no medal earned yet) falls back to
-    // a neutral card so the icon still sits on a visible background.
-    val badgeBg = when (medalTier) {
+    val medalBg: Color? = when (medalTier) {
         MedalTier.GOLD -> Color(0xFFF4B400)
         MedalTier.SILVER -> Color(0xFFB0B7C3)
         MedalTier.BRONZE -> Color(0xFFB4692B)
-        MedalTier.NONE -> IndigoDeep.copy(alpha = 0.12f)
-    }
-    val badgeIconTint = when (medalTier) {
-        MedalTier.NONE -> IndigoDeep
-        else -> Color.White
+        MedalTier.NONE -> null
     }
 
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .background(MaterialTheme.colorScheme.background)
-            .padding(20.dp, 18.dp, 20.dp, 6.dp),
+            .padding(16.dp, 14.dp, 16.dp, 4.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
         Icon(
             Icons.Filled.Menu,
             contentDescription = "Menu",
-            tint = MaterialTheme.colorScheme.onBackground,
+            tint = p.title,
             modifier = Modifier
-                .size(26.dp)
+                .size(28.dp)
                 .clip(CircleShape)
                 .clickable { onMenuClick() }
                 .padding(2.dp)
         )
 
-        Column(
+        Row(
             modifier = Modifier.weight(1f),
-            horizontalAlignment = Alignment.CenterHorizontally
+            horizontalArrangement = Arrangement.Center,
+            verticalAlignment = Alignment.CenterVertically
         ) {
-            Row {
-                Text(
-                    "SinKey ",
-                    fontSize = 24.sp,
-                    fontWeight = FontWeight.ExtraBold,
-                    color = TitleIndigo
-                )
-                Text(
-                    titleSecondWord,
-                    fontSize = 24.sp,
-                    fontWeight = FontWeight.ExtraBold,
-                    color = PinkAccent
+            // The launcher art has transparent padding around its circle, so it
+            // is drawn larger than its slot and centred.
+            Box(modifier = Modifier.size(50.dp), contentAlignment = Alignment.Center) {
+                Image(
+                    painter = painterResource(id = R.drawable.ic_launcher_foreground),
+                    contentDescription = null,
+                    modifier = Modifier.requiredSize(86.dp)
                 )
             }
-            Text(
-                "Type Smart. Type Easy. Type SinKey.",
-                fontSize = 12.sp,
-                color = BodyGrey,
-                modifier = Modifier.padding(top = 2.dp)
-            )
+            Spacer(Modifier.width(2.dp))
+            Column {
+                Row {
+                    Text("SinKey ", fontSize = 24.sp, fontWeight = FontWeight.ExtraBold, color = p.title)
+                    Text(
+                        titleSecondWord,
+                        style = TextStyle(brush = accent, fontSize = 24.sp, fontWeight = FontWeight.ExtraBold)
+                    )
+                }
+                Text(
+                    "Type Smart. Type Easy. Type SinKey.",
+                    fontSize = 11.sp,
+                    color = p.sub,
+                    maxLines = 1,
+                    modifier = Modifier.padding(top = 1.dp)
+                )
+            }
         }
 
         Box {
-            Box(
-                modifier = Modifier
-                    .size(40.dp)
-                    // Premium badge now sits on a circular tinted card
-                    // (color driven by medalTier above) instead of a bare
-                    // icon — matches the Test Typing/Medal card treatment
-                    // elsewhere in the app. The 3-dot menu (Themes/
-                    // Settings) keeps the old plain-icon look since it's a
-                    // functional control, not a status badge.
-                    .then(
-                        if (menuMode == HeaderMenuMode.PREMIUM)
-                            Modifier
-                                .clip(CircleShape)
-                                .background(badgeBg)
-                        else
-                            Modifier.clickable { menuExpanded = true }
-                    ),
-                contentAlignment = Alignment.Center
-            ) {
-                Icon(
-                    if (menuMode == HeaderMenuMode.PREMIUM) Icons.Filled.WorkspacePremium
-                    else Icons.Filled.MoreVert,
-                    contentDescription = if (menuMode == HeaderMenuMode.PREMIUM) "Premium" else "More options",
-                    // Premium's tint follows medalTier (falls back to brand
-                    // indigo when no medal is earned yet). The 3-dot menu
-                    // (Themes/Settings) instead uses onBackground so it
-                    // auto-flips: black in Light theme, white in Dark
-                    // theme — matching the Menu icon on the left rather
-                    // than a fixed color that could vanish against either
-                    // theme's background.
-                    tint = if (menuMode == HeaderMenuMode.PREMIUM) badgeIconTint
-                        else MaterialTheme.colorScheme.onBackground,
-                    modifier = Modifier.size(20.dp)
-                )
+            if (menuMode == HeaderMenuMode.PREMIUM) {
+                Box(
+                    modifier = Modifier
+                        .size(44.dp)
+                        .shadow(8.dp, CircleShape, ambientColor = p.glow.copy(alpha = 0.4f), spotColor = p.glow.copy(alpha = 0.4f))
+                        .clip(CircleShape)
+                        .background(
+                            if (medalBg != null) SolidColor(medalBg)
+                            else if (dark) Brush.verticalGradient(listOf(Color(0xFF2E2560), Color(0xFF211A48)))
+                            else Brush.verticalGradient(listOf(Color.White, Color(0xFFEAE0FF)))
+                        )
+                        .border(1.5.dp, if (dark) SolidColor(p.cardBorder) else GlossyWhite, CircleShape)
+                        .clickable { onProfileClick() },
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        Icons.Filled.Person,
+                        contentDescription = "Profile",
+                        tint = if (medalBg != null) Color.White else p.iconIndigo,
+                        modifier = Modifier.size(24.dp)
+                    )
+                }
+            } else {
+                Box(
+                    modifier = Modifier
+                        .size(44.dp)
+                        .clip(CircleShape)
+                        .clickable { menuExpanded = true },
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        Icons.Filled.MoreVert,
+                        contentDescription = "More options",
+                        tint = p.title,
+                        modifier = Modifier.size(22.dp)
+                    )
+                }
             }
 
             DropdownMenu(
@@ -249,27 +256,63 @@ fun AppHeader(
     }
 }
 
-// ── Palette ──────────────────────────────────────────────────────────────────
+// ── Home look: palette ───────────────────────────────────────────────────────
+// Everything on the Home tab (header, cards, bottom bar) is styled from this
+// one palette so light/dark stay consistent. Light = lavender glass look.
 private val IndigoDeep   = Color(0xFF6C4CE0)
 private val IndigoMid    = Color(0xFF7C5CF0)
 private val PinkAccent   = Color(0xFFE0498A)
-private val TitleIndigo  = Color(0xFF3B2F8C)
 private val BodyGrey     = Color(0xFF6B7280)
-// StepCardBg and FeatureStripBg now use MaterialTheme — see usages below
-private val OutlineIndigo = Color(0xFF6C4CE0)
-private val OutlinePink  = Color(0xFFE0498A)
 
-private fun isImeEnabled(context: Context): Boolean {
-    val imm = context.getSystemService(InputMethodManager::class.java)
-    return imm.enabledInputMethodList.any { it.packageName == context.packageName }
-}
+@Immutable
+internal class HomePalette(
+    val dark: Boolean,
+    val title: Color,        // headings
+    val body: Color,         // descriptions
+    val sub: Color,          // small captions
+    val card: Color,         // translucent "glass" card fill
+    val cardBorder: Color,
+    val heroGradient: List<Color>,
+    val testGradient: List<Color>,
+    val chipBg: Color,
+    val chipText: Color,
+    val blue: Color,         // "Sinhala" word
+    val purple: Color,       // "English" word
+    val iconIndigo: Color,
+    val iconRed: Color,
+    val glow: Color          // shadow tint
+)
 
-private fun isImeDefault(context: Context): Boolean {
-    val defaultIme = Settings.Secure.getString(
-        context.contentResolver, Settings.Secure.DEFAULT_INPUT_METHOD
-    )
-    return defaultIme?.startsWith(context.packageName) == true
-}
+internal fun homePalette(dark: Boolean) = if (dark) HomePalette(
+    dark = true,
+    title = Color(0xFFF2EEFF), body = Color(0xFFCFC8F2), sub = Color(0xFFA9A4D0),
+    card = Color(0xE61E1840), cardBorder = Color(0xFF3A2F66),
+    heroGradient = listOf(Color(0xFF2A1F5C), Color(0xFF2B1B52), Color(0xFF1F1648)),
+    testGradient = listOf(Color(0xFF2A2060), Color(0xFF2E1D56), Color(0xFF211850)),
+    chipBg = Color(0xFF3A2F66), chipText = Color(0xFFD7C8FF),
+    blue = Color(0xFF8FA0FF), purple = Color(0xFFC09BFF),
+    iconIndigo = Color(0xFFB093FF), iconRed = Color(0xFFFF7B7E),
+    glow = Color(0xFF000000)
+) else HomePalette(
+    dark = false,
+    title = Color(0xFF1B1464), body = Color(0xFF3A3566), sub = Color(0xFF5B5780),
+    card = Color.White.copy(alpha = 0.78f), cardBorder = Color.White,
+    heroGradient = listOf(Color(0xFFE7DBFF), Color(0xFFF3E4FB), Color(0xFFDCCBFF)),
+    testGradient = listOf(Color(0xFFE2D4FF), Color(0xFFF1DEFC), Color(0xFFD8C6FF)),
+    chipBg = Color(0xFFDCCEFB), chipText = Color(0xFF5A32D0),
+    blue = Color(0xFF2F45E6), purple = Color(0xFF6B2FD9),
+    iconIndigo = Color(0xFF5B3FE0), iconRed = Color(0xFFE5383B),
+    glow = Color(0xFF7B4DF5)
+)
+
+/** Page background used behind the whole Home tab (also behind header + bottom bar). */
+internal fun homeBackgroundBrush(dark: Boolean): Brush = Brush.verticalGradient(
+    if (dark) listOf(Color(0xFF0F0C1D), Color(0xFF1B1438), Color(0xFF140F2B))
+    else listOf(Color(0xFFE6D9FD), Color(0xFFF1E9FF), Color(0xFFE0D0FC))
+)
+
+private val ButtonGradient = listOf(Color(0xFF4A1FB8), Color(0xFF6A34F0))
+private val GlossyWhite = Brush.linearGradient(listOf(Color.White, Color.White.copy(alpha = 0.25f)))
 
 @Composable
 fun HomeScreen(
@@ -278,504 +321,377 @@ fun HomeScreen(
     onViewProfile: () -> Unit = {}
 ) {
     val context = LocalContext.current
-    val lifecycleOwner = LocalLifecycleOwner.current
+    val ime = rememberImeStatus()
+    val enabled = ime.enabled
+    val isDefault = ime.isDefault
+    val p = remember(isDark) { homePalette(isDark) }
 
-    var enabled   by remember { mutableStateOf(isImeEnabled(context)) }
-    var isDefault by remember { mutableStateOf(isImeDefault(context)) }
-
-    DisposableEffect(lifecycleOwner) {
-        fun refresh() {
-            enabled   = isImeEnabled(context)
-            isDefault = isImeDefault(context)
-        }
-
-        val handler = Handler(Looper.getMainLooper())
-        val contentObserver = object : ContentObserver(handler) {
-            override fun onChange(selfChange: Boolean) = refresh()
-        }
-        context.contentResolver.registerContentObserver(
-            Settings.Secure.getUriFor(Settings.Secure.DEFAULT_INPUT_METHOD),
-            false, contentObserver
-        )
-        context.contentResolver.registerContentObserver(
-            Settings.Secure.getUriFor(Settings.Secure.ENABLED_INPUT_METHODS),
-            false, contentObserver
-        )
-
-        val lifecycleObserver = LifecycleEventObserver { _, event ->
-            if (event == Lifecycle.Event.ON_RESUME) refresh()
-        }
-        lifecycleOwner.lifecycle.addObserver(lifecycleObserver)
-
-        onDispose {
-            context.contentResolver.unregisterContentObserver(contentObserver)
-            lifecycleOwner.lifecycle.removeObserver(lifecycleObserver)
-        }
-    }
-
+    // No solid background here: MainActivity paints homeBackgroundBrush behind
+    // the header, this scroll area and the bottom bar so it reads as one page.
     Column(
         modifier = Modifier
             .fillMaxWidth()
             .verticalScroll(rememberScrollState())
-            .background(MaterialTheme.colorScheme.background)
-            .padding(bottom = 24.dp)
+            .padding(start = 14.dp, end = 14.dp, top = 8.dp, bottom = 18.dp)
     ) {
-        // ── Hero card ────────────────────────────────────────────────────────
-        // isDark now comes from the caller (MainActivity's real ThemeMode-
-        // aware value) instead of isSystemInDarkTheme() here directly — the
-        // old local val ignored the user's in-app Light/Dark/System choice
-        // and only ever reflected the OS-level setting, so picking "Always
-        // dark"/"Always light" in Settings never changed this gradient.
-        val heroGradient = Brush.linearGradient(
-            colors = if (isDark)
-                listOf(Color(0xFF1E1840), Color(0xFF1F1520), Color(0xFF20101A))
-            else
-                listOf(Color(0xFFE9E4FB), Color(0xFFF3E7F2), Color(0xFFFBE7EE)),
-            start = Offset(0f, 0f),
-            end = Offset(Float.POSITIVE_INFINITY, Float.POSITIVE_INFINITY)
-        )
-
-        Box(
-            modifier = Modifier
-                .padding(20.dp, 14.dp, 20.dp, 0.dp)
-                .fillMaxWidth()
-        ) {
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clip(RoundedCornerShape(24.dp))
-                    .background(heroGradient)
-            ) {
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(20.dp),
-                    verticalAlignment = Alignment.Top
-                ) {
-                    // ── Left: text + CTA ─────────────────────────────────
-                    Column(modifier = Modifier.weight(1f)) {
-                        Text(
-                            "WELCOME",
-                            fontSize = 11.sp,
-                            fontWeight = FontWeight.Bold,
-                            letterSpacing = 1.sp,
-                            color = IndigoDeep
-                        )
-                        Spacer(Modifier.height(8.dp))
-                        Text(
-                            "Type your world",
-                            fontSize = 22.sp,
-                            fontWeight = FontWeight.ExtraBold,
-                            color = MaterialTheme.colorScheme.onBackground
-                        )
-                        Row {
-                            Text("in ", fontSize = 22.sp, fontWeight = FontWeight.ExtraBold, color = MaterialTheme.colorScheme.onBackground)
-                            Text("Sinhala ", fontSize = 22.sp, fontWeight = FontWeight.ExtraBold, color = IndigoDeep)
-                            Text("or ", fontSize = 22.sp, fontWeight = FontWeight.ExtraBold, color = MaterialTheme.colorScheme.onBackground)
-                            Text("English", fontSize = 22.sp, fontWeight = FontWeight.ExtraBold, color = PinkAccent)
-                        }
-                        Spacer(Modifier.height(8.dp))
-                        Text(
-                            "Switch anytime. Type naturally.",
-                            fontSize = 13.sp,
-                            color = BodyGrey
-                        )
-                        Spacer(Modifier.height(18.dp))
-
-                        // CTA button — was "Start Typing" (opened IME
-                        // settings); now routes to the Profile screen,
-                        // which shows this device's real typing stats.
-                        Row(
-                            modifier = Modifier
-                                .clip(RoundedCornerShape(50))
-                                .background(
-                                    Brush.horizontalGradient(listOf(IndigoDeep, IndigoMid))
-                                )
-                                .clickable { onViewProfile() }
-                                .padding(horizontal = 22.dp, vertical = 13.dp),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Text(
-                                "View Profile",
-                                color = Color.White,
-                                fontSize = 14.sp,
-                                fontWeight = FontWeight.Bold
-                            )
-                            Spacer(Modifier.width(6.dp))
-                            Icon(
-                                Icons.Filled.ChevronRight,
-                                contentDescription = null,
-                                tint = Color.White,
-                                modifier = Modifier.size(16.dp)
-                            )
-                        }
-                    }
-
-                    // ── Right: keyboard image + sparkles + dots ───────────
-                    Box(
-                        modifier = Modifier
-                            .width(180.dp)
-                            .height(180.dp)
-                            .offset(y = (-5).dp)
-                    ) {
-                        Image(
-                            painter = painterResource(id = R.drawable.keyboard_hero),
-                            contentDescription = "Keyboard illustration",
-                            contentScale = ContentScale.Fit,
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .align(Alignment.Center)
-                        )
-
-                        Text(
-                            "✦",
-                            fontSize = 10.sp,
-                            color = Color(0xFFB8A0EC),
-                            modifier = Modifier
-                                .align(Alignment.TopStart)
-                                .offset(x = 28.dp, y = 2.dp)
-                        )
-
-                        Text(
-                            "✦",
-                            fontSize = 18.sp,
-                            color = Color(0xFFD4C5F9),
-                            modifier = Modifier
-                                .align(Alignment.TopEnd)
-                                .offset(x = (-8).dp, y = 4.dp)
-                        )
-
-                        Box(
-                            modifier = Modifier
-                                .align(Alignment.CenterStart)
-                                .offset(x = (-2).dp, y = 28.dp)
-                                .size(8.dp)
-                                .clip(CircleShape)
-                                .background(Color(0xFFB8A0EC))
-                        )
-
-                        Box(
-                            modifier = Modifier
-                                .align(Alignment.CenterStart)
-                                .offset(x = 8.dp, y = 42.dp)
-                                .size(5.dp)
-                                .clip(CircleShape)
-                                .background(Color(0xFFB8A0EC))
-                        )
-                    }
-                }
-            }
-        }
+        HeroCard(p, onViewProfile)
 
         // ── "Let's get you started" ──────────────────────────────────────────
-        Text(
-            "Let's get you started",
-            fontSize = 15.sp,
-            fontWeight = FontWeight.Bold,
-            color = MaterialTheme.colorScheme.onBackground,
-            modifier = Modifier.padding(20.dp, 22.dp, 20.dp, 10.dp)
-        )
-
-        Card(
-            modifier = Modifier
-                .padding(20.dp, 0.dp, 20.dp, 0.dp)
-                .fillMaxWidth(),
-            shape = RoundedCornerShape(20.dp),
-            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-            elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)
+        Row(
+            modifier = Modifier.padding(start = 6.dp, top = 22.dp, bottom = 10.dp),
+            verticalAlignment = Alignment.CenterVertically
         ) {
-            Column(modifier = Modifier.padding(vertical = 6.dp)) {
-                SetupStepRow(
-                    icon = Icons.Filled.Shield,
-                    iconBg = Color(0xFFEDE8FC),
-                    iconTint = IndigoDeep,
-                    title = "1. Enable SinKey",
-                    subtitle = "Turn on SinKey in system keyboard settings.",
-                    actionLabel = "Enable Now",
-                    actionOutline = OutlineIndigo,
-                    done = enabled
-                ) {
-                    context.startActivity(Intent(Settings.ACTION_INPUT_METHOD_SETTINGS))
-                }
-
-                HorizontalDivider(
-                    color = MaterialTheme.colorScheme.outlineVariant,
-                    modifier = Modifier.padding(horizontal = 18.dp)
+            Text("🚀", fontSize = 26.sp)
+            Spacer(Modifier.width(10.dp))
+            Column {
+                Text(
+                    "Let's get you started",
+                    fontSize = 19.sp,
+                    fontWeight = FontWeight.ExtraBold,
+                    color = p.title
                 )
-
-                SetupStepRow(
-                    icon = Icons.Filled.Star,
-                    iconBg = Color(0xFFFCE8F0),
-                    iconTint = PinkAccent,
-                    title = "2. Set as Default Keyboard",
-                    subtitle = "Choose SinKey as your default keyboard.",
-                    actionLabel = "Set as Default",
-                    actionOutline = OutlinePink,
-                    done = isDefault
-                ) {
-                    val imm = context.getSystemService(InputMethodManager::class.java)
-                    imm.showInputMethodPicker()
-                }
+                Spacer(Modifier.height(3.dp))
+                Box(
+                    Modifier
+                        .width(52.dp)
+                        .height(3.dp)
+                        .clip(RoundedCornerShape(50))
+                        .background(Brush.horizontalGradient(listOf(Color(0xFF5B2BEF), Color(0x005B2BEF))))
+                )
             }
         }
 
-        // ── Test Typing ──────────────────────────────────────────────────────
-        // Card background, title, description, and dots all follow isDark
-        // explicitly (same convention as the Hero card above) since this
-        // card uses custom colors rather than MaterialTheme.colorScheme —
-        // without this, the card stayed fixed light-purple even in Dark
-        // theme, clashing with the rest of the dark UI around it.
-        val testCardBg = if (isDark) Color(0xFF241B3D) else Color(0xFFEDE7FB)
-        val testTitleColor = if (isDark) Color(0xFFF2EEFB) else Color(0xFF1A1A2E)
-        val testDescColor = if (isDark) Color(0xFFB6AEC9) else BodyGrey
-        val testDotColor = if (isDark) Color(0xFF5C4A8A) else Color(0xFFB8A0EC)
+        SetupStepRow(
+            p = p,
+            icon = Icons.Filled.Shield,
+            iconTint = p.iconIndigo,
+            title = "1. Enable SinKey",
+            subtitle = "Turn on SinKey in system keyboard settings.",
+            actionLabel = "Enable Now",
+            done = enabled
+        ) { context.startActivity(Intent(Settings.ACTION_INPUT_METHOD_SETTINGS)) }
 
-        Card(
-            modifier = Modifier
-                .padding(20.dp, 20.dp, 20.dp, 0.dp)
-                .fillMaxWidth(),
-            shape = RoundedCornerShape(20.dp),
-            colors = CardDefaults.cardColors(containerColor = testCardBg),
-            elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
+        Spacer(Modifier.height(8.dp))
+
+        SetupStepRow(
+            p = p,
+            icon = Icons.Filled.Star,
+            iconTint = PinkAccent,
+            title = "2. Set as Default Keyboard",
+            subtitle = "Choose SinKey as your default keyboard.",
+            actionLabel = "Set as Default",
+            done = isDefault
         ) {
-            Box(modifier = Modifier.fillMaxWidth()) {
-                // Decorative dots pinned to the card's top-right corner,
-                // sitting above the Start Test button — matches reference.
-                Box(
-                    modifier = Modifier
-                        .align(Alignment.TopEnd)
-                        .offset(x = (-54).dp, y = 10.dp)
-                        .size(7.dp)
-                        .clip(CircleShape)
-                        .background(testDotColor)
-                )
-                Box(
-                    modifier = Modifier
-                        .align(Alignment.TopEnd)
-                        .offset(x = (-28).dp, y = 20.dp)
-                        .size(5.dp)
-                        .clip(CircleShape)
-                        .background(testDotColor)
-                )
-                Box(
-                    modifier = Modifier
-                        .align(Alignment.TopEnd)
-                        .offset(x = (-14).dp, y = 30.dp)
-                        .size(5.dp)
-                        .clip(CircleShape)
-                        .background(testDotColor)
-                )
+            val imm = context.getSystemService(InputMethodManager::class.java)
+            imm.showInputMethodPicker()
+        }
 
+        TestTypingCard(p, onStartTest)
+        FeatureGrid(p)
+    }
+}
+
+/** Frosted "glass" container shared by the step rows and the feature grid. */
+private fun Modifier.glassCard(p: HomePalette, radius: Int = 22, elevation: Int = 6): Modifier {
+    val shape = RoundedCornerShape(radius.dp)
+    return this
+        .shadow(elevation.dp, shape, ambientColor = p.glow.copy(alpha = 0.35f), spotColor = p.glow.copy(alpha = 0.35f))
+        .clip(shape)
+        .background(p.card)
+        .border(1.dp, if (p.dark) SolidColor(p.cardBorder) else GlossyWhite, shape)
+}
+
+/** Dark-indigo gradient pill ("View Profile", "Start Test"). */
+@Composable
+private fun PillButton(label: String, textSize: Int, hPad: Int, vPad: Int, onClick: () -> Unit) {
+    val shape = RoundedCornerShape(50)
+    Row(
+        modifier = Modifier
+            .shadow(8.dp, shape, ambientColor = Color(0xFF4A1FB8), spotColor = Color(0xFF4A1FB8))
+            .clip(shape)
+            .background(Brush.horizontalGradient(ButtonGradient))
+            .border(1.dp, Color.White.copy(alpha = 0.30f), shape)
+            .clickable(onClick = onClick)
+            .padding(horizontal = hPad.dp, vertical = vPad.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Text(label, color = Color.White, fontSize = textSize.sp, fontWeight = FontWeight.Bold)
+        Spacer(Modifier.width(6.dp))
+        Icon(Icons.Filled.ChevronRight, null, tint = Color.White, modifier = Modifier.size((textSize + 2).dp))
+    }
+}
+
+@Composable
+private fun HeroCard(p: HomePalette, onViewProfile: () -> Unit) {
+    val shape = RoundedCornerShape(28.dp)
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .shadow(14.dp, shape, ambientColor = p.glow.copy(alpha = 0.4f), spotColor = p.glow.copy(alpha = 0.4f))
+            .clip(shape)
+            .background(
+                Brush.linearGradient(
+                    colors = p.heroGradient,
+                    start = Offset(0f, 0f),
+                    end = Offset(Float.POSITIVE_INFINITY, Float.POSITIVE_INFINITY)
+                )
+            )
+            .border(1.5.dp, if (p.dark) SolidColor(p.cardBorder) else GlossyWhite, shape)
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(start = 20.dp, top = 18.dp, bottom = 18.dp, end = 8.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Column(modifier = Modifier.weight(1f)) {
+                // WELCOME 👋 chip
                 Row(
                     modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(16.dp, 18.dp, 16.dp, 18.dp),
+                        .clip(RoundedCornerShape(50))
+                        .background(p.chipBg)
+                        .padding(horizontal = 12.dp, vertical = 6.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Image(
-                        painter = painterResource(id = R.drawable.test_typing_stopwatch),
-                        contentDescription = "Test typing illustration",
-                        contentScale = ContentScale.Fit,
-                        modifier = Modifier.size(88.dp)
-                    )
-
-                    Spacer(Modifier.width(10.dp))
-
-                    Column(modifier = Modifier.weight(1f)) {
-                        Text(
-                            "TEST YOUR TYPING",
-                            fontSize = 10.sp,
-                            fontWeight = FontWeight.Bold,
-                            letterSpacing = 0.8.sp,
-                            color = if (isDark) Color(0xFFB39DEF) else IndigoDeep
-                        )
-                        Spacer(Modifier.height(2.dp))
-                        Text(
-                            "Test Typing",
-                            fontSize = 18.sp,
-                            fontWeight = FontWeight.ExtraBold,
-                            color = testTitleColor
-                        )
-                        Spacer(Modifier.height(4.dp))
-                        Text(
-                            "Check your typing speed and improve your skills with a quick test.",
-                            fontSize = 11.sp,
-                            color = testDescColor,
-                            lineHeight = 13.sp
-                        )
-                    }
-
-                    Spacer(Modifier.width(8.dp))
-
-                    Row(
-                        modifier = Modifier
-                            .clip(RoundedCornerShape(50))
-                            .background(
-                                Brush.horizontalGradient(listOf(IndigoDeep, IndigoMid))
-                            )
-                            .clickable { onStartTest() }
-                            .padding(horizontal = 16.dp, vertical = 11.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Text(
-                            "Start Test",
-                            color = Color.White,
-                            fontSize = 12.sp,
-                            fontWeight = FontWeight.Bold
-                        )
-                        Spacer(Modifier.width(4.dp))
-                        Icon(
-                            Icons.Filled.ChevronRight,
-                            contentDescription = null,
-                            tint = Color.White,
-                            modifier = Modifier.size(14.dp)
-                        )
-                    }
+                    Text("WELCOME", fontSize = 11.sp, fontWeight = FontWeight.ExtraBold, letterSpacing = 0.8.sp, color = p.chipText)
+                    Spacer(Modifier.width(5.dp))
+                    Text("👋", fontSize = 12.sp)
                 }
+                Spacer(Modifier.height(12.dp))
+                Text("Type your world", fontSize = 22.sp, fontWeight = FontWeight.ExtraBold, color = p.title)
+                Row {
+                    Text("in ", fontSize = 22.sp, fontWeight = FontWeight.ExtraBold, color = p.title)
+                    Text("Sinhala ", fontSize = 22.sp, fontWeight = FontWeight.ExtraBold, color = p.blue)
+                    Text("or ", fontSize = 22.sp, fontWeight = FontWeight.ExtraBold, color = p.title)
+                    Text("English", fontSize = 22.sp, fontWeight = FontWeight.ExtraBold, color = p.purple)
+                }
+                Spacer(Modifier.height(8.dp))
+                Text("Switch anytime. Type naturally.", fontSize = 13.sp, color = p.body)
+                Spacer(Modifier.height(16.dp))
+                PillButton("View Profile", textSize = 14, hPad = 22, vPad = 12, onClick = onViewProfile)
             }
-        }
 
-        // ── Feature strip ────────────────────────────────────────────────────
-        Card(
-            modifier = Modifier
-                .padding(20.dp, 20.dp, 20.dp, 0.dp)
-                .fillMaxWidth(),
-            shape = RoundedCornerShape(20.dp),
-            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
-            elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
-        ) {
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(vertical = 20.dp),
-                verticalArrangement = Arrangement.spacedBy(16.dp)
-            ) {
-                // ── Row 1 — Original features ────────────────────────────
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceEvenly
-                ) {
-                    FeatureItem(
-                        glyph = "සිං",
-                        glyphColor = IndigoDeep,
-                        bgColor = Color(0xFFEDE8FC),
-                        title = "Sinhala Typing",
-                        subtitle = "Easy & Natural"
-                    )
-                    FeatureItem(
-                        glyph = "A",
-                        glyphColor = PinkAccent,
-                        bgColor = Color(0xFFFCE8F0),
-                        title = "English Typing",
-                        subtitle = "Fast & Smart"
-                    )
-                    FeatureItem(
-                        icon = Icons.Filled.Palette,
-                        glyphColor = IndigoDeep,
-                        bgColor = Color(0xFFEDE8FC),
-                        title = "Themes",
-                        subtitle = "Style your keyboard"
-                    )
-                    FeatureItem(
-                        icon = Icons.Filled.VerifiedUser,
-                        glyphColor = PinkAccent,
-                        bgColor = Color(0xFFFCE8F0),
-                        title = "Privacy First",
-                        subtitle = "100% Secure"
-                    )
-                }
-
-                // ── Row 2 — New features ─────────────────────────────────
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceEvenly
-                ) {
-                    FeatureItem(
-                        glyph = "සිA",
-                        glyphColor = IndigoDeep,
-                        bgColor = Color(0xFFEDE8FC),
-                        title = "Mix & Match",
-                        subtitle = "Type both freely"
-                    )
-                    FeatureItem(
-                        icon = Icons.Filled.Translate,
-                        glyphColor = PinkAccent,
-                        bgColor = Color(0xFFFCE8F0),
-                        title = "Instant Translate",
-                        subtitle = "Translate as you type"
-                    )
-                    FeatureItem(
-                        icon = Icons.Filled.EmojiEmotions,
-                        glyphColor = IndigoDeep,
-                        bgColor = Color(0xFFEDE8FC),
-                        title = "Sticker Studio",
-                        subtitle = "Create & send stickers"
-                    )
-                    FeatureItem(
-                        icon = Icons.Filled.TextFields,
-                        glyphColor = PinkAccent,
-                        bgColor = Color(0xFFFCE8F0),
-                        title = "Font Collection",
-                        subtitle = "10+ unique styles"
-                    )
-                }
-            }
+            Image(
+                painter = painterResource(id = R.drawable.keyboard_hero),
+                contentDescription = "Keyboard illustration",
+                contentScale = ContentScale.Fit,
+                modifier = Modifier.width(170.dp).height(150.dp)
+            )
         }
     }
 }
 
 @Composable
+private fun TestTypingCard(p: HomePalette, onStartTest: () -> Unit) {
+    val shape = RoundedCornerShape(26.dp)
+    val dot = if (p.dark) Color(0xFF7B5FD0) else Color(0xFF5B2BEF)
+    Box(
+        modifier = Modifier
+            .padding(top = 20.dp)
+            .fillMaxWidth()
+            .shadow(10.dp, shape, ambientColor = p.glow.copy(alpha = 0.35f), spotColor = p.glow.copy(alpha = 0.35f))
+            .clip(shape)
+            .background(
+                Brush.linearGradient(
+                    colors = p.testGradient,
+                    start = Offset(0f, 0f),
+                    end = Offset(Float.POSITIVE_INFINITY, Float.POSITIVE_INFINITY)
+                )
+            )
+            .border(1.5.dp, if (p.dark) SolidColor(p.cardBorder) else GlossyWhite, shape)
+    ) {
+        // decorative dots, top-right
+        Box(Modifier.align(Alignment.TopEnd).offset(x = (-70).dp, y = 10.dp).size(8.dp).clip(CircleShape).background(dot))
+        Box(Modifier.align(Alignment.TopEnd).offset(x = (-36).dp, y = 20.dp).size(8.dp).clip(CircleShape).background(dot))
+        Box(Modifier.align(Alignment.TopEnd).offset(x = (-16).dp, y = 32.dp).size(4.dp).clip(CircleShape).background(dot.copy(alpha = 0.7f)))
+
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(start = 12.dp, top = 16.dp, bottom = 16.dp, end = 14.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Image(
+                painter = painterResource(id = R.drawable.test_typing_stopwatch),
+                contentDescription = "Test typing illustration",
+                contentScale = ContentScale.Fit,
+                modifier = Modifier.size(88.dp)
+            )
+            Spacer(Modifier.width(8.dp))
+            Column(modifier = Modifier.weight(1f)) {
+                Box(
+                    Modifier
+                        .clip(RoundedCornerShape(50))
+                        .background(Brush.horizontalGradient(ButtonGradient))
+                        .padding(horizontal = 10.dp, vertical = 4.dp)
+                ) {
+                    Text("TEST YOUR TYPING", fontSize = 9.sp, fontWeight = FontWeight.ExtraBold, letterSpacing = 0.6.sp, color = Color.White)
+                }
+                Spacer(Modifier.height(4.dp))
+                Text("Test Typing", fontSize = 21.sp, fontWeight = FontWeight.ExtraBold, color = p.title)
+                Spacer(Modifier.height(2.dp))
+                Text(
+                    "Check your typing speed and improve your skills with a quick test.",
+                    fontSize = 11.sp,
+                    lineHeight = 14.sp,
+                    color = p.body
+                )
+            }
+            Spacer(Modifier.width(8.dp))
+            PillButton("Start Test", textSize = 12, hPad = 14, vPad = 11, onClick = onStartTest)
+        }
+    }
+}
+
+@Composable
+private fun FeatureGrid(p: HomePalette) {
+    val divider = if (p.dark) Color(0xFF3A2F66) else Color(0xFFD9CCF7)
+    Column(
+        modifier = Modifier
+            .padding(top = 20.dp)
+            .fillMaxWidth()
+            .glassCard(p, radius = 28, elevation = 8)
+            .padding(vertical = 8.dp)
+    ) {
+        FeatureRow(
+            p, divider,
+            FeatureSpec("සිං", null, p.iconIndigo, "Sinhala Typing", "Easy & Natural"),
+            FeatureSpec("A", null, p.iconRed, "English Typing", "Fast & Smart"),
+            FeatureSpec(null, Icons.Filled.Palette, p.iconIndigo, "Themes", "Style your keyboard"),
+            FeatureSpec(null, Icons.Filled.VerifiedUser, p.iconRed, "Privacy First", "100% Secure")
+        )
+        HorizontalDivider(color = divider, modifier = Modifier.padding(horizontal = 18.dp))
+        FeatureRow(
+            p, divider,
+            FeatureSpec("සිA", null, p.iconIndigo, "Mix & Match", "Type both freely"),
+            FeatureSpec(null, Icons.Filled.Translate, p.iconRed, "Instant Translate", "Translate as you type"),
+            FeatureSpec(null, Icons.Filled.EmojiEmotions, p.iconIndigo, "Sticker Studio", "Create & Send"),
+            FeatureSpec("Tт", null, p.iconRed, "Font Collection", "10+ unique styles")
+        )
+    }
+}
+
+private class FeatureSpec(
+    val glyph: String?,
+    val icon: ImageVector?,
+    val tint: Color,
+    val title: String,
+    val subtitle: String
+)
+
+@Composable
+private fun FeatureRow(p: HomePalette, divider: Color, vararg items: FeatureSpec) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(IntrinsicSize.Min)
+            .padding(vertical = 10.dp)
+    ) {
+        items.forEachIndexed { i, f ->
+            if (i > 0) {
+                Box(
+                    Modifier
+                        .width(1.dp)
+                        .fillMaxHeight()
+                        .padding(vertical = 6.dp)
+                        .background(divider)
+                )
+            }
+            FeatureItem(p, f, Modifier.weight(1f))
+        }
+    }
+}
+
+@Composable
+private fun FeatureItem(p: HomePalette, f: FeatureSpec, modifier: Modifier) {
+    Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = modifier.padding(horizontal = 2.dp)) {
+        // glossy white tile with a soft purple glow
+        Box(
+            modifier = Modifier
+                .size(54.dp)
+                .shadow(6.dp, CircleShape, ambientColor = p.glow.copy(alpha = 0.4f), spotColor = p.glow.copy(alpha = 0.4f))
+                .clip(CircleShape)
+                .background(
+                    if (p.dark) Brush.verticalGradient(listOf(Color(0xFF2E2560), Color(0xFF211A48)))
+                    else Brush.verticalGradient(listOf(Color.White, Color(0xFFEFE7FF)))
+                )
+                .border(1.dp, if (p.dark) SolidColor(p.cardBorder) else GlossyWhite, CircleShape),
+            contentAlignment = Alignment.Center
+        ) {
+            if (f.icon != null) {
+                Icon(f.icon, null, tint = f.tint, modifier = Modifier.size(24.dp))
+            } else if (f.glyph != null) {
+                Text(f.glyph, fontSize = 19.sp, fontWeight = FontWeight.ExtraBold, color = f.tint)
+            }
+        }
+        Spacer(Modifier.height(7.dp))
+        Text(
+            f.title,
+            fontSize = 11.5.sp,
+            fontWeight = FontWeight.ExtraBold,
+            color = p.title,
+            textAlign = TextAlign.Center,
+            maxLines = 1
+        )
+        Text(
+            f.subtitle,
+            fontSize = 9.5.sp,
+            color = p.sub,
+            textAlign = TextAlign.Center,
+            lineHeight = 12.sp,
+            maxLines = 2
+        )
+    }
+}
+
+/**
+ * One "Let's get you started" row — its own glass card. Done = glossy green
+ * circle + green "Done" pill; otherwise a tinted icon circle + outlined action.
+ */
+@Composable
 private fun SetupStepRow(
+    p: HomePalette,
     icon: ImageVector,
-    iconBg: Color,
     iconTint: Color,
     title: String,
     subtitle: String,
     actionLabel: String,
-    actionOutline: Color,
     done: Boolean,
     onAction: () -> Unit
 ) {
+    val doneFg = if (p.dark) Color(0xFF4ADE80) else Color(0xFF1B7A44)
+    val doneBg = if (p.dark) Color(0xFF1E8A4C).copy(alpha = 0.25f) else Color(0xFFCDF2D9)
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(18.dp, 14.dp, 18.dp, 14.dp),
+            .glassCard(p)
+            .padding(start = 14.dp, end = 12.dp, top = 10.dp, bottom = 10.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
         Box(
             modifier = Modifier
                 .size(44.dp)
+                .shadow(if (done) 4.dp else 0.dp, CircleShape, ambientColor = Color(0xFF3CC26B), spotColor = Color(0xFF3CC26B))
                 .clip(CircleShape)
-                .background(if (done) Color(0xFFE3F5EA) else iconBg),
+                .background(
+                    if (done) Brush.verticalGradient(listOf(Color(0xFF8DEBA8), Color(0xFF45C773)))
+                    else SolidColor(iconTint.copy(alpha = if (p.dark) 0.22f else 0.12f))
+                ),
             contentAlignment = Alignment.Center
         ) {
-            if (done) {
-                Icon(
-                    Icons.Filled.Check,
-                    contentDescription = null,
-                    tint = Color(0xFF1E8A4C),
-                    modifier = Modifier.size(20.dp)
-                )
-            } else {
-                Icon(
-                    icon,
-                    contentDescription = null,
-                    tint = iconTint,
-                    modifier = Modifier.size(20.dp)
-                )
-            }
+            Icon(
+                if (done) Icons.Filled.Check else icon,
+                contentDescription = null,
+                tint = if (done) Color(0xFF0F5C2E) else iconTint,
+                modifier = Modifier.size(22.dp)
+            )
         }
 
-        Spacer(Modifier.width(14.dp))
+        Spacer(Modifier.width(12.dp))
 
         Column(modifier = Modifier.weight(1f)) {
-            Text(title, fontSize = 15.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurface)
-            Text(
-                subtitle,
-                fontSize = 12.sp,
-                color = BodyGrey,
-                modifier = Modifier.padding(top = 2.dp)
-            )
+            Text(title, fontSize = 15.sp, fontWeight = FontWeight.ExtraBold, color = p.title)
+            Text(subtitle, fontSize = 11.5.sp, color = p.body, lineHeight = 14.sp, modifier = Modifier.padding(top = 2.dp))
         }
 
         Spacer(Modifier.width(8.dp))
@@ -784,103 +700,99 @@ private fun SetupStepRow(
             Row(
                 modifier = Modifier
                     .clip(RoundedCornerShape(50))
-                    .background(Color(0xFFE3F5EA))
-                    .padding(horizontal = 14.dp, vertical = 9.dp),
+                    .background(doneBg)
+                    .padding(horizontal = 12.dp, vertical = 8.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Icon(
-                    Icons.Filled.Check,
-                    contentDescription = null,
-                    tint = Color(0xFF1E8A4C),
-                    modifier = Modifier.size(14.dp)
-                )
+                Icon(Icons.Filled.Check, null, tint = doneFg, modifier = Modifier.size(15.dp))
                 Spacer(Modifier.width(4.dp))
-                Text(
-                    "Done",
-                    fontSize = 12.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = Color(0xFF1E8A4C)
-                )
+                Text("Done", fontSize = 13.sp, fontWeight = FontWeight.ExtraBold, color = doneFg)
             }
         } else {
             Row(
                 modifier = Modifier
                     .clip(RoundedCornerShape(50))
-                    .border(1.dp, actionOutline.copy(alpha = 0.5f), RoundedCornerShape(50))
+                    .border(1.dp, iconTint.copy(alpha = 0.55f), RoundedCornerShape(50))
                     .clickable { onAction() }
-                    .padding(horizontal = 14.dp, vertical = 9.dp),
+                    .padding(horizontal = 12.dp, vertical = 8.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Text(
-                    actionLabel,
-                    fontSize = 12.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = actionOutline
-                )
-                Spacer(Modifier.width(2.dp))
-                Icon(
-                    Icons.Filled.ChevronRight,
-                    contentDescription = null,
-                    tint = actionOutline,
-                    modifier = Modifier.size(14.dp)
-                )
+                Text(actionLabel, fontSize = 12.sp, fontWeight = FontWeight.Bold, color = iconTint, maxLines = 1)
+                Icon(Icons.Filled.ChevronRight, null, tint = iconTint, modifier = Modifier.size(14.dp))
             }
         }
     }
 }
 
+/**
+ * Floating pill bottom bar (Home / Themes / Settings). The selected tab is a
+ * deep-indigo rounded block; the others sit on the frosted pill with thin
+ * dividers between them. Replaces the stock Material NavigationBar.
+ */
 @Composable
-private fun FeatureItem(
-    glyph: String? = null,
-    icon: ImageVector? = null,
-    glyphColor: Color,
-    bgColor: Color,
-    title: String,
-    subtitle: String
-) {
-    Column(
-        horizontalAlignment = Alignment.CenterHorizontally,
-        modifier = Modifier.width(78.dp)
+fun SinKeyBottomBar(selectedIndex: Int, onSelect: (Int) -> Unit) {
+    val dark = MaterialTheme.colorScheme.background.luminance() < 0.5f
+    val p = remember(dark) { homePalette(dark) }
+    val shape = RoundedCornerShape(34.dp)
+    val items = listOf(
+        Triple("Home", Icons.Filled.Home, 0),
+        Triple("Themes", Icons.Filled.Palette, 1),
+        Triple("Settings", Icons.Filled.Settings, 2)
+    )
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .navigationBarsPadding()
+            .padding(start = 14.dp, end = 14.dp, bottom = 10.dp, top = 4.dp)
     ) {
-        Box(
+        Row(
             modifier = Modifier
-                .size(52.dp)
-                .clip(CircleShape)
-                .background(MaterialTheme.colorScheme.surface)
-                .border(1.dp, bgColor, CircleShape),
-            contentAlignment = Alignment.Center
+                .fillMaxWidth()
+                .height(68.dp)
+                .glassCard(p, radius = 34, elevation = 10)
+                .padding(6.dp),
+            verticalAlignment = Alignment.CenterVertically
         ) {
-            if (icon != null) {
-                Icon(
-                    icon,
-                    contentDescription = null,
-                    tint = glyphColor,
-                    modifier = Modifier.size(22.dp)
-                )
-            } else if (glyph != null) {
-                Text(
-                    glyph,
-                    fontSize = 17.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = glyphColor
-                )
+            items.forEachIndexed { i, (label, icon, index) ->
+                if (i > 0) {
+                    Box(
+                        Modifier
+                            .width(1.dp)
+                            .height(30.dp)
+                            .background(if (dark) Color(0xFF3A2F66) else Color(0xFFD3C5F5))
+                    )
+                }
+                val selected = index == selectedIndex
+                Column(
+                    modifier = Modifier
+                        .weight(1f)
+                        .fillMaxHeight()
+                        .then(
+                            if (selected) Modifier
+                                .shadow(8.dp, RoundedCornerShape(28.dp), ambientColor = Color(0xFF4A1FB8), spotColor = Color(0xFF4A1FB8))
+                                .clip(RoundedCornerShape(28.dp))
+                                .background(Brush.verticalGradient(listOf(Color(0xFF5A2BD8), Color(0xFF34128F))))
+                            else Modifier.clip(RoundedCornerShape(28.dp))
+                        )
+                        .clickable { onSelect(index) },
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.Center
+                ) {
+                    Icon(
+                        icon,
+                        contentDescription = null,
+                        tint = if (selected) Color.White else p.iconIndigo,
+                        modifier = Modifier.size(26.dp)
+                    )
+                    Spacer(Modifier.height(2.dp))
+                    Text(
+                        label,
+                        fontSize = 13.sp,
+                        fontWeight = if (selected) FontWeight.ExtraBold else FontWeight.SemiBold,
+                        color = if (selected) Color.White else p.title
+                    )
+                }
             }
         }
-        Spacer(Modifier.height(8.dp))
-        Text(
-            title,
-            fontSize = 11.sp,
-            fontWeight = FontWeight.Bold,
-            color = MaterialTheme.colorScheme.onSurface,
-            textAlign = TextAlign.Center,
-            maxLines = 1
-        )
-        Text(
-            subtitle,
-            fontSize = 9.sp,
-            color = BodyGrey,
-            textAlign = TextAlign.Center,
-            maxLines = 1
-        )
     }
 }
