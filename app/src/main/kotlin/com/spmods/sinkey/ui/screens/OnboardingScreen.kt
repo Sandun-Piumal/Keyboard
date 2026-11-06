@@ -37,8 +37,12 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.Lock
+import androidx.compose.material.icons.filled.Person
+import androidx.compose.material.icons.filled.Shield
+import androidx.compose.material.icons.filled.Star
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -203,8 +207,8 @@ private val ObLight = ObColors(
     waveDeepTop = Color(0xFFB684FC),
     waveDeepBottom = Color(0xFF9450FB),
     waveSwell = Color(0xFF672DDE),
-    stepRowBg = Color.White.copy(alpha = 0.65f),
-    stepRowBorder = Color.White,
+    stepRowBg = Color(0xFFFCFBFE),
+    stepRowBorder = Color(0xFFE8DEFB),
     link = Color(0xFF5B2BEF),
     onButton = Color.White
 )
@@ -226,8 +230,8 @@ private val ObDark = ObColors(
     waveDeepTop = Color(0xFF5E38CC),
     waveDeepBottom = Color(0xFF3F20A3),
     waveSwell = Color(0xFF2B1580),
-    stepRowBg = Color(0xFF251D47).copy(alpha = 0.85f),
-    stepRowBorder = Color(0xFF3A2F66),
+    stepRowBg = Color(0xFF181331),
+    stepRowBorder = Color(0xFF2D2452),
     link = Color(0xFFB093FF),
     onButton = Color.White
 )
@@ -331,8 +335,8 @@ fun OnboardingScreen(
     val isLastSlide = setupOnly || pagerState.currentPage == slides.lastIndex
     // Next sits where it always did (168dp area); the setup page needs a taller
     // area and extra bottom room so its buttons clear the wave.
-    val actionHeight by animateDpAsState(if (isLastSlide) 232.dp else 168.dp, label = "actionHeight")
-    val bottomGap by animateDpAsState(if (isLastSlide) 84.dp else 40.dp, label = "bottomGap")
+    val actionHeight by animateDpAsState(if (isLastSlide) 280.dp else 168.dp, label = "actionHeight")
+    val bottomGap by animateDpAsState(if (isLastSlide) 72.dp else 40.dp, label = "bottomGap")
     val colors = obColors()
     var showProfileSetup by remember { mutableStateOf(false) }
     val allDone = enabled && isDefault && profileDone
@@ -396,16 +400,27 @@ fun OnboardingScreen(
                     .padding(horizontal = 24.dp)
             ) {
                 if (isLastSlide) {
-                    SetupStepRow(
+                    val dark = colors === ObDark
+                    SetupStepCard(
                         colors = colors,
-                        label = "Enable SinKey",
+                        dark = dark,
+                        icon = Icons.Filled.Shield,
+                        tint = Color(0xFF6C4CE0),
+                        title = "1. Enable SinKey",
+                        subtitle = "Turn on SinKey in system keyboard settings.",
+                        actionLabel = "Enable Now",
                         done = enabled,
                         onClick = { context.startActivity(Intent(Settings.ACTION_INPUT_METHOD_SETTINGS)) }
                     )
                     Spacer(modifier = Modifier.height(8.dp))
-                    SetupStepRow(
+                    SetupStepCard(
                         colors = colors,
-                        label = "Set as default keyboard",
+                        dark = dark,
+                        icon = Icons.Filled.Star,
+                        tint = Color(0xFFE0498A),
+                        title = "2. Set as Default Keyboard",
+                        subtitle = "Choose SinKey as your default keyboard.",
+                        actionLabel = "Set as Default",
                         done = isDefault,
                         onClick = {
                             val imm = context.getSystemService(InputMethodManager::class.java)
@@ -413,9 +428,14 @@ fun OnboardingScreen(
                         }
                     )
                     Spacer(modifier = Modifier.height(8.dp))
-                    SetupStepRow(
+                    SetupStepCard(
                         colors = colors,
-                        label = "Create profile",
+                        dark = dark,
+                        icon = Icons.Filled.Person,
+                        tint = Color(0xFF0E9AA7),
+                        title = "3. Create Profile",
+                        subtitle = "Add your name, gender and birthday.",
+                        actionLabel = "Create Now",
                         done = profileDone,
                         onClick = { showProfileSetup = true }
                     )
@@ -595,41 +615,83 @@ private fun FinishButton(colors: ObColors, enabled: Boolean, stepsLeft: Int, onC
 }
 
 /**
- * One setup step on the last page. [done] → filled purple circle with a
- * check and no click; otherwise an empty outlined circle and tappable row.
- * [onClick] only launches the system flow — the ContentObserver refresh in
- * OnboardingScreen is what flips [done] after the user returns.
+ * One setup step on the last page — same look as HomeScreen's "Let's get you
+ * started" card rows: icon circle (green ✔ when done), numbered title, one-line
+ * description, and an outlined action pill that becomes a green "Done" pill.
+ * [onClick] only launches the system flow — the status refresh in
+ * rememberImeStatus / MainActivity is what flips [done] afterwards.
  */
 @Composable
-private fun SetupStepRow(colors: ObColors, label: String, done: Boolean, onClick: () -> Unit) {
-    val shape = RoundedCornerShape(28.dp)
+private fun SetupStepCard(
+    colors: ObColors,
+    dark: Boolean,
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    tint: Color,
+    title: String,
+    subtitle: String,
+    actionLabel: String,
+    done: Boolean,
+    onClick: () -> Unit
+) {
+    val shape = RoundedCornerShape(20.dp)
+    val doneFg = if (dark) Color(0xFF4ADE80) else Color(0xFF1E8A4C)
+    val doneBg = if (dark) Color(0xFF1E8A4C).copy(alpha = 0.22f) else Color(0xFFE3F5EA)
+    val subColor = if (dark) Color(0xFFB9B6E0) else Color(0xFF6B7280)
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .height(50.dp)
+            .shadow(3.dp, shape, ambientColor = colors.buttonStart, spotColor = colors.buttonStart)
             .clip(shape)
             .background(colors.stepRowBg)
             .border(1.dp, colors.stepRowBorder, shape)
-            .then(if (done) Modifier else Modifier.clickable(onClick = onClick))
-            .padding(horizontal = 12.dp),
+            .padding(horizontal = 14.dp, vertical = 10.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
         Box(
             modifier = Modifier
-                .size(36.dp)
+                .size(40.dp)
                 .clip(CircleShape)
-                .then(
-                    if (done) Modifier.background(colors.buttonBrush)
-                    else Modifier.border(2.dp, colors.accent.copy(alpha = 0.45f), CircleShape)
-                ),
+                .background(if (done) doneBg else tint.copy(alpha = if (dark) 0.22f else 0.12f)),
             contentAlignment = Alignment.Center
         ) {
-            if (done) {
-                Icon(Icons.Filled.Check, contentDescription = null, tint = colors.onButton, modifier = Modifier.size(20.dp))
+            Icon(
+                if (done) Icons.Filled.Check else icon,
+                contentDescription = null,
+                tint = if (done) doneFg else tint,
+                modifier = Modifier.size(20.dp)
+            )
+        }
+        Spacer(modifier = Modifier.width(12.dp))
+        Column(modifier = Modifier.weight(1f)) {
+            Text(title, color = colors.title, fontSize = 14.sp, fontWeight = FontWeight.Bold, maxLines = 1)
+            Text(subtitle, color = subColor, fontSize = 11.sp, maxLines = 1, modifier = Modifier.padding(top = 2.dp))
+        }
+        Spacer(modifier = Modifier.width(8.dp))
+        if (done) {
+            Row(
+                modifier = Modifier
+                    .clip(RoundedCornerShape(50))
+                    .background(doneBg)
+                    .padding(horizontal = 12.dp, vertical = 8.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Icon(Icons.Filled.Check, contentDescription = null, tint = doneFg, modifier = Modifier.size(14.dp))
+                Spacer(modifier = Modifier.width(4.dp))
+                Text("Done", color = doneFg, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+            }
+        } else {
+            Row(
+                modifier = Modifier
+                    .clip(RoundedCornerShape(50))
+                    .border(1.dp, tint.copy(alpha = 0.5f), RoundedCornerShape(50))
+                    .clickable(onClick = onClick)
+                    .padding(horizontal = 12.dp, vertical = 8.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(actionLabel, color = tint, fontSize = 12.sp, fontWeight = FontWeight.Bold, maxLines = 1)
+                Icon(Icons.Filled.ChevronRight, contentDescription = null, tint = tint, modifier = Modifier.size(14.dp))
             }
         }
-        Spacer(modifier = Modifier.width(16.dp))
-        Text(label, color = colors.title, fontSize = 18.sp, fontWeight = FontWeight.Medium)
     }
 }
 
@@ -657,6 +719,10 @@ private fun PagerDots(colors: ObColors, pageCount: Int, currentPage: Int, modifi
 // scaled by p = width / 852, so it looks identical on every screen size.
 
 private const val ObRefWidth = 852f
+
+/** The About Developer page background (blobs, sparkles, bottom wave) for other screens (Home, Settings). */
+@Composable
+internal fun DeveloperBackground(dark: Boolean) = OnboardingBackground(if (dark) ObDark else ObLight)
 
 @Composable
 private fun OnboardingBackground(colors: ObColors) {
