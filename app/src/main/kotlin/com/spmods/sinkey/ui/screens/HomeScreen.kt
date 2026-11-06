@@ -114,8 +114,8 @@ fun medalTierForPoints(totalPoints: Long): MedalTier = when {
 /**
  * Shared top bar for all three tabs (Home/Themes/Settings). Transparent so the
  * page behind it shows through (Home paints a lavender gradient there —
- * MainActivity). Layout: menu · logo + "SinKey <Board|Themes|Settings>" with
- * tagline · trailing control.
+ * MainActivity). Layout: menu · "SinKey <Board|Themes|Settings>" with tagline ·
+ * trailing control.
  *
  * Trailing control by [menuMode]:
  *  - PREMIUM (Home): round glossy profile button → [onProfileClick]. Its fill
@@ -170,17 +170,7 @@ fun AppHeader(
             horizontalArrangement = Arrangement.Center,
             verticalAlignment = Alignment.CenterVertically
         ) {
-            // The launcher art has transparent padding around its circle, so it
-            // is drawn larger than its slot and centred.
-            Box(modifier = Modifier.size(50.dp), contentAlignment = Alignment.Center) {
-                Image(
-                    painter = painterResource(id = R.drawable.ic_launcher_foreground),
-                    contentDescription = null,
-                    modifier = Modifier.requiredSize(86.dp)
-                )
-            }
-            Spacer(Modifier.width(2.dp))
-            Column {
+            Column(horizontalAlignment = Alignment.CenterHorizontally) {
                 Row {
                     Text("SinKey ", fontSize = 24.sp, fontWeight = FontWeight.ExtraBold, color = p.title)
                     Text(
@@ -306,10 +296,14 @@ internal fun homePalette(dark: Boolean) = if (dark) HomePalette(
 )
 
 /** Page background used behind the whole Home tab (also behind header + bottom bar). */
-internal fun homeBackgroundBrush(dark: Boolean): Brush = Brush.verticalGradient(
+internal fun homeBackgroundBrush(dark: Boolean): Brush = Brush.verticalGradient(homeBackgroundColors(dark))
+
+private fun homeBackgroundColors(dark: Boolean): List<Color> =
     if (dark) listOf(Color(0xFF0F0C1D), Color(0xFF1B1438), Color(0xFF140F2B))
     else listOf(Color(0xFFE6D9FD), Color(0xFFF1E9FF), Color(0xFFE0D0FC))
-)
+
+/** Status-bar colour that continues the gradient's top edge, so the bar blends into the page. */
+internal fun homeStatusBarColor(dark: Boolean): Color = homeBackgroundColors(dark).first()
 
 private val ButtonGradient = listOf(Color(0xFF4A1FB8), Color(0xFF6A34F0))
 private val GlossyWhite = Brush.linearGradient(listOf(Color.White, Color.White.copy(alpha = 0.25f)))
