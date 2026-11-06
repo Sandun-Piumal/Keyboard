@@ -14,6 +14,7 @@ import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.isSystemInDarkTheme
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
@@ -64,6 +65,8 @@ import com.spmods.sinkey.keyboard.KeyboardView
 import com.spmods.sinkey.ui.screens.AppHeader
 import com.spmods.sinkey.ui.screens.HeaderMenuMode
 import com.spmods.sinkey.ui.screens.HomeScreen
+import com.spmods.sinkey.ui.screens.SinKeyBottomBar
+import com.spmods.sinkey.ui.screens.homeBackgroundBrush
 import com.spmods.sinkey.ui.screens.KeyboardHeightScreen
 import com.spmods.sinkey.ui.screens.SoundVibrationScreen
 import com.spmods.sinkey.ui.screens.QuickTextScreen
@@ -555,7 +558,20 @@ private fun SinKeyApp(prefs: PreferencesManager, initialTab: Tab = Tab.HOME) {
             )
         }
     ) {
+    // Home tab: lavender gradient behind header + content + floating bottom bar
+    // (all transparent over it). Every other screen keeps the plain background.
+    val homeLook = tab == Tab.HOME && settingsSubScreen == SettingsSubScreen.MAIN &&
+        photoEditStep == PhotoEditStep.NONE && !showKeyboardPreview && !showTypingTest && !showProfile
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(
+                if (homeLook) homeBackgroundBrush(isDark)
+                else androidx.compose.ui.graphics.SolidColor(MaterialTheme.colorScheme.background)
+            )
+    ) {
     Scaffold(
+        containerColor = Color.Transparent,
         floatingActionButton = {
             // Preview FAB is now an allow-list rather than a deny-list: it
             // only ever shows on the Themes tab and the Keyboard height
@@ -585,26 +601,10 @@ private fun SinKeyApp(prefs: PreferencesManager, initialTab: Tab = Tab.HOME) {
         },
         bottomBar = {
             if (settingsSubScreen == SettingsSubScreen.MAIN && photoEditStep == PhotoEditStep.NONE && !showKeyboardPreview && !showTypingTest && !showProfile) {
-                NavigationBar {
-                    NavigationBarItem(
-                        selected = tab == Tab.HOME,
-                        onClick = { tab = Tab.HOME },
-                        icon = { Icon(Icons.Filled.Home, contentDescription = null) },
-                        label = { Text("Home") }
-                    )
-                    NavigationBarItem(
-                        selected = tab == Tab.THEMES,
-                        onClick = { tab = Tab.THEMES },
-                        icon = { Icon(Icons.Filled.Palette, contentDescription = null) },
-                        label = { Text("Themes") }
-                    )
-                    NavigationBarItem(
-                        selected = tab == Tab.SETTINGS,
-                        onClick = { tab = Tab.SETTINGS },
-                        icon = { Icon(Icons.Filled.Settings, contentDescription = null) },
-                        label = { Text("Settings") }
-                    )
-                }
+                SinKeyBottomBar(
+                    selectedIndex = when (tab) { Tab.HOME -> 0; Tab.THEMES -> 1; Tab.SETTINGS -> 2 },
+                    onSelect = { tab = when (it) { 0 -> Tab.HOME; 1 -> Tab.THEMES; else -> Tab.SETTINGS } }
+                )
             }
         }
     ) { padding ->
@@ -615,7 +615,7 @@ private fun SinKeyApp(prefs: PreferencesManager, initialTab: Tab = Tab.HOME) {
         ) {
             Surface(
                 modifier = Modifier.fillMaxSize(),
-                color = MaterialTheme.colorScheme.background
+                color = if (homeLook) Color.Transparent else MaterialTheme.colorScheme.background
             ) {
                 // ── Fixed (non-scrolling) header ────────────────────────────
                 // Shown above the tab content on Home/Themes/Settings' MAIN
@@ -652,7 +652,8 @@ private fun SinKeyApp(prefs: PreferencesManager, initialTab: Tab = Tab.HOME) {
                                     }
                                 }
                             },
-                            onMenuClick = { scope.launch { drawerState.open() } }
+                            onMenuClick = { scope.launch { drawerState.open() } },
+                            onProfileClick = { showProfile = true }
                         )
                     }
 
@@ -937,6 +938,7 @@ private fun SinKeyApp(prefs: PreferencesManager, initialTab: Tab = Tab.HOME) {
                 )
             }
         }
+    }
     }
     }
 }
