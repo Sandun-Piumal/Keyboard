@@ -306,7 +306,7 @@ private fun homeBackgroundColors(dark: Boolean): List<Color> =
 internal fun homeStatusBarColor(dark: Boolean): Color = homeBackgroundColors(dark).first()
 
 private val ButtonGradient = listOf(Color(0xFF4A1FB8), Color(0xFF6A34F0))
-private val GlossyWhite = Brush.linearGradient(listOf(Color.White, Color.White.copy(alpha = 0.25f)))
+internal val GlossyWhite = Brush.linearGradient(listOf(Color.White, Color.White.copy(alpha = 0.25f)))
 
 @Composable
 fun HomeScreen(
@@ -386,7 +386,7 @@ fun HomeScreen(
 }
 
 /** Frosted "glass" container shared by the step rows and the feature grid. */
-private fun Modifier.glassCard(p: HomePalette, radius: Int = 22, elevation: Int = 6): Modifier {
+internal fun Modifier.glassCard(p: HomePalette, radius: Int = 22, elevation: Int = 6): Modifier {
     val shape = RoundedCornerShape(radius.dp)
     return this
         .shadow(elevation.dp, shape, ambientColor = p.glow.copy(alpha = 0.35f), spotColor = p.glow.copy(alpha = 0.35f))
