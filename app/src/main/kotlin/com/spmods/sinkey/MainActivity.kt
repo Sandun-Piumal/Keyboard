@@ -67,6 +67,7 @@ import com.spmods.sinkey.ui.screens.HeaderMenuMode
 import com.spmods.sinkey.ui.screens.HomeScreen
 import com.spmods.sinkey.ui.screens.SinKeyBottomBar
 import com.spmods.sinkey.ui.screens.homeBackgroundBrush
+import com.spmods.sinkey.ui.screens.homeStatusBarColor
 import com.spmods.sinkey.ui.screens.KeyboardHeightScreen
 import com.spmods.sinkey.ui.screens.SoundVibrationScreen
 import com.spmods.sinkey.ui.screens.QuickTextScreen
@@ -570,6 +571,14 @@ private fun SinKeyApp(prefs: PreferencesManager, initialTab: Tab = Tab.HOME) {
                 else androidx.compose.ui.graphics.SolidColor(MaterialTheme.colorScheme.background)
             )
     ) {
+    // Status bar takes the gradient's top colour on Home so it blends into the
+    // page; everywhere else it stays the normal background colour (the outer
+    // SideEffect in onCreate sets that — this one runs after it and wins).
+    val statusView = LocalView.current
+    val statusColor = if (homeLook) homeStatusBarColor(isDark) else MaterialTheme.colorScheme.background
+    SideEffect {
+        (statusView.context as Activity).window.statusBarColor = statusColor.toArgb()
+    }
     Scaffold(
         containerColor = Color.Transparent,
         floatingActionButton = {
