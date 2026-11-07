@@ -558,7 +558,7 @@ private fun SinKeyApp(prefs: PreferencesManager, initialTab: Tab = Tab.HOME) {
             )
         }
     ) {
-    // Home + Settings tabs (and their four sub-pages): the About Developer page background (blobs,
+    // Home, Themes and Settings tabs (and the four Settings sub-pages): the About Developer page background (blobs,
     // sparkles, bottom wave) sits behind header + content + floating bottom bar,
     // which are all transparent over it. Every other screen keeps the plain
     // background. The status bar is untouched (normal theme background colour).
@@ -568,7 +568,7 @@ private fun SinKeyApp(prefs: PreferencesManager, initialTab: Tab = Tab.HOME) {
         settingsSubScreen == SettingsSubScreen.QUICK_TEXT ||
         settingsSubScreen == SettingsSubScreen.PERSONAL_DICTIONARY ||
         settingsSubScreen == SettingsSubScreen.KEYBOARD_HEIGHT
-    val homeLook = ((tab == Tab.HOME || tab == Tab.SETTINGS) && settingsSubScreen == SettingsSubScreen.MAIN || glassSubPage) &&
+    val homeLook = ((tab == Tab.HOME || tab == Tab.SETTINGS || tab == Tab.THEMES) && settingsSubScreen == SettingsSubScreen.MAIN || glassSubPage) &&
         photoEditStep == PhotoEditStep.NONE && !showKeyboardPreview && !showTypingTest && !showProfile
     Box(
         modifier = Modifier
