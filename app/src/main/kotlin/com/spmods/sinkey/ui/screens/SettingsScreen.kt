@@ -141,17 +141,17 @@ fun SettingsScreen(
                 p, glyph = "🔁",
                 title = "Mix mode: auto-convert to Sinhala",
                 subtitle = "On space/enter, turn the typed word into Sinhala"
-            ) { PurpleSwitch(p, mixAutoSinhala, onMixAutoSinhalaChange) }
+            ) { GlassSwitch(p, mixAutoSinhala, onMixAutoSinhalaChange) }
             SettingRow(
                 p, glyph = "අ",
                 title = "Sinhala letter hints",
                 subtitle = "Show the matching සිංහල letter on each key"
-            ) { PurpleSwitch(p, sinhalaKeyHintsEnabled, onSinhalaKeyHintsChange) }
+            ) { GlassSwitch(p, sinhalaKeyHintsEnabled, onSinhalaKeyHintsChange) }
             SettingRow(
                 p, glyph = "👆",
                 title = "Swipe to type",
                 subtitle = "Drag across letters instead of tapping each one – works for Sinhala & English"
-            ) { PurpleSwitch(p, swipeTypingEnabled, onSwipeTypingChange) }
+            ) { GlassSwitch(p, swipeTypingEnabled, onSwipeTypingChange) }
             SettingRow(
                 p, glyph = "🔊",
                 title = "Sound & vibration",
@@ -177,7 +177,7 @@ fun SettingsScreen(
                 p, glyph = "✨",
                 title = "Smooth keyboard transition",
                 subtitle = "Gentle fade + slide when the keyboard appears"
-            ) { PurpleSwitch(p, smoothImeTransition, onSmoothImeTransitionChange) }
+            ) { GlassSwitch(p, smoothImeTransition, onSmoothImeTransitionChange) }
             SettingRow(
                 p, glyph = "⌨",
                 title = "Keyboard height",
@@ -188,11 +188,11 @@ fun SettingsScreen(
             )
         }
 
-        SectionCard(p, label = "THEME MODE", icon = Icons.Filled.Palette) {
+        SectionCard(p) {
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(start = 12.dp, end = 12.dp, bottom = 12.dp),
+                    .padding(horizontal = 12.dp, vertical = 6.dp),
                 horizontalArrangement = Arrangement.spacedBy(10.dp)
             ) {
                 ThemeTile(p, "🌓", "Follow system", ThemeMode.SYSTEM, themeMode, onThemeModeChange, Modifier.weight(1f))
@@ -201,7 +201,7 @@ fun SettingsScreen(
             }
         }
 
-        SectionCard(p, label = "ABOUT", icon = Icons.Filled.Info) {
+        SectionCard(p) {
             SettingRow(
                 p, glyph = "📘", compact = true,
                 title = "User guide",
@@ -263,23 +263,6 @@ fun SettingsScreen(
     }
 }
 
-/** Switch tinted like the screenshot: deep-purple track when on, pale lavender when off. */
-@Composable
-private fun PurpleSwitch(p: HomePalette, checked: Boolean, onChange: (Boolean) -> Unit) {
-    Switch(
-        checked = checked,
-        onCheckedChange = onChange,
-        colors = SwitchDefaults.colors(
-            checkedThumbColor = Color.White,
-            checkedTrackColor = Color(0xFF5B2BEF),
-            checkedBorderColor = Color.Transparent,
-            uncheckedThumbColor = Color.White,
-            uncheckedTrackColor = if (p.dark) Color(0xFF2E2560) else Color(0xFFE6DCFB),
-            uncheckedBorderColor = if (p.dark) Color(0xFF4A3F85) else Color(0xFFC9B8F3)
-        )
-    )
-}
-
 /** The big frosted card holding the main switch/navigation rows. */
 @Composable
 private fun SettingsGroup(p: HomePalette, content: @Composable ColumnScope.() -> Unit) {
@@ -291,95 +274,16 @@ private fun SettingsGroup(p: HomePalette, content: @Composable ColumnScope.() ->
     ) { content() }
 }
 
-/**
- * Card with a dark-gradient label chip (icon + caps title) overlapping its top-left edge —
- * used for THEME MODE and ABOUT.
- */
+/** Frosted card for the THEME MODE tiles and the ABOUT rows (no label chip). */
 @Composable
-private fun SectionCard(
-    p: HomePalette,
-    label: String,
-    icon: androidx.compose.ui.graphics.vector.ImageVector,
-    content: @Composable ColumnScope.() -> Unit
-) {
-    Box(modifier = Modifier.fillMaxWidth().padding(top = 18.dp)) {
-        Column(
-            modifier = Modifier
-                .padding(top = 19.dp)
-                .fillMaxWidth()
-                .glassCard(p, radius = 26, elevation = 6)
-        ) {
-            Spacer(Modifier.height(26.dp))
-            content()
-        }
-        Row(
-            modifier = Modifier
-                .offset(x = 12.dp)
-                .shadow(8.dp, RoundedCornerShape(50), ambientColor = Color(0xFF4A1FB8), spotColor = Color(0xFF4A1FB8))
-                .clip(RoundedCornerShape(50))
-                .background(Brush.horizontalGradient(listOf(Color(0xFF4A1FB8), Color(0xFF6A34F0))))
-                .padding(horizontal = 16.dp, vertical = 9.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Icon(icon, null, tint = Color.White, modifier = Modifier.size(20.dp))
-            Spacer(Modifier.width(8.dp))
-            Text(label, color = Color.White, fontSize = 15.sp, fontWeight = FontWeight.ExtraBold, letterSpacing = 0.5.sp)
-        }
-    }
-}
-
-/**
- * One settings row: glossy icon tile · title + subtitle · trailing control
- * (switch / chevron / language pill), with a hairline divider underneath
- * unless [last]. [compact] is the slimmer variant used in the ABOUT card.
- */
-@Composable
-private fun SettingRow(
-    p: HomePalette,
-    glyph: String,
-    title: String,
-    subtitle: String,
-    modifier: Modifier = Modifier,
-    compact: Boolean = false,
-    last: Boolean = false,
-    trailing: @Composable () -> Unit
-) {
-    val tile = if (compact) 38.dp else 46.dp
-    Column {
-        Row(
-            modifier = modifier
-                .fillMaxWidth()
-                .padding(start = 14.dp, end = 14.dp, top = if (compact) 8.dp else 10.dp, bottom = if (compact) 8.dp else 10.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(14.dp)
-        ) {
-            Box(
-                modifier = Modifier
-                    .size(tile)
-                    .shadow(5.dp, RoundedCornerShape(14.dp), ambientColor = p.glow.copy(alpha = 0.4f), spotColor = p.glow.copy(alpha = 0.4f))
-                    .clip(RoundedCornerShape(14.dp))
-                    .background(
-                        if (p.dark) Brush.verticalGradient(listOf(Color(0xFF2E2560), Color(0xFF211A48)))
-                        else Brush.verticalGradient(listOf(Color(0xFFF6F1FF), Color(0xFFE4D8FD)))
-                    )
-                    .border(1.dp, if (p.dark) SolidColor(p.cardBorder) else GlossyWhite, RoundedCornerShape(14.dp)),
-                contentAlignment = Alignment.Center
-            ) {
-                Text(glyph, fontSize = if (compact) 18.sp else 22.sp, color = p.iconIndigo, fontWeight = FontWeight.ExtraBold)
-            }
-            Column(modifier = Modifier.weight(1f)) {
-                Text(title, fontSize = 15.sp, fontWeight = FontWeight.ExtraBold, color = p.title)
-                Text(subtitle, fontSize = 12.sp, color = p.body, lineHeight = 15.sp, modifier = Modifier.padding(top = 1.dp))
-            }
-            trailing()
-        }
-        if (!last) {
-            HorizontalDivider(
-                color = if (p.dark) Color(0xFF3A2F66) else Color(0xFFDCD0F6),
-                modifier = Modifier.padding(start = 74.dp, end = 16.dp)
-            )
-        }
-    }
+private fun SectionCard(p: HomePalette, content: @Composable ColumnScope.() -> Unit) {
+    Column(
+        modifier = Modifier
+            .padding(top = 18.dp)
+            .fillMaxWidth()
+            .glassCard(p, radius = 26, elevation = 6)
+            .padding(vertical = 6.dp)
+    ) { content() }
 }
 
 /** One of the three THEME MODE tiles; the selected one is deep indigo with a ✔ badge. */
