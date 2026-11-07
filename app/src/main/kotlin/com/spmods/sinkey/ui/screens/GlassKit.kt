@@ -104,10 +104,11 @@ internal fun GlassCard(
 
 /** Switch tinted like the design: deep-purple track when on, pale lavender when off. */
 @Composable
-internal fun GlassSwitch(p: HomePalette, checked: Boolean, onChange: (Boolean) -> Unit) {
+internal fun GlassSwitch(p: HomePalette, checked: Boolean, onChange: (Boolean) -> Unit, enabled: Boolean = true) {
     Switch(
         checked = checked,
         onCheckedChange = onChange,
+        enabled = enabled,
         colors = SwitchDefaults.colors(
             checkedThumbColor = Color.White,
             checkedTrackColor = Indigo,
