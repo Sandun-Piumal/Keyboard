@@ -1,50 +1,34 @@
 package com.spmods.sinkey.ui.screens
 
-import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.ArrowBack
-import androidx.compose.material3.Divider
-import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
-import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Slider
-import androidx.compose.material3.SliderDefaults
-import androidx.compose.material3.Switch
-import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
-import androidx.compose.material3.TopAppBar
-import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 
 /**
- * "Keyboard height" settings screen — mirrors the screenshot exactly:
- *   • Height slider  (S / M / L / XL) with a "Default" reset chip
+ * "Keyboard height" settings screen, in the shared frosted-glass style
+ * (GlassKit.kt):
+ *   • Height slider  (S / M / L / XL) with a "Default" reset pill
  *   • Bottom space toggle + slider (S / M / L / XL)
  *   • Show key borders toggle
+ *   • Key opacity slider
  *   • Preview FAB (handled in caller via onPreviewClick)
  */
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun KeyboardHeightScreen(
     keyboardHeight: Float,           // 0f=S  1f=M  2f=L  3f=XL
@@ -59,182 +43,96 @@ fun KeyboardHeightScreen(
     onKeyOpacityChange: (Float) -> Unit,
     onBack: () -> Unit
 ) {
+    val p = rememberGlassPalette()
     val isDefault = keyboardHeight == 0f   // S is the factory default
 
     Column(
         modifier = Modifier
             .fillMaxWidth()
             .verticalScroll(rememberScrollState())
+            .padding(bottom = 90.dp)       // clear of the preview FAB
     ) {
-        // ── Top app bar ──────────────────────────────────────────────────────
-        TopAppBar(
-            title = {
-                Text(
-                    "Keyboard height",
-                    fontSize = 18.sp,
-                    fontWeight = FontWeight.Bold
-                )
-            },
-            navigationIcon = {
-                IconButton(onClick = onBack) {
-                    Icon(Icons.Filled.ArrowBack, contentDescription = "Back")
-                }
-            },
-            actions = {
-                // ⋮ menu placeholder — keeps layout consistent with screenshot
-            },
-            colors = TopAppBarDefaults.topAppBarColors(
-                containerColor = MaterialTheme.colorScheme.background
-            )
-        )
+        GlassTopBar(p, "Keyboard height", onBack)
 
-        // ── Card group ───────────────────────────────────────────────────────
-        HeightCard(modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)) {
+        GlassCard(p, modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp), radius = 28) {
 
-            // ── Height row ───────────────────────────────────────────────
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 16.dp, vertical = 14.dp),
-                verticalAlignment = Alignment.CenterVertically
+            // ── Height ───────────────────────────────────────────────────
+            SettingRow(
+                p, glyph = "📏",
+                title = "Height",
+                subtitle = "Change overall height of the keyboard",
+                last = true
             ) {
-                Column(modifier = Modifier.weight(1f)) {
-                    Text("Height", fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
-                    Text(
-                        "Change overall height of the keyboard",
-                        fontSize = 12.sp,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                }
-                if (!isDefault) {
-                    Text(
-                        "Default",
-                        fontSize = 13.sp,
-                        fontWeight = FontWeight.SemiBold,
-                        color = MaterialTheme.colorScheme.primary,
-                        modifier = Modifier
-                            .clip(RoundedCornerShape(6.dp))
-                            .clickable { onKeyboardHeightChange(0f) }
-                            .padding(horizontal = 8.dp, vertical = 4.dp)
-                    )
-                } else {
-                    Text(
-                        "Default",
-                        fontSize = 13.sp,
-                        fontWeight = FontWeight.SemiBold,
-                        color = MaterialTheme.colorScheme.primary,
-                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
-                    )
-                }
+                GlassPill(
+                    p, "Default",
+                    modifier = if (isDefault) Modifier.alpha(0.55f)
+                    else Modifier.clickable { onKeyboardHeightChange(0f) }
+                )
             }
-
             SizeSlider(
+                p = p,
                 value = keyboardHeight,
                 onValueChange = onKeyboardHeightChange,
-                modifier = Modifier.padding(horizontal = 16.dp)
+                modifier = Modifier.padding(horizontal = 20.dp)
             )
-
             Spacer(modifier = Modifier.height(8.dp))
-            Divider(color = MaterialTheme.colorScheme.outlineVariant)
+            GlassDivider(p)
 
-            // ── Bottom space row ─────────────────────────────────────────
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 16.dp, vertical = 14.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Column(modifier = Modifier.weight(1f)) {
-                    Text("Bottom space", fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
-                    Text(
-                        "Add extra space at the bottom",
-                        fontSize = 12.sp,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                }
-                Switch(
-                    checked = bottomSpaceEnabled,
-                    onCheckedChange = onBottomSpaceEnabledChange,
-                    colors = SwitchDefaults.colors(
-                        checkedTrackColor = MaterialTheme.colorScheme.primary
-                    )
-                )
-            }
-
+            // ── Bottom space ─────────────────────────────────────────────
+            SettingRow(
+                p, glyph = "⬇️",
+                title = "Bottom space",
+                subtitle = "Add extra space at the bottom",
+                last = true
+            ) { GlassSwitch(p, bottomSpaceEnabled, onBottomSpaceEnabledChange) }
             // Bottom-space size slider — only shown when toggle is ON
             if (bottomSpaceEnabled) {
                 SizeSlider(
+                    p = p,
                     value = bottomSpaceSize,
                     onValueChange = onBottomSpaceSizeChange,
-                    modifier = Modifier.padding(horizontal = 16.dp)
+                    modifier = Modifier.padding(horizontal = 20.dp)
                 )
                 Spacer(modifier = Modifier.height(8.dp))
             }
+            GlassDivider(p)
 
-            Divider(color = MaterialTheme.colorScheme.outlineVariant)
+            // ── Show key borders ─────────────────────────────────────────
+            SettingRow(
+                p, glyph = "▦",
+                title = "Show key borders",
+                subtitle = "Show borders for keys"
+            ) { GlassSwitch(p, showKeyBorders, onShowKeyBordersChange) }
 
-            // ── Show key borders row ─────────────────────────────────────
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 16.dp, vertical = 14.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Column(modifier = Modifier.weight(1f)) {
-                    Text("Show key borders", fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
-                    Text(
-                        "Show borders for keys",
-                        fontSize = 12.sp,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                }
-                Switch(
-                    checked = showKeyBorders,
-                    onCheckedChange = onShowKeyBordersChange,
-                    colors = SwitchDefaults.colors(
-                        checkedTrackColor = MaterialTheme.colorScheme.primary
-                    )
-                )
-            }
-
-            Spacer(modifier = Modifier.height(8.dp))
-            Divider(color = MaterialTheme.colorScheme.outlineVariant)
-
-            // ── Key opacity row ───────────────────────────────────────────
+            // ── Key opacity ──────────────────────────────────────────────
             // Continuous 0f..1f (not the 4-step SizeSlider) — lets the user
             // dial in a subtle amount rather than snap between a few fixed
             // steps. Most useful with a custom background photo set (see
             // PhotoEditThemeScreen, which offers the same slider at the
             // point of picking a photo), but works the same either way.
-            Column(modifier = Modifier.padding(horizontal = 16.dp, vertical = 14.dp)) {
-                Text("Key opacity", fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
-                Text(
-                    "Lower this to let a custom background show through each key",
-                    fontSize = 12.sp,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-                Slider(
-                    value = keyOpacity,
-                    onValueChange = onKeyOpacityChange,
-                    colors = SliderDefaults.colors(
-                        thumbColor = MaterialTheme.colorScheme.primary,
-                        activeTrackColor = MaterialTheme.colorScheme.primary,
-                        inactiveTrackColor = MaterialTheme.colorScheme.outlineVariant
-                    ),
-                    modifier = Modifier.padding(top = 8.dp)
-                )
-            }
+            SettingRow(
+                p, glyph = "🔆",
+                title = "Key opacity",
+                subtitle = "Lower this to let a custom background show through each key",
+                last = true
+            ) {}
+            Slider(
+                value = keyOpacity,
+                onValueChange = onKeyOpacityChange,
+                colors = glassSliderColors(p),
+                modifier = Modifier.padding(start = 20.dp, end = 20.dp, bottom = 10.dp)
+            )
         }
     }
 }
 
 /**
- * A 4-step slider snapping to 0 / 1 / 2 / 3  (S / M / L / XL).
- * The thumb is drawn as a white circle and the labels S M L XL appear beneath.
+ * A 4-step slider snapping to 0 / 1 / 2 / 3  (S / M / L / XL), with the
+ * S M L XL labels beneath (current one highlighted).
  */
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun SizeSlider(
+    p: HomePalette,
     value: Float,
     onValueChange: (Float) -> Unit,
     modifier: Modifier = Modifier
@@ -248,11 +146,7 @@ private fun SizeSlider(
             },
             valueRange = 0f..3f,
             steps = 2,          // creates 4 positions: 0, 1, 2, 3
-            colors = SliderDefaults.colors(
-                thumbColor = MaterialTheme.colorScheme.primary,
-                activeTrackColor = MaterialTheme.colorScheme.primary,
-                inactiveTrackColor = MaterialTheme.colorScheme.outlineVariant
-            )
+            colors = glassSliderColors(p)
         )
 
         // S / M / L / XL labels under the slider
@@ -260,35 +154,18 @@ private fun SizeSlider(
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(horizontal = 4.dp),
-            horizontalArrangement = Arrangement.SpaceBetween
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
         ) {
             listOf("S", "M", "L", "XL").forEachIndexed { idx, label ->
+                val current = Math.round(value) == idx
                 Text(
                     text = label,
-                    fontSize = 12.sp,
-                    fontWeight = if (Math.round(value) == idx) FontWeight.Bold else FontWeight.Normal,
-                    color = if (Math.round(value) == idx)
-                        MaterialTheme.colorScheme.primary
-                    else
-                        MaterialTheme.colorScheme.onSurfaceVariant
+                    fontSize = 13.sp,
+                    fontWeight = if (current) FontWeight.ExtraBold else FontWeight.Medium,
+                    color = if (current) p.iconIndigo else p.sub
                 )
             }
         }
-    }
-}
-
-/** Rounded card container matching the white/surface card in the screenshot. */
-@Composable
-private fun HeightCard(
-    modifier: Modifier = Modifier,
-    content: @Composable ColumnScope.() -> Unit
-) {
-    Column(
-        modifier = modifier
-            .fillMaxWidth()
-            .clip(RoundedCornerShape(20.dp))
-            .background(MaterialTheme.colorScheme.surface)
-    ) {
-        content()
     }
 }
