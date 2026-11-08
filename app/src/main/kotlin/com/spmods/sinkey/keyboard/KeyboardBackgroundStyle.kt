@@ -14,7 +14,10 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.DrawScope
+import androidx.compose.ui.graphics.drawscope.Stroke
 import com.spmods.sinkey.data.BackgroundStyle
 import kotlin.math.sin
 import kotlin.random.Random
@@ -45,14 +48,11 @@ fun KeyboardBuiltInBackground(style: BackgroundStyle, isDark: Boolean, modifier:
             colors = listOf(Color(0xFFFF7A45), Color(0xFFFF4E82), Color(0xFF6A3EA1)),
             modifier = modifier
         )
-        BackgroundStyle.PASTEL_CUTE -> GradientBackground(
-            colors = listOf(Color(0xFFFFE1F0), Color(0xFFE3D6FF), Color(0xFFD6ECFF)),
-            modifier = modifier
-        )
         BackgroundStyle.MINT_CUTE -> GradientBackground(
             colors = listOf(Color(0xFFDFFFF0), Color(0xFFE7FFE0), Color(0xFFFFFDE0)),
             modifier = modifier
         )
+        BackgroundStyle.SINKEY_NEON -> SinKeyNeonBackground(modifier)
         BackgroundStyle.NONE -> Unit
     }
 }
@@ -162,5 +162,45 @@ private fun SmokeBackground(isDark: Boolean, modifier: Modifier = Modifier) {
             radius = size.width * 0.5f,
             center = Offset(cx2, size.height * 0.8f)
         )
+    }
+}
+
+
+/**
+ * SinKey's own keyboard backdrop: a near-black violet gradient with soft
+ * glowing "silk" swooshes — drawn the same way for light and dark themes
+ * (the neon key chrome in KeyboardView assumes a dark surface).
+ */
+@Composable
+private fun SinKeyNeonBackground(modifier: Modifier = Modifier) {
+    Canvas(modifier = modifier) {
+        val w = size.width
+        val h = size.height
+        drawRect(
+            Brush.verticalGradient(
+                listOf(Color(0xFF07021A), Color(0xFF12053A), Color(0xFF0A0224), Color(0xFF05010F))
+            )
+        )
+        // corner glows
+        drawCircle(
+            Brush.radialGradient(listOf(Color(0x555B2BEF), Color.Transparent), center = Offset(0f, h * 0.15f), radius = w * 0.45f),
+            radius = w * 0.45f, center = Offset(0f, h * 0.15f)
+        )
+        drawCircle(
+            Brush.radialGradient(listOf(Color(0x447C3AED), Color.Transparent), center = Offset(w, h * 0.9f), radius = w * 0.5f),
+            radius = w * 0.5f, center = Offset(w, h * 0.9f)
+        )
+        // silk swooshes (wide faint stroke + thin bright core)
+        fun swoosh(y0: Float, y1: Float, y2: Float, y3: Float, alpha: Float) {
+            val path = Path().apply {
+                moveTo(-w * 0.05f, h * y0)
+                cubicTo(w * 0.30f, h * y1, w * 0.60f, h * y2, w * 1.05f, h * y3)
+            }
+            drawPath(path, Color(0xFF7C3AED).copy(alpha = alpha * 0.35f), style = Stroke(width = h * 0.045f, cap = StrokeCap.Round))
+            drawPath(path, Color(0xFFB79CFF).copy(alpha = alpha), style = Stroke(width = h * 0.006f, cap = StrokeCap.Round))
+        }
+        swoosh(0.10f, 0.35f, -0.05f, 0.30f, 0.55f)
+        swoosh(0.55f, 0.30f, 0.85f, 0.55f, 0.45f)
+        swoosh(0.95f, 0.70f, 1.00f, 0.75f, 0.40f)
     }
 }
