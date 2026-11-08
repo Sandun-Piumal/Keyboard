@@ -1,5 +1,6 @@
 package com.spmods.sinkey.ui.screens
 
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -11,8 +12,8 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -24,22 +25,24 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AccessTime
 import androidx.compose.material.icons.filled.ArrowBack
-import androidx.compose.material.icons.filled.AutoAwesome
+import androidx.compose.material.icons.filled.BarChart
+import androidx.compose.material.icons.filled.CalendarMonth
 import androidx.compose.material.icons.filled.CameraAlt
-import androidx.compose.material.icons.filled.CardGiftcard
+import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.filled.EmojiEvents
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.GpsFixed
-import androidx.compose.material.icons.filled.Groups
-import androidx.compose.material.icons.filled.HelpOutline
+import androidx.compose.material.icons.filled.HeadsetMic
 import androidx.compose.material.icons.filled.Keyboard
 import androidx.compose.material.icons.filled.LocalFireDepartment
+import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.ModeEdit
 import androidx.compose.material.icons.filled.Person
-import androidx.compose.material.icons.filled.Verified
-import androidx.compose.material3.MaterialTheme
+import androidx.compose.material.icons.filled.Star
+import androidx.compose.material.icons.filled.WorkspacePremium
+import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
@@ -48,13 +51,19 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.vector.ImageVector as ComposeImageVector
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.spmods.sinkey.R
@@ -65,13 +74,10 @@ import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 
-private val ProfileIndigo    = Color(0xFF6C4CE0)
-private val ProfilePink      = Color(0xFFE0498A)
-private val ProfileGrey      = Color(0xFF6B7280)
-private val MedalGold        = Color(0xFFF4B400)
-private val MedalSilver      = Color(0xFFB0B7C3)
-private val MedalBronze      = Color(0xFFB4692B)
-private val EarnedPink       = Color(0xFFE0498A)
+private val ProfileIndigo = Color(0xFF5B2BEF)
+private val ProfileIndigoDeep = Color(0xFF34128F)
+private val ProfileButton = listOf(Color(0xFF4A1FB8), Color(0xFF6A34F0))
+private val EarnedPink = Color(0xFFE0498A)
 
 /**
  * Every number on this screen is real: it either comes from
@@ -81,6 +87,10 @@ private val EarnedPink       = Color(0xFFE0498A)
  * from the currently-applied theme. Nothing here is placeholder/sample
  * data. "Points" and "Level" are derived, not stored — see the `points`/
  * `level` calculation below (1 point per 1000 characters typed).
+ *
+ * Visual style: the shared frosted-glass look (HomePalette / glassCard from
+ * HomeScreen.kt). The page is transparent — MainActivity paints the
+ * About-Developer background behind it.
  */
 @Composable
 fun ProfileScreen(
@@ -94,6 +104,7 @@ fun ProfileScreen(
     val context = LocalContext.current
     val statsRepo = remember(context) { TypingStatsRepository(context) }
     val prefs = remember(context) { PreferencesManager(context) }
+    val p = remember(isDark) { homePalette(isDark) }
 
     val totalCharacters by statsRepo.totalCharacters.collectAsState(initial = 0L)
     val lastAccuracy by statsRepo.lastAccuracy.collectAsState(initial = 0)
@@ -145,64 +156,67 @@ fun ProfileScreen(
     val userName = "$firstName $lastName".trim().ifBlank { "Your Name" }
     val userHandle = "@" + (firstName.trim().lowercase().ifBlank { "sinkey_user" })
 
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(MaterialTheme.colorScheme.background)
-    ) {
-        // ── Header (matches TypingTestScreen's header) — fixed, doesn't scroll ──
+    Column(modifier = Modifier.fillMaxSize()) {
+        // ── Header — fixed, doesn't scroll ──────────────────────────────
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(20.dp, 18.dp, 20.dp, 6.dp),
+                .padding(16.dp, 12.dp, 16.dp, 6.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
             Box(
                 modifier = Modifier
-                    .size(40.dp)
+                    .size(46.dp)
+                    .shadow(8.dp, CircleShape, ambientColor = ProfileIndigo, spotColor = ProfileIndigo)
                     .clip(CircleShape)
-                    .background(if (isDark) Color(0xFF2C2145) else Color(0xFFEDE7FB))
+                    .background(Brush.verticalGradient(listOf(Color(0xFF6A34F0), ProfileIndigoDeep)))
+                    .border(1.dp, Color.White.copy(alpha = 0.35f), CircleShape)
                     .clickable { onBack() },
                 contentAlignment = Alignment.Center
             ) {
-                androidx.compose.material3.Icon(
-                    Icons.Filled.ArrowBack,
-                    contentDescription = "Back",
-                    tint = ProfileIndigo,
-                    modifier = Modifier.size(20.dp)
-                )
+                Icon(Icons.Filled.ArrowBack, contentDescription = "Back", tint = Color.White, modifier = Modifier.size(22.dp))
             }
 
             Column(
                 modifier = Modifier.weight(1f),
                 horizontalAlignment = Alignment.CenterHorizontally
             ) {
-                Row {
-                    Text("My ", fontSize = 22.sp, fontWeight = FontWeight.ExtraBold, color = ProfileIndigo)
-                    Text("Profile", fontSize = 22.sp, fontWeight = FontWeight.ExtraBold, color = ProfilePink)
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text("👑", fontSize = 24.sp)
+                    Spacer(Modifier.width(8.dp))
+                    Text("My ", fontSize = 26.sp, fontWeight = FontWeight.ExtraBold, color = p.title)
+                    Text(
+                        "Profile",
+                        style = TextStyle(
+                            brush = Brush.horizontalGradient(listOf(Color(0xFF5B2BEF), Color(0xFF9B4DFF))),
+                            fontSize = 26.sp,
+                            fontWeight = FontWeight.ExtraBold
+                        )
+                    )
                 }
                 Text(
                     "Type Smart. Type Easy. Type SinKey.",
                     fontSize = 11.sp,
-                    color = if (isDark) Color(0xFFB6AEC9) else Color(0xFF6B7280),
-                    modifier = Modifier.padding(top = 2.dp)
+                    color = p.sub,
+                    maxLines = 1,
+                    modifier = Modifier.padding(top = 1.dp)
                 )
             }
 
             Box(
                 modifier = Modifier
-                    .size(36.dp)
+                    .size(46.dp)
+                    .shadow(8.dp, CircleShape, ambientColor = p.glow.copy(alpha = 0.4f), spotColor = p.glow.copy(alpha = 0.4f))
                     .clip(CircleShape)
-                    .background(if (isDark) Color(0xFF2C2145) else Color.White)
+                    .background(
+                        if (isDark) Brush.verticalGradient(listOf(Color(0xFF2E2560), Color(0xFF211A48)))
+                        else Brush.verticalGradient(listOf(Color.White, Color(0xFFEAE0FF)))
+                    )
+                    .border(1.5.dp, if (isDark) SolidColor(p.cardBorder) else GlossyWhite, CircleShape)
                     .clickable { onEditProfile() },
                 contentAlignment = Alignment.Center
             ) {
-                androidx.compose.material3.Icon(
-                    Icons.Filled.ModeEdit,
-                    contentDescription = "Edit profile",
-                    tint = ProfileIndigo,
-                    modifier = Modifier.size(18.dp)
-                )
+                Icon(Icons.Filled.ModeEdit, contentDescription = "Edit profile", tint = p.iconIndigo, modifier = Modifier.size(22.dp))
             }
         }
 
@@ -212,35 +226,34 @@ fun ProfileScreen(
                 .fillMaxWidth()
                 .weight(1f)
                 .verticalScroll(rememberScrollState())
-                .padding(bottom = 24.dp)
+                .padding(start = 16.dp, end = 16.dp, top = 10.dp, bottom = 28.dp)
         ) {
-        // ── Identity card ────────────────────────────────────────────────
-        Box(
-            modifier = Modifier
-                .padding(20.dp, 8.dp, 20.dp, 0.dp)
-                .fillMaxWidth()
-                .clip(RoundedCornerShape(24.dp))
-                .background(
-                    Brush.linearGradient(
-                        if (isDark) {
-                            listOf(Color(0xFF241C3A), Color(0xFF3A2436))
-                        } else {
-                            listOf(Color(0xFFE9E1FB), Color(0xFFFBE4EF))
-                        }
+            // ── Identity card ────────────────────────────────────────────
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .glassCard(p, radius = 28, elevation = 10)
+                    .background(
+                        Brush.linearGradient(
+                            if (isDark) listOf(Color(0x332A1F5C), Color(0x33513A9A))
+                            else listOf(Color(0x66DCCBFF), Color(0x66F3EBFF))
+                        )
                     )
-                )
-                .padding(20.dp)
-        ) {
-            Column {
+                    .padding(14.dp)
+            ) {
                 Row(verticalAlignment = Alignment.Top) {
-                    Box(
-                        modifier = Modifier.size(88.dp)
-                    ) {
+                    Box(modifier = Modifier.size(100.dp)) {
                         Box(
                             modifier = Modifier
-                                .size(88.dp)
+                                .size(96.dp)
+                                .shadow(8.dp, CircleShape, ambientColor = ProfileIndigo, spotColor = ProfileIndigo)
                                 .clip(CircleShape)
-                                .background(if (isDark) Color(0xFF3A2E5C) else Color(0xFFD8CCF7)),
+                                .background(if (isDark) Color(0xFF3A2E5C) else Color(0xFFD8CCF7))
+                                .border(
+                                    3.dp,
+                                    Brush.linearGradient(listOf(Color(0xFF7C4DFF), Color(0xFF3A1AA8))),
+                                    CircleShape
+                                ),
                             contentAlignment = Alignment.Center
                         ) {
                             when (gender) {
@@ -260,465 +273,492 @@ fun ProfileScreen(
                                         .fillMaxSize()
                                         .clip(CircleShape)
                                 )
-                                else -> androidx.compose.material3.Icon(
+                                else -> Icon(
                                     Icons.Filled.Person,
                                     contentDescription = null,
-                                    tint = ProfileIndigo,
-                                    modifier = Modifier.size(48.dp)
+                                    tint = p.iconIndigo,
+                                    modifier = Modifier.size(52.dp)
                                 )
                             }
                         }
                         Box(
                             modifier = Modifier
                                 .align(Alignment.BottomEnd)
-                                .size(28.dp)
+                                .size(34.dp)
+                                .shadow(6.dp, CircleShape, ambientColor = ProfileIndigo, spotColor = ProfileIndigo)
                                 .clip(CircleShape)
-                                .background(ProfileIndigo)
-                                .border(2.dp, if (isDark) Color(0xFF241C3A) else Color(0xFFFBE4EF), CircleShape),
+                                .background(Brush.verticalGradient(listOf(Color(0xFF6A34F0), ProfileIndigoDeep)))
+                                .border(2.dp, Color.White.copy(alpha = if (isDark) 0.4f else 0.9f), CircleShape),
                             contentAlignment = Alignment.Center
                         ) {
-                            androidx.compose.material3.Icon(
+                            Icon(
                                 Icons.Filled.CameraAlt,
                                 contentDescription = "Change photo",
                                 tint = Color.White,
-                                modifier = Modifier.size(13.dp)
+                                modifier = Modifier.size(17.dp)
                             )
                         }
                     }
-                    Spacer(Modifier.width(16.dp))
+                    Spacer(Modifier.width(10.dp))
                     Column(Modifier.weight(1f)) {
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             Text(
                                 userName,
-                                fontSize = 19.sp,
+                                fontSize = 18.sp,
                                 fontWeight = FontWeight.ExtraBold,
-                                color = MaterialTheme.colorScheme.onSurface,
-                                modifier = Modifier.weight(1f, fill = false)
+                                color = p.title,
+                                maxLines = 2,
+                                overflow = TextOverflow.Ellipsis,
+                                modifier = Modifier.weight(1f)
                             )
+                            Spacer(Modifier.width(6.dp))
+                            // Compact "Edit Profile" pill (same action as the pencil / menu row)
+                            val pillShape = RoundedCornerShape(50)
+                            Row(
+                                modifier = Modifier
+                                    .shadow(8.dp, pillShape, ambientColor = ProfileIndigo, spotColor = ProfileIndigo)
+                                    .clip(pillShape)
+                                    .background(Brush.horizontalGradient(ProfileButton))
+                                    .border(1.dp, Color.White.copy(alpha = 0.3f), pillShape)
+                                    .clickable { onEditProfile() }
+                                    .padding(horizontal = 10.dp, vertical = 8.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Icon(Icons.Filled.Star, null, tint = Color.White, modifier = Modifier.size(13.dp))
+                                Spacer(Modifier.width(4.dp))
+                                Text("Edit Profile", color = Color.White, fontSize = 11.sp, fontWeight = FontWeight.Bold, maxLines = 1)
+                            }
                         }
-                        Text(
-                            userHandle,
-                            fontSize = 13.sp,
-                            color = ProfileGrey
-                        )
-                        Spacer(Modifier.height(6.dp))
+                        Text(userHandle, fontSize = 13.sp, color = p.sub, modifier = Modifier.padding(top = 2.dp))
+                        Spacer(Modifier.height(10.dp))
                         Row(verticalAlignment = Alignment.CenterVertically) {
-                            androidx.compose.material3.Icon(
+                            Icon(
                                 Icons.Filled.Favorite,
                                 contentDescription = null,
-                                tint = ProfileIndigo,
-                                modifier = Modifier.size(14.dp)
+                                tint = p.iconIndigo,
+                                modifier = Modifier.size(15.dp)
                             )
                             Spacer(Modifier.width(6.dp))
                             Text(
                                 "Loves typing in Sinhala & English",
                                 fontSize = 12.sp,
-                                color = ProfileGrey
+                                color = p.body,
+                                maxLines = 2
                             )
-                        }
-                    }
-                    Box(
-                        modifier = Modifier
-                            .clip(RoundedCornerShape(50))
-                            .background(ProfileIndigo)
-                            .padding(horizontal = 12.dp, vertical = 6.dp)
-                    ) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            androidx.compose.material3.Icon(
-                                Icons.Filled.Verified,
-                                contentDescription = null,
-                                tint = Color.White,
-                                modifier = Modifier.size(13.dp)
-                            )
-                            Spacer(Modifier.width(4.dp))
-                            Text("Verified", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Color.White)
                         }
                     }
                 }
 
-                Spacer(Modifier.height(20.dp))
+                Spacer(Modifier.height(14.dp))
 
-                Box(
+                // Stats strip
+                val stripShape = RoundedCornerShape(22.dp)
+                Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .clip(RoundedCornerShape(18.dp))
-                        .background(if (isDark) Color(0xFF2E2748) else Color(0xB3FFFFFF))
-                        .padding(vertical = 14.dp)
-                ) {
-                    val statIndigo = if (isDark) Color(0xFF9C87F5) else ProfileIndigo
-                    Row(modifier = Modifier.fillMaxWidth()) {
-                        IdentityStat(
-                            icon = Icons.Filled.AutoAwesome,
-                            iconColor = statIndigo,
-                            label = "Level",
-                            value = level.toString(),
-                            isDark = isDark
-                        )
-                        IdentityStat(
-                            icon = Icons.Filled.LocalFireDepartment,
-                            iconColor = Color(0xFFE0642B),
-                            label = "Streak",
-                            value = "$streakDays Days",
-                            isDark = isDark
-                        )
-                        IdentityStat(
-                            icon = Icons.Filled.EmojiEvents,
-                            iconColor = statIndigo,
-                            label = "Rank",
-                            value = rankLabel,
-                            isDark = isDark
-                        )
-                        IdentityStat(
-                            icon = Icons.Filled.Groups,
-                            iconColor = statIndigo,
-                            label = "Joined",
-                            value = joinedLabel,
-                            isDark = isDark
-                        )
-                    }
-                }
-            }
-        }
-
-        // ── Your Points ──────────────────────────────────────────────────
-        Box(
-            modifier = Modifier
-                .padding(20.dp, 20.dp, 20.dp, 0.dp)
-                .fillMaxWidth()
-                .clip(RoundedCornerShape(20.dp))
-                .background(MaterialTheme.colorScheme.surface)
-                .padding(20.dp)
-        ) {
-            Column {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
+                        .shadow(4.dp, stripShape, ambientColor = p.glow.copy(alpha = 0.25f), spotColor = p.glow.copy(alpha = 0.25f))
+                        .clip(stripShape)
+                        .background(if (isDark) Color(0xFF2A2352) else Color.White.copy(alpha = 0.92f))
+                        .padding(vertical = 14.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Text(
-                        "Your Points",
-                        fontSize = 16.sp,
-                        fontWeight = FontWeight.ExtraBold,
-                        color = MaterialTheme.colorScheme.onSurface,
-                        modifier = Modifier.weight(1f)
-                    )
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Text("History", fontSize = 13.sp, fontWeight = FontWeight.Bold, color = ProfileIndigo)
-                        androidx.compose.material3.Icon(
-                            Icons.Filled.ChevronRight,
-                            contentDescription = null,
-                            tint = ProfileIndigo,
-                            modifier = Modifier.size(16.dp)
-                        )
-                    }
+                    IdentityStat(p, Icons.Filled.Star, p.iconIndigo, "Level", level.toString())
+                    StatRule(p)
+                    IdentityStat(p, Icons.Filled.LocalFireDepartment, Color(0xFFFF7A1A), "Streak", "$streakDays Days")
+                    StatRule(p)
+                    IdentityStat(p, Icons.Filled.EmojiEvents, p.iconIndigo, "Rank", rankLabel)
+                    StatRule(p)
+                    IdentityStat(p, Icons.Filled.CalendarMonth, p.iconIndigo, "Joined", joinedLabel)
                 }
+            }
 
-                Spacer(Modifier.height(16.dp))
-
-                Row(verticalAlignment = Alignment.CenterVertically) {
+            // ── Your Points ──────────────────────────────────────────────
+            SectionRow(
+                p = p,
+                title = "Your Points",
+                action = "History",
+                modifier = Modifier.padding(top = 22.dp, bottom = 10.dp),
+                leading = {
                     Box(
                         modifier = Modifier
-                            .size(32.dp)
+                            .size(34.dp)
                             .clip(CircleShape)
-                            .background(ProfileIndigo),
+                            .background(Brush.verticalGradient(listOf(Color(0xFF7C4DFF), ProfileIndigoDeep))),
                         contentAlignment = Alignment.Center
                     ) {
-                        androidx.compose.material3.Icon(
-                            Icons.Filled.AutoAwesome,
-                            contentDescription = null,
-                            tint = Color.White,
-                            modifier = Modifier.size(16.dp)
-                        )
+                        Icon(Icons.Filled.Star, null, tint = Color.White, modifier = Modifier.size(19.dp))
                     }
-                    Spacer(Modifier.width(10.dp))
-                    Column {
-                        Text(
-                            formatWithCommas(totalPoints),
-                            fontSize = 22.sp,
-                            fontWeight = FontWeight.ExtraBold,
-                            color = MaterialTheme.colorScheme.onSurface
-                        )
-                        Text("Total Points", fontSize = 11.sp, color = ProfileGrey)
-                    }
-                    Spacer(Modifier.width(18.dp))
+                }
+            )
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .glassCard(p, radius = 24, elevation = 8)
+                    .padding(horizontal = 14.dp, vertical = 14.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Box(
+                    modifier = Modifier
+                        .size(60.dp)
+                        .shadow(8.dp, CircleShape, ambientColor = ProfileIndigo, spotColor = ProfileIndigo)
+                        .clip(CircleShape)
+                        .background(Brush.verticalGradient(listOf(Color(0xFF7C4DFF), ProfileIndigoDeep)))
+                        .border(1.5.dp, Color.White.copy(alpha = 0.4f), CircleShape),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(Icons.Filled.Star, null, tint = Color.White, modifier = Modifier.size(34.dp))
+                }
+                Spacer(Modifier.width(12.dp))
+                Column {
+                    Text(
+                        formatWithCommas(totalPoints),
+                        fontSize = 26.sp,
+                        fontWeight = FontWeight.ExtraBold,
+                        color = p.title
+                    )
+                    Text("Total Points", fontSize = 12.sp, color = p.body)
+                }
+                Spacer(Modifier.width(14.dp))
+                Box(
+                    modifier = Modifier
+                        .width(1.dp)
+                        .height(52.dp)
+                        .background(if (isDark) Color(0xFF3A2F66) else Color(0xFFDCD0F6))
+                )
+                Spacer(Modifier.width(14.dp))
+                Column(Modifier.weight(1f)) {
+                    Text(
+                        "Next Level: ${level + 1}",
+                        fontSize = 13.sp,
+                        fontWeight = FontWeight.ExtraBold,
+                        color = p.title
+                    )
+                    Spacer(Modifier.height(8.dp))
                     Box(
                         modifier = Modifier
-                            .width(1.dp)
-                            .height(44.dp)
-                            .background(MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
-                    )
-                    Spacer(Modifier.width(18.dp))
-                    Column(Modifier.weight(1f)) {
-                        Text(
-                            "Next Level ${level + 1}",
-                            fontSize = 12.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = MaterialTheme.colorScheme.onSurface
-                        )
-                        Spacer(Modifier.height(8.dp))
+                            .fillMaxWidth()
+                            .height(8.dp)
+                            .clip(RoundedCornerShape(50))
+                            .background(if (isDark) Color(0xFF3A2F66) else Color(0xFFD9CCF8))
+                    ) {
                         Box(
                             modifier = Modifier
-                                .fillMaxWidth()
-                                .height(7.dp)
+                                .fillMaxWidth(fraction = (charsIntoLevel / 1000f).coerceIn(0f, 1f))
+                                .height(8.dp)
                                 .clip(RoundedCornerShape(50))
-                                .background(if (isDark) Color(0xFF352A54) else Color(0xFFE3DAF7))
-                        ) {
-                            Box(
-                                modifier = Modifier
-                                    .fillMaxWidth(fraction = (charsIntoLevel / 1000f).coerceIn(0f, 1f))
-                                    .height(7.dp)
-                                    .clip(RoundedCornerShape(50))
-                                    .background(Brush.horizontalGradient(listOf(ProfileIndigo, ProfilePink)))
-                            )
-                        }
-                        Spacer(Modifier.height(6.dp))
-                        Text(
-                            "$charsToNextLevel more characters to Level ${level + 1}",
-                            fontSize = 10.sp,
-                            color = ProfileGrey
+                                .background(Brush.horizontalGradient(listOf(Color(0xFF4A1FB8), Color(0xFF7C4DFF))))
                         )
                     }
-                    Spacer(Modifier.width(12.dp))
+                    Spacer(Modifier.height(6.dp))
+                    Text(
+                        "$charsToNextLevel more characters to Level ${level + 1}",
+                        fontSize = 11.sp,
+                        color = p.body,
+                        lineHeight = 13.sp
+                    )
+                }
+                Spacer(Modifier.width(10.dp))
+                Box(
+                    modifier = Modifier
+                        .size(52.dp)
+                        .clip(RoundedCornerShape(16.dp))
+                        .background(
+                            Brush.verticalGradient(
+                                if (isDark) listOf(Color(0xFF4A2848), Color(0xFF3A1F3A))
+                                else listOf(Color(0xFFFFE3F0), Color(0xFFFFC9E2))
+                            )
+                        ),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text("🎁", fontSize = 28.sp)
+                }
+            }
+
+            // ── Your Medals ──────────────────────────────────────────────
+            SectionRow(
+                p = p,
+                title = "Your Medals",
+                action = "View All",
+                modifier = Modifier.padding(top = 22.dp, bottom = 10.dp),
+                leading = {
                     Box(
-                        modifier = Modifier
-                            .size(44.dp)
-                            .clip(RoundedCornerShape(14.dp))
-                            .background(Color(0xFFFBE1EA)),
+                        modifier = Modifier.size(34.dp),
                         contentAlignment = Alignment.Center
                     ) {
-                        androidx.compose.material3.Icon(
-                            Icons.Filled.CardGiftcard,
-                            contentDescription = null,
-                            tint = Color(0xFFE0498A),
-                            modifier = Modifier.size(20.dp)
-                        )
+                        Icon(Icons.Filled.WorkspacePremium, null, tint = p.iconIndigo, modifier = Modifier.size(32.dp))
                     }
                 }
-            }
-        }
-
-        // ── Your Medals ──────────────────────────────────────────────────
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(20.dp, 24.dp, 20.dp, 8.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Text(
-                "Your Medals",
-                fontSize = 16.sp,
-                fontWeight = FontWeight.ExtraBold,
-                color = MaterialTheme.colorScheme.onSurface,
-                modifier = Modifier.weight(1f)
             )
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Text("View All", fontSize = 13.sp, fontWeight = FontWeight.Bold, color = ProfileIndigo)
-                androidx.compose.material3.Icon(
-                    Icons.Filled.ChevronRight,
-                    contentDescription = null,
-                    tint = ProfileIndigo,
-                    modifier = Modifier.size(16.dp)
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                MedalCard(
+                    p = p,
+                    modifier = Modifier.weight(1f),
+                    spec = MedalSpec(
+                        light = Color(0xFFFFE27A), mid = Color(0xFFF2B01E), dark = Color(0xFFB87A00),
+                        cardLight = listOf(Color(0xFFFFF6DC), Color(0xFFFFE9B8)),
+                        cardDark = listOf(Color(0xFF3B3220), Color(0xFF2E2718))
+                    ),
+                    title = "Gold Medal",
+                    subtitle = "2500+ Points",
+                    // BUG FIX: this compared totalCharacters (raw character
+                    // count) against the POINTS threshold — but points are
+                    // totalCharacters / 1000 (see totalPoints' definition
+                    // above), so medals were unlocking 1000x too early (2500
+                    // characters ≈ 2.5 points, not 2500 points). Comparing
+                    // against totalPoints itself makes the "2500+ Points"
+                    // label actually match what's being checked.
+                    earned = totalPoints >= 2500
+                )
+                MedalCard(
+                    p = p,
+                    modifier = Modifier.weight(1f),
+                    spec = MedalSpec(
+                        light = Color(0xFF9FA8E6), mid = Color(0xFF6670BC), dark = Color(0xFF414A8F),
+                        cardLight = listOf(Color(0xFFF4F2FF), Color(0xFFE3E0F6)),
+                        cardDark = listOf(Color(0xFF2D2A4A), Color(0xFF25223E))
+                    ),
+                    title = "Silver Medal",
+                    subtitle = "1500+ Points",
+                    earned = totalPoints >= 1500
+                )
+                MedalCard(
+                    p = p,
+                    modifier = Modifier.weight(1f),
+                    spec = MedalSpec(
+                        light = Color(0xFFF0A662), mid = Color(0xFFB4692B), dark = Color(0xFF7E4217),
+                        cardLight = listOf(Color(0xFFFFEEE0), Color(0xFFFFDCC2)),
+                        cardDark = listOf(Color(0xFF3A2A24), Color(0xFF2E221D))
+                    ),
+                    title = "Bronze Medal",
+                    subtitle = "500+ Points",
+                    earned = totalPoints >= 500
                 )
             }
-        }
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 20.dp),
-            horizontalArrangement = Arrangement.spacedBy(10.dp)
-        ) {
-            MedalCard(
-                modifier = Modifier.weight(1f),
-                medalColor = MedalGold,
-                title = "Gold Medal",
-                subtitle = "2500+ Points",
-                // BUG FIX: this compared totalCharacters (raw character
-                // count) against the POINTS threshold — but points are
-                // totalCharacters / 1000 (see totalPoints' definition
-                // above), so medals were unlocking 1000x too early (2500
-                // characters ≈ 2.5 points, not 2500 points). Comparing
-                // against totalPoints itself makes the "2500+ Points"
-                // label actually match what's being checked.
-                earned = totalPoints >= 2500
-            )
-            MedalCard(
-                modifier = Modifier.weight(1f),
-                medalColor = MedalSilver,
-                title = "Silver Medal",
-                subtitle = "1500+ Points",
-                earned = totalPoints >= 1500
-            )
-            MedalCard(
-                modifier = Modifier.weight(1f),
-                medalColor = MedalBronze,
-                title = "Bronze Medal",
-                subtitle = "500+ Points",
-                earned = totalPoints >= 500
-            )
-        }
 
-        // ── Activity Overview ────────────────────────────────────────────
-        Box(
-            modifier = Modifier
-                .padding(20.dp, 24.dp, 20.dp, 0.dp)
-                .fillMaxWidth()
-                .clip(RoundedCornerShape(20.dp))
-                .background(MaterialTheme.colorScheme.surface)
-                .padding(20.dp)
-        ) {
-            Column {
-                Text(
-                    "Activity Overview",
-                    fontSize = 16.sp,
-                    fontWeight = FontWeight.ExtraBold,
-                    color = MaterialTheme.colorScheme.onSurface
-                )
-                Spacer(Modifier.height(16.dp))
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(10.dp)
-                ) {
-                    ActivityStat(
-                        modifier = Modifier.weight(1f),
-                        icon = Icons.Filled.Keyboard,
-                        iconColor = ProfileIndigo,
-                        iconBg = if (isDark) Color(0xFF2E2748) else Color(0xFFEDE8FC),
-                        value = formatWithCommas(totalCharacters),
-                        label = "Total Typed"
-                    )
-                    ActivityStat(
-                        modifier = Modifier.weight(1f),
-                        icon = Icons.Filled.GpsFixed,
-                        iconColor = ProfilePink,
-                        iconBg = if (isDark) Color(0xFF3A2432) else Color(0xFFFCE8F0),
-                        value = if (lastAccuracy > 0) "$lastAccuracy%" else "—",
-                        label = "Accuracy"
-                    )
-                }
-                Spacer(Modifier.height(10.dp))
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(10.dp)
-                ) {
-                    ActivityStat(
-                        modifier = Modifier.weight(1f),
-                        icon = Icons.Filled.AccessTime,
-                        iconColor = Color(0xFF3B82F6),
-                        iconBg = if (isDark) Color(0xFF1D2C45) else Color(0xFFE4EDFC),
-                        value = typingTimeLabel,
-                        label = "Typing Time"
-                    )
-                    ActivityStat(
-                        modifier = Modifier.weight(1f),
-                        icon = Icons.Filled.CheckCircle,
-                        iconColor = Color(0xFF16A34A),
-                        iconBg = if (isDark) Color(0xFF163024) else Color(0xFFE2F5E8),
-                        value = testsCompleted.toString(),
-                        label = "Lessons Done"
-                    )
-                }
+            // ── Activity Overview ────────────────────────────────────────
+            Row(
+                modifier = Modifier.padding(top = 24.dp, bottom = 10.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Icon(Icons.Filled.BarChart, null, tint = p.iconIndigo, modifier = Modifier.size(30.dp))
+                Spacer(Modifier.width(10.dp))
+                Text("Activity Overview", fontSize = 20.sp, fontWeight = FontWeight.ExtraBold, color = p.title)
             }
-        }
+            Row(horizontalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.fillMaxWidth()) {
+                ActivityStat(
+                    p = p, modifier = Modifier.weight(1f),
+                    icon = Icons.Filled.Keyboard, iconColor = p.iconIndigo,
+                    fillLight = listOf(Color(0xFFEFE6FF), Color(0xFFDCCCFB)),
+                    fillDark = listOf(Color(0xFF332A63), Color(0xFF2A2252)),
+                    labelColor = if (isDark) Color(0xFFCFC8F2) else Color(0xFF4F3FA0),
+                    value = formatWithCommas(totalCharacters), label = "Total Typed"
+                )
+                ActivityStat(
+                    p = p, modifier = Modifier.weight(1f),
+                    icon = Icons.Filled.GpsFixed, iconColor = Color(0xFFE91E78),
+                    fillLight = listOf(Color(0xFFFFE8F3), Color(0xFFFFD2E7)),
+                    fillDark = listOf(Color(0xFF4A2848), Color(0xFF3A1F3A)),
+                    labelColor = if (isDark) Color(0xFFF2B8D6) else Color(0xFF9A4A74),
+                    value = if (lastAccuracy > 0) "$lastAccuracy%" else "—", label = "Accuracy"
+                )
+            }
+            Spacer(Modifier.height(10.dp))
+            Row(horizontalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.fillMaxWidth()) {
+                ActivityStat(
+                    p = p, modifier = Modifier.weight(1f),
+                    icon = Icons.Filled.AccessTime, iconColor = Color(0xFF2F7BEF),
+                    fillLight = listOf(Color(0xFFE6F1FF), Color(0xFFCFE4FF)),
+                    fillDark = listOf(Color(0xFF1F3158), Color(0xFF192849)),
+                    labelColor = if (isDark) Color(0xFFB4CCF2) else Color(0xFF3A5E99),
+                    value = typingTimeLabel, label = "Typing Time"
+                )
+                ActivityStat(
+                    p = p, modifier = Modifier.weight(1f),
+                    icon = Icons.Filled.CheckCircle, iconColor = Color(0xFF22B14C),
+                    fillLight = listOf(Color(0xFFE5F9E9), Color(0xFFCBF0D4)),
+                    fillDark = listOf(Color(0xFF1B3A2A), Color(0xFF16301F)),
+                    labelColor = if (isDark) Color(0xFFB4E4C2) else Color(0xFF2E8A4E),
+                    value = testsCompleted.toString(), label = "Lessons Done"
+                )
+            }
 
-        // ── Menu list ────────────────────────────────────────────────────
-        Column(
-            modifier = Modifier
-                .padding(20.dp, 20.dp, 20.dp, 0.dp)
-                .fillMaxWidth()
-                .clip(RoundedCornerShape(18.dp))
-                .background(MaterialTheme.colorScheme.surface)
-        ) {
+            // ── Menu rows ────────────────────────────────────────────────
+            Spacer(Modifier.height(20.dp))
             MenuRow(
+                p = p,
                 icon = Icons.Filled.Person,
-                iconBg = ProfileIndigo,
+                iconBrush = Brush.verticalGradient(listOf(Color(0xFF7C4DFF), ProfileIndigoDeep)),
                 title = "Edit Profile",
                 onClick = onEditProfile
             )
+            Spacer(Modifier.height(10.dp))
             MenuRow(
-                icon = Icons.Filled.HelpOutline,
-                iconBg = Color(0xFFE0642B),
+                p = p,
+                icon = Icons.Filled.HeadsetMic,
+                iconBrush = Brush.verticalGradient(listOf(Color(0xFFFF9A3D), Color(0xFFE0561B))),
                 title = "Help & Support",
-                showDivider = false,
                 onClick = onHelpSupport
             )
         }
-        } // end scrollable content Column
+    }
+}
+
+/** "Your Points  ………  History ›" style section heading. */
+@Composable
+private fun SectionRow(
+    p: HomePalette,
+    title: String,
+    action: String,
+    modifier: Modifier = Modifier,
+    leading: @Composable () -> Unit
+) {
+    Row(
+        modifier = modifier.fillMaxWidth(),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        leading()
+        Spacer(Modifier.width(10.dp))
+        Text(title, fontSize = 20.sp, fontWeight = FontWeight.ExtraBold, color = p.title, modifier = Modifier.weight(1f))
+        Text(action, fontSize = 14.sp, fontWeight = FontWeight.ExtraBold, color = p.iconIndigo)
+        Icon(Icons.Filled.ChevronRight, null, tint = p.iconIndigo, modifier = Modifier.size(20.dp))
     }
 }
 
 @Composable
-private fun RowScope.IdentityStat(icon: ComposeImageVector, iconColor: Color, label: String, value: String, isDark: Boolean) {
+private fun StatRule(p: HomePalette) {
+    Box(
+        modifier = Modifier
+            .width(1.dp)
+            .height(54.dp)
+            .background(if (p.dark) Color(0xFF3A2F66) else Color(0xFFE2D8F8))
+    )
+}
+
+@Composable
+private fun RowScope.IdentityStat(
+    p: HomePalette,
+    icon: ComposeImageVector,
+    iconColor: Color,
+    label: String,
+    value: String
+) {
     Column(
         modifier = Modifier.weight(1f),
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
-        androidx.compose.material3.Icon(
-            icon,
-            contentDescription = null,
-            tint = iconColor,
-            modifier = Modifier.size(18.dp)
-        )
+        Icon(icon, contentDescription = null, tint = iconColor, modifier = Modifier.size(26.dp))
         Spacer(Modifier.height(4.dp))
-        Text(label, fontSize = 11.sp, color = if (isDark) Color(0xFFB6AEC9) else ProfileGrey)
+        Text(label, fontSize = 12.sp, color = p.body, maxLines = 1)
         Spacer(Modifier.height(2.dp))
         Text(
             value,
             fontSize = 14.sp,
             fontWeight = FontWeight.ExtraBold,
-            color = if (isDark) Color.White else MaterialTheme.colorScheme.onSurface
+            color = p.title,
+            maxLines = 1
         )
     }
 }
 
+private class MedalSpec(
+    val light: Color,
+    val mid: Color,
+    val dark: Color,
+    val cardLight: List<Color>,
+    val cardDark: List<Color>
+)
+
 @Composable
 private fun MedalCard(
+    p: HomePalette,
     modifier: Modifier = Modifier,
-    medalColor: Color,
+    spec: MedalSpec,
     title: String,
     subtitle: String,
     earned: Boolean
 ) {
+    val shape = RoundedCornerShape(24.dp)
     Column(
         modifier = modifier
-            .clip(RoundedCornerShape(18.dp))
-            .background(MaterialTheme.colorScheme.surface)
-            .padding(vertical = 18.dp, horizontal = 10.dp),
+            .shadow(8.dp, shape, ambientColor = spec.mid.copy(alpha = 0.35f), spotColor = spec.mid.copy(alpha = 0.35f))
+            .clip(shape)
+            .background(Brush.verticalGradient(if (p.dark) spec.cardDark else spec.cardLight))
+            .border(1.dp, if (p.dark) SolidColor(p.cardBorder) else GlossyWhite, shape)
+            .padding(top = 10.dp, bottom = 14.dp, start = 8.dp, end = 8.dp),
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
-        Box(
-            modifier = Modifier
-                .size(56.dp)
-                .clip(CircleShape)
-                .background(medalColor),
-            contentAlignment = Alignment.Center
-        ) {
-            androidx.compose.material3.Icon(
-                Icons.Filled.EmojiEvents,
-                contentDescription = null,
-                tint = Color.White,
-                modifier = Modifier.size(28.dp)
-            )
+        // Medal: crown on top of a glossy disc with a trophy.
+        Box(modifier = Modifier.size(width = 84.dp, height = 92.dp), contentAlignment = Alignment.BottomCenter) {
+            Box(
+                modifier = Modifier
+                    .size(78.dp)
+                    .shadow(6.dp, CircleShape, ambientColor = spec.dark, spotColor = spec.dark)
+                    .clip(CircleShape)
+                    .background(Brush.radialGradient(listOf(spec.light, spec.mid, spec.dark)))
+                    .border(3.dp, Brush.verticalGradient(listOf(spec.light, spec.dark)), CircleShape),
+                contentAlignment = Alignment.Center
+            ) {
+                Box(
+                    modifier = Modifier
+                        .size(58.dp)
+                        .clip(CircleShape)
+                        .border(1.5.dp, Color.White.copy(alpha = 0.35f), CircleShape),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(Icons.Filled.EmojiEvents, null, tint = Color.White, modifier = Modifier.size(36.dp))
+                }
+            }
+            Canvas(
+                modifier = Modifier
+                    .align(Alignment.TopCenter)
+                    .size(width = 34.dp, height = 20.dp)
+            ) {
+                val w = size.width
+                val h = size.height
+                val crown = Path().apply {
+                    moveTo(0f, h)
+                    lineTo(0f, h * 0.30f)
+                    lineTo(w * 0.25f, h * 0.60f)
+                    lineTo(w * 0.5f, 0f)
+                    lineTo(w * 0.75f, h * 0.60f)
+                    lineTo(w, h * 0.30f)
+                    lineTo(w, h)
+                    close()
+                }
+                drawPath(crown, Brush.verticalGradient(listOf(spec.light, spec.mid)))
+                drawCircle(spec.light, radius = h * 0.12f, center = Offset(w * 0.5f, h * 0.02f))
+            }
         }
-        Spacer(Modifier.height(10.dp))
-        Text(
-            title,
-            fontSize = 12.sp,
-            fontWeight = FontWeight.Bold,
-            color = MaterialTheme.colorScheme.onSurface
-        )
-        Spacer(Modifier.height(2.dp))
-        Text(subtitle, fontSize = 10.sp, color = ProfileGrey)
         Spacer(Modifier.height(8.dp))
-        Box(
+        Text(title, fontSize = 15.sp, fontWeight = FontWeight.ExtraBold, color = p.title, maxLines = 1)
+        Spacer(Modifier.height(2.dp))
+        Text(subtitle, fontSize = 12.sp, color = p.body, maxLines = 1)
+        Spacer(Modifier.height(10.dp))
+        Row(
             modifier = Modifier
                 .clip(RoundedCornerShape(50))
-                .background(if (earned) Color(0xFFFBE1EA) else Color(0xFFEDEDED))
-                .padding(horizontal = 12.dp, vertical = 4.dp)
+                .background(
+                    if (earned) EarnedPink.copy(alpha = 0.16f)
+                    else if (p.dark) Color(0xFF3A2F66) else Color(0xFFE6DCFB)
+                )
+                .padding(horizontal = 14.dp, vertical = 7.dp),
+            verticalAlignment = Alignment.CenterVertically
         ) {
+            Icon(
+                if (earned) Icons.Filled.Check else Icons.Filled.Lock,
+                contentDescription = null,
+                tint = if (earned) EarnedPink else p.chipText,
+                modifier = Modifier.size(14.dp)
+            )
+            Spacer(Modifier.width(4.dp))
             Text(
                 if (earned) "Earned" else "Locked",
-                fontSize = 10.sp,
-                fontWeight = FontWeight.Bold,
-                color = if (earned) EarnedPink else ProfileGrey
+                fontSize = 13.sp,
+                fontWeight = FontWeight.ExtraBold,
+                color = if (earned) EarnedPink else p.chipText
             )
         }
     }
@@ -726,90 +766,85 @@ private fun MedalCard(
 
 @Composable
 private fun ActivityStat(
+    p: HomePalette,
     modifier: Modifier = Modifier,
     icon: ComposeImageVector,
     iconColor: Color,
-    iconBg: Color,
+    fillLight: List<Color>,
+    fillDark: List<Color>,
+    labelColor: Color,
     value: String,
     label: String
 ) {
-    Column(
+    val shape = RoundedCornerShape(22.dp)
+    Row(
         modifier = modifier
-            .clip(RoundedCornerShape(16.dp))
-            .background(iconBg)
-            .padding(14.dp)
+            .shadow(6.dp, shape, ambientColor = iconColor.copy(alpha = 0.3f), spotColor = iconColor.copy(alpha = 0.3f))
+            .clip(shape)
+            .background(Brush.linearGradient(if (p.dark) fillDark else fillLight))
+            .border(1.dp, if (p.dark) SolidColor(p.cardBorder) else GlossyWhite, shape)
+            .padding(horizontal = 12.dp, vertical = 14.dp),
+        verticalAlignment = Alignment.CenterVertically
     ) {
         Box(
             modifier = Modifier
-                .size(34.dp)
-                .clip(RoundedCornerShape(10.dp))
-                .background(MaterialTheme.colorScheme.surface),
+                .size(50.dp)
+                .shadow(4.dp, RoundedCornerShape(16.dp), ambientColor = iconColor.copy(alpha = 0.3f), spotColor = iconColor.copy(alpha = 0.3f))
+                .clip(RoundedCornerShape(16.dp))
+                .background(if (p.dark) Color(0xFF2A2352) else Color.White.copy(alpha = 0.95f)),
             contentAlignment = Alignment.Center
         ) {
-            androidx.compose.material3.Icon(
-                icon,
-                contentDescription = null,
-                tint = iconColor,
-                modifier = Modifier.size(18.dp)
-            )
+            Icon(icon, contentDescription = null, tint = iconColor, modifier = Modifier.size(30.dp))
         }
-        Spacer(Modifier.height(10.dp))
-        Text(value, fontSize = 17.sp, fontWeight = FontWeight.ExtraBold, color = MaterialTheme.colorScheme.onSurface)
-        Text(label, fontSize = 11.sp, color = ProfileGrey)
+        Spacer(Modifier.width(10.dp))
+        Column {
+            Text(
+                value,
+                fontSize = 22.sp,
+                fontWeight = FontWeight.ExtraBold,
+                color = p.title,
+                maxLines = 1
+            )
+            Text(label, fontSize = 13.sp, color = labelColor, maxLines = 1)
+        }
     }
 }
 
 @Composable
 private fun MenuRow(
+    p: HomePalette,
     icon: ComposeImageVector,
-    iconBg: Color,
+    iconBrush: Brush,
     title: String,
-    showDivider: Boolean = true,
     onClick: () -> Unit = {}
 ) {
-    Column {
-        Row(
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .glassCard(p, radius = 32, elevation = 8)
+            .clickable { onClick() }
+            .padding(start = 12.dp, end = 20.dp, top = 10.dp, bottom = 10.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Box(
             modifier = Modifier
-                .fillMaxWidth()
-                .clickable { onClick() }
-                .padding(16.dp, 14.dp, 16.dp, 14.dp),
-            verticalAlignment = Alignment.CenterVertically
+                .size(48.dp)
+                .clip(CircleShape)
+                .background(iconBrush)
+                .border(1.dp, Color.White.copy(alpha = 0.35f), CircleShape),
+            contentAlignment = Alignment.Center
         ) {
-            Box(
-                modifier = Modifier
-                    .size(34.dp)
-                    .clip(CircleShape)
-                    .background(iconBg),
-                contentAlignment = Alignment.Center
-            ) {
-                androidx.compose.material3.Icon(
-                    icon,
-                    contentDescription = null,
-                    tint = Color.White,
-                    modifier = Modifier.size(17.dp)
-                )
-            }
-            Spacer(Modifier.width(14.dp))
-            Text(
-                title,
-                fontSize = 14.sp,
-                fontWeight = FontWeight.Medium,
-                color = MaterialTheme.colorScheme.onSurface,
-                modifier = Modifier.weight(1f)
-            )
-            androidx.compose.material3.Icon(
-                Icons.Filled.ChevronRight,
-                contentDescription = null,
-                tint = ProfileGrey,
-                modifier = Modifier.size(18.dp)
-            )
+            Icon(icon, contentDescription = null, tint = Color.White, modifier = Modifier.size(26.dp))
         }
-        if (showDivider) {
-            androidx.compose.material3.HorizontalDivider(
-                modifier = Modifier.padding(horizontal = 16.dp),
-                color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f)
-            )
-        }
+        Spacer(Modifier.width(18.dp))
+        Text(
+            title,
+            fontSize = 18.sp,
+            fontWeight = FontWeight.ExtraBold,
+            color = p.title,
+            modifier = Modifier.weight(1f)
+        )
+        Icon(Icons.Filled.ChevronRight, contentDescription = null, tint = p.title, modifier = Modifier.size(26.dp))
     }
 }
 
