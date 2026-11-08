@@ -407,8 +407,7 @@ private fun PillButton(label: String, textSize: Int, hPad: Int, vPad: Int, onCli
 
 /**
  * Right side of the hero card: the keyboard illustration on a soft glowing
- * disc, ringed by sparkles and dots, with two small floating glass chips
- * (⚡ speed, 💬 chat) so the area no longer looks empty.
+ * disc, with sparkles and dots around it so the area doesn't look empty.
  */
 @Composable
 private fun HeroArt(p: HomePalette) {
@@ -418,21 +417,13 @@ private fun HeroArt(p: HomePalette) {
             val w = size.width
             val h = size.height
             val c = Offset(w * 0.52f, h * 0.55f)
-            // glowing disc + two soft rings
+            // soft glowing disc
             drawCircle(
                 Brush.radialGradient(
                     listOf(star.copy(alpha = if (p.dark) 0.35f else 0.30f), star.copy(alpha = 0f)),
                     center = c, radius = w * 0.55f
                 ),
                 radius = w * 0.55f, center = c
-            )
-            drawCircle(
-                star.copy(alpha = 0.22f), radius = w * 0.44f, center = c,
-                style = androidx.compose.ui.graphics.drawscope.Stroke(1.5.dp.toPx())
-            )
-            drawCircle(
-                star.copy(alpha = 0.14f), radius = w * 0.54f, center = c,
-                style = androidx.compose.ui.graphics.drawscope.Stroke(1.dp.toPx())
             )
             // dots
             drawCircle(star.copy(alpha = 0.7f), 3.5.dp.toPx(), Offset(w * 0.10f, h * 0.62f))
@@ -460,26 +451,6 @@ private fun HeroArt(p: HomePalette) {
             contentScale = ContentScale.Fit,
             modifier = Modifier.width(166.dp).height(146.dp)
         )
-        HeroChip(p, "⚡", Modifier.align(Alignment.BottomStart).offset(x = 2.dp, y = (-6).dp))
-        HeroChip(p, "💬", Modifier.align(Alignment.BottomEnd).offset(x = (-2.dp), y = (-2.dp)))
-    }
-}
-
-@Composable
-private fun HeroChip(p: HomePalette, glyph: String, modifier: Modifier = Modifier) {
-    Box(
-        modifier = modifier
-            .size(34.dp)
-            .shadow(6.dp, CircleShape, ambientColor = p.glow.copy(alpha = 0.45f), spotColor = p.glow.copy(alpha = 0.45f))
-            .clip(CircleShape)
-            .background(
-                if (p.dark) Brush.verticalGradient(listOf(Color(0xFF3A2F7A), Color(0xFF241C52)))
-                else Brush.verticalGradient(listOf(Color.White, Color(0xFFE9DFFF)))
-            )
-            .border(1.dp, if (p.dark) SolidColor(p.cardBorder) else GlossyWhite, CircleShape),
-        contentAlignment = Alignment.Center
-    ) {
-        Text(glyph, fontSize = 16.sp)
     }
 }
 
