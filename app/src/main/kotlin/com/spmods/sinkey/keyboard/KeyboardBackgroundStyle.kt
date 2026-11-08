@@ -48,10 +48,7 @@ fun KeyboardBuiltInBackground(style: BackgroundStyle, isDark: Boolean, modifier:
             colors = listOf(Color(0xFFFF7A45), Color(0xFFFF4E82), Color(0xFF6A3EA1)),
             modifier = modifier
         )
-        BackgroundStyle.MINT_CUTE -> GradientBackground(
-            colors = listOf(Color(0xFFDFFFF0), Color(0xFFE7FFE0), Color(0xFFFFFDE0)),
-            modifier = modifier
-        )
+        BackgroundStyle.SINKEY_LAVENDER -> SinKeyLavenderBackground(modifier)
         BackgroundStyle.SINKEY_NEON -> SinKeyNeonBackground(modifier)
         BackgroundStyle.NONE -> Unit
     }
@@ -202,5 +199,45 @@ private fun SinKeyNeonBackground(modifier: Modifier = Modifier) {
         swoosh(0.10f, 0.35f, -0.05f, 0.30f, 0.55f)
         swoosh(0.55f, 0.30f, 0.85f, 0.55f, 0.45f)
         swoosh(0.95f, 0.70f, 1.00f, 0.75f, 0.40f)
+    }
+}
+
+
+/**
+ * Light lavender backdrop with diagonal violet stripes in the top-right and
+ * bottom-left corners and a few sparkles — SinKey Lavender keyboard theme.
+ */
+@Composable
+private fun SinKeyLavenderBackground(modifier: Modifier = Modifier) {
+    Canvas(modifier = modifier) {
+        val w = size.width
+        val h = size.height
+        drawRect(Brush.verticalGradient(listOf(Color(0xFFEFE9FF), Color(0xFFDCD0FA), Color(0xFFE6DDFC))))
+        fun stripe(x0: Float, x1: Float, x2: Float, x3: Float, y0: Float, y1: Float, a: Float) {
+            val p = Path().apply {
+                moveTo(w * x0, h * y0); lineTo(w * x1, h * y0); lineTo(w * x3, h * y1); lineTo(w * x2, h * y1); close()
+            }
+            drawPath(p, Brush.linearGradient(listOf(Color(0xFF7C3AED).copy(alpha = a), Color(0xFF5B2BEF).copy(alpha = a * 0.3f))))
+        }
+        // top-right corner
+        stripe(0.80f, 0.86f, 0.90f, 0.96f, 0f, 0.25f, 0.55f)
+        stripe(0.88f, 0.96f, 0.98f, 1.06f, 0f, 0.30f, 0.45f)
+        stripe(0.68f, 0.72f, 0.76f, 0.80f, 0f, 0.14f, 0.30f)
+        // bottom-left corner
+        stripe(-0.06f, 0.02f, -0.18f, -0.10f, 0.72f, 1.0f, 0.0f)
+        stripe(0.04f, 0.10f, -0.08f, -0.02f, 0.78f, 1.0f, 0.45f)
+        stripe(0.14f, 0.19f, 0.02f, 0.07f, 0.88f, 1.0f, 0.35f)
+        // sparkles
+        fun sparkle(cx: Float, cy: Float, r: Float) {
+            val p = Path().apply {
+                moveTo(cx, cy - r); quadraticBezierTo(cx, cy, cx + r, cy)
+                quadraticBezierTo(cx, cy, cx, cy + r); quadraticBezierTo(cx, cy, cx - r, cy)
+                quadraticBezierTo(cx, cy, cx, cy - r); close()
+            }
+            drawPath(p, Color(0xFF7C3AED).copy(alpha = 0.7f))
+        }
+        sparkle(w * 0.95f, h * 0.55f, h * 0.03f)
+        sparkle(w * 0.05f, h * 0.45f, h * 0.02f)
+        sparkle(w * 0.30f, h * 0.96f, h * 0.025f)
     }
 }
