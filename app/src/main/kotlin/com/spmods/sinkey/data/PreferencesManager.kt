@@ -870,8 +870,9 @@ enum class BackgroundStyle(val key: String, val label: String) {
     GALAXY("galaxy", "Galaxy"),
     SMOKE("smoke", "Smoke"),
     SUNSET_SKY("sunset_sky", "Sunset"),
-    PASTEL_CUTE("pastel_cute", "Pastel Cute"),
-    MINT_CUTE("mint_cute", "Mint Cute");
+    MINT_CUTE("mint_cute", "Mint Cute"),
+    /** The app's own look: near-black violet with neon swooshes + glossy purple keys. */
+    SINKEY_NEON("sinkey_neon", "SinKey Neon");
 
     companion object {
         fun fromKey(key: String): BackgroundStyle = entries.find { it.key == key } ?: NONE
