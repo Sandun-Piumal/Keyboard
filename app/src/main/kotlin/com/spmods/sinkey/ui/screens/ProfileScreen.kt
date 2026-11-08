@@ -161,12 +161,12 @@ fun ProfileScreen(
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(16.dp, 12.dp, 16.dp, 6.dp),
+                .padding(16.dp, 10.dp, 16.dp, 4.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
             Box(
                 modifier = Modifier
-                    .size(46.dp)
+                    .size(42.dp)
                     .shadow(8.dp, CircleShape, ambientColor = ProfileIndigo, spotColor = ProfileIndigo)
                     .clip(CircleShape)
                     .background(Brush.verticalGradient(listOf(Color(0xFF6A34F0), ProfileIndigoDeep)))
@@ -174,7 +174,7 @@ fun ProfileScreen(
                     .clickable { onBack() },
                 contentAlignment = Alignment.Center
             ) {
-                Icon(Icons.Filled.ArrowBack, contentDescription = "Back", tint = Color.White, modifier = Modifier.size(22.dp))
+                Icon(Icons.Filled.ArrowBack, contentDescription = "Back", tint = Color.White, modifier = Modifier.size(20.dp))
             }
 
             Column(
@@ -182,14 +182,14 @@ fun ProfileScreen(
                 horizontalAlignment = Alignment.CenterHorizontally
             ) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text("👑", fontSize = 24.sp)
-                    Spacer(Modifier.width(8.dp))
-                    Text("My ", fontSize = 26.sp, fontWeight = FontWeight.ExtraBold, color = p.title)
+                    Text("👑", fontSize = 20.sp)
+                    Spacer(Modifier.width(6.dp))
+                    Text("My ", fontSize = 22.sp, fontWeight = FontWeight.ExtraBold, color = p.title)
                     Text(
                         "Profile",
                         style = TextStyle(
                             brush = Brush.horizontalGradient(listOf(Color(0xFF5B2BEF), Color(0xFF9B4DFF))),
-                            fontSize = 26.sp,
+                            fontSize = 22.sp,
                             fontWeight = FontWeight.ExtraBold
                         )
                     )
@@ -205,7 +205,7 @@ fun ProfileScreen(
 
             Box(
                 modifier = Modifier
-                    .size(46.dp)
+                    .size(42.dp)
                     .shadow(8.dp, CircleShape, ambientColor = p.glow.copy(alpha = 0.4f), spotColor = p.glow.copy(alpha = 0.4f))
                     .clip(CircleShape)
                     .background(
@@ -216,7 +216,7 @@ fun ProfileScreen(
                     .clickable { onEditProfile() },
                 contentAlignment = Alignment.Center
             ) {
-                Icon(Icons.Filled.ModeEdit, contentDescription = "Edit profile", tint = p.iconIndigo, modifier = Modifier.size(22.dp))
+                Icon(Icons.Filled.ModeEdit, contentDescription = "Edit profile", tint = p.iconIndigo, modifier = Modifier.size(20.dp))
             }
         }
 
@@ -226,7 +226,7 @@ fun ProfileScreen(
                 .fillMaxWidth()
                 .weight(1f)
                 .verticalScroll(rememberScrollState())
-                .padding(start = 16.dp, end = 16.dp, top = 10.dp, bottom = 28.dp)
+                .padding(start = 16.dp, end = 16.dp, top = 6.dp, bottom = 24.dp)
         ) {
             // ── Identity card ────────────────────────────────────────────
             Column(
@@ -239,13 +239,13 @@ fun ProfileScreen(
                             else listOf(Color(0x66DCCBFF), Color(0x66F3EBFF))
                         )
                     )
-                    .padding(14.dp)
+                    .padding(12.dp)
             ) {
                 Row(verticalAlignment = Alignment.Top) {
-                    Box(modifier = Modifier.size(100.dp)) {
+                    Box(modifier = Modifier.size(82.dp)) {
                         Box(
                             modifier = Modifier
-                                .size(96.dp)
+                                .size(78.dp)
                                 .shadow(8.dp, CircleShape, ambientColor = ProfileIndigo, spotColor = ProfileIndigo)
                                 .clip(CircleShape)
                                 .background(if (isDark) Color(0xFF3A2E5C) else Color(0xFFD8CCF7))
@@ -277,14 +277,14 @@ fun ProfileScreen(
                                     Icons.Filled.Person,
                                     contentDescription = null,
                                     tint = p.iconIndigo,
-                                    modifier = Modifier.size(52.dp)
+                                    modifier = Modifier.size(42.dp)
                                 )
                             }
                         }
                         Box(
                             modifier = Modifier
                                 .align(Alignment.BottomEnd)
-                                .size(34.dp)
+                                .size(28.dp)
                                 .shadow(6.dp, CircleShape, ambientColor = ProfileIndigo, spotColor = ProfileIndigo)
                                 .clip(CircleShape)
                                 .background(Brush.verticalGradient(listOf(Color(0xFF6A34F0), ProfileIndigoDeep)))
@@ -295,7 +295,7 @@ fun ProfileScreen(
                                 Icons.Filled.CameraAlt,
                                 contentDescription = "Change photo",
                                 tint = Color.White,
-                                modifier = Modifier.size(17.dp)
+                                modifier = Modifier.size(14.dp)
                             )
                         }
                     }
@@ -304,7 +304,7 @@ fun ProfileScreen(
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             Text(
                                 userName,
-                                fontSize = 18.sp,
+                                fontSize = 16.sp,
                                 fontWeight = FontWeight.ExtraBold,
                                 color = p.title,
                                 maxLines = 2,
@@ -329,8 +329,8 @@ fun ProfileScreen(
                                 Text("Edit Profile", color = Color.White, fontSize = 11.sp, fontWeight = FontWeight.Bold, maxLines = 1)
                             }
                         }
-                        Text(userHandle, fontSize = 13.sp, color = p.sub, modifier = Modifier.padding(top = 2.dp))
-                        Spacer(Modifier.height(10.dp))
+                        Text(userHandle, fontSize = 12.sp, color = p.sub, modifier = Modifier.padding(top = 2.dp))
+                        Spacer(Modifier.height(6.dp))
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             Icon(
                                 Icons.Filled.Favorite,
@@ -349,17 +349,17 @@ fun ProfileScreen(
                     }
                 }
 
-                Spacer(Modifier.height(14.dp))
+                Spacer(Modifier.height(10.dp))
 
                 // Stats strip
-                val stripShape = RoundedCornerShape(22.dp)
+                val stripShape = RoundedCornerShape(18.dp)
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
                         .shadow(4.dp, stripShape, ambientColor = p.glow.copy(alpha = 0.25f), spotColor = p.glow.copy(alpha = 0.25f))
                         .clip(stripShape)
                         .background(if (isDark) Color(0xFF2A2352) else Color.White.copy(alpha = 0.92f))
-                        .padding(vertical = 14.dp),
+                        .padding(vertical = 10.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     IdentityStat(p, Icons.Filled.Star, p.iconIndigo, "Level", level.toString())
@@ -377,59 +377,59 @@ fun ProfileScreen(
                 p = p,
                 title = "Your Points",
                 action = "History",
-                modifier = Modifier.padding(top = 22.dp, bottom = 10.dp),
+                modifier = Modifier.padding(top = 16.dp, bottom = 8.dp),
                 leading = {
                     Box(
                         modifier = Modifier
-                            .size(34.dp)
+                            .size(28.dp)
                             .clip(CircleShape)
                             .background(Brush.verticalGradient(listOf(Color(0xFF7C4DFF), ProfileIndigoDeep))),
                         contentAlignment = Alignment.Center
                     ) {
-                        Icon(Icons.Filled.Star, null, tint = Color.White, modifier = Modifier.size(19.dp))
+                        Icon(Icons.Filled.Star, null, tint = Color.White, modifier = Modifier.size(16.dp))
                     }
                 }
             )
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .glassCard(p, radius = 24, elevation = 8)
-                    .padding(horizontal = 14.dp, vertical = 14.dp),
+                    .glassCard(p, radius = 22, elevation = 6)
+                    .padding(horizontal = 12.dp, vertical = 10.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Box(
                     modifier = Modifier
-                        .size(60.dp)
+                        .size(48.dp)
                         .shadow(8.dp, CircleShape, ambientColor = ProfileIndigo, spotColor = ProfileIndigo)
                         .clip(CircleShape)
                         .background(Brush.verticalGradient(listOf(Color(0xFF7C4DFF), ProfileIndigoDeep)))
                         .border(1.5.dp, Color.White.copy(alpha = 0.4f), CircleShape),
                     contentAlignment = Alignment.Center
                 ) {
-                    Icon(Icons.Filled.Star, null, tint = Color.White, modifier = Modifier.size(34.dp))
+                    Icon(Icons.Filled.Star, null, tint = Color.White, modifier = Modifier.size(28.dp))
                 }
                 Spacer(Modifier.width(12.dp))
                 Column {
                     Text(
                         formatWithCommas(totalPoints),
-                        fontSize = 26.sp,
+                        fontSize = 22.sp,
                         fontWeight = FontWeight.ExtraBold,
                         color = p.title
                     )
-                    Text("Total Points", fontSize = 12.sp, color = p.body)
+                    Text("Total Points", fontSize = 11.sp, color = p.body)
                 }
                 Spacer(Modifier.width(14.dp))
                 Box(
                     modifier = Modifier
                         .width(1.dp)
-                        .height(52.dp)
+                        .height(42.dp)
                         .background(if (isDark) Color(0xFF3A2F66) else Color(0xFFDCD0F6))
                 )
                 Spacer(Modifier.width(14.dp))
                 Column(Modifier.weight(1f)) {
                     Text(
                         "Next Level: ${level + 1}",
-                        fontSize = 13.sp,
+                        fontSize = 12.sp,
                         fontWeight = FontWeight.ExtraBold,
                         color = p.title
                     )
@@ -452,16 +452,16 @@ fun ProfileScreen(
                     Spacer(Modifier.height(6.dp))
                     Text(
                         "$charsToNextLevel more characters to Level ${level + 1}",
-                        fontSize = 11.sp,
+                        fontSize = 10.sp,
                         color = p.body,
-                        lineHeight = 13.sp
+                        lineHeight = 12.sp
                     )
                 }
                 Spacer(Modifier.width(10.dp))
                 Box(
                     modifier = Modifier
-                        .size(52.dp)
-                        .clip(RoundedCornerShape(16.dp))
+                        .size(42.dp)
+                        .clip(RoundedCornerShape(14.dp))
                         .background(
                             Brush.verticalGradient(
                                 if (isDark) listOf(Color(0xFF4A2848), Color(0xFF3A1F3A))
@@ -470,7 +470,7 @@ fun ProfileScreen(
                         ),
                     contentAlignment = Alignment.Center
                 ) {
-                    Text("🎁", fontSize = 28.sp)
+                    Text("🎁", fontSize = 22.sp)
                 }
             }
 
@@ -479,13 +479,13 @@ fun ProfileScreen(
                 p = p,
                 title = "Your Medals",
                 action = "View All",
-                modifier = Modifier.padding(top = 22.dp, bottom = 10.dp),
+                modifier = Modifier.padding(top = 16.dp, bottom = 8.dp),
                 leading = {
                     Box(
-                        modifier = Modifier.size(34.dp),
+                        modifier = Modifier.size(28.dp),
                         contentAlignment = Alignment.Center
                     ) {
-                        Icon(Icons.Filled.WorkspacePremium, null, tint = p.iconIndigo, modifier = Modifier.size(32.dp))
+                        Icon(Icons.Filled.WorkspacePremium, null, tint = p.iconIndigo, modifier = Modifier.size(26.dp))
                     }
                 }
             )
@@ -540,12 +540,12 @@ fun ProfileScreen(
 
             // ── Activity Overview ────────────────────────────────────────
             Row(
-                modifier = Modifier.padding(top = 24.dp, bottom = 10.dp),
+                modifier = Modifier.padding(top = 16.dp, bottom = 8.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Icon(Icons.Filled.BarChart, null, tint = p.iconIndigo, modifier = Modifier.size(30.dp))
+                Icon(Icons.Filled.BarChart, null, tint = p.iconIndigo, modifier = Modifier.size(26.dp))
                 Spacer(Modifier.width(10.dp))
-                Text("Activity Overview", fontSize = 20.sp, fontWeight = FontWeight.ExtraBold, color = p.title)
+                Text("Activity Overview", fontSize = 17.sp, fontWeight = FontWeight.ExtraBold, color = p.title)
             }
             Row(horizontalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.fillMaxWidth()) {
                 ActivityStat(
@@ -586,7 +586,7 @@ fun ProfileScreen(
             }
 
             // ── Menu rows ────────────────────────────────────────────────
-            Spacer(Modifier.height(20.dp))
+            Spacer(Modifier.height(14.dp))
             MenuRow(
                 p = p,
                 icon = Icons.Filled.Person,
@@ -621,9 +621,9 @@ private fun SectionRow(
     ) {
         leading()
         Spacer(Modifier.width(10.dp))
-        Text(title, fontSize = 20.sp, fontWeight = FontWeight.ExtraBold, color = p.title, modifier = Modifier.weight(1f))
-        Text(action, fontSize = 14.sp, fontWeight = FontWeight.ExtraBold, color = p.iconIndigo)
-        Icon(Icons.Filled.ChevronRight, null, tint = p.iconIndigo, modifier = Modifier.size(20.dp))
+        Text(title, fontSize = 17.sp, fontWeight = FontWeight.ExtraBold, color = p.title, modifier = Modifier.weight(1f))
+        Text(action, fontSize = 13.sp, fontWeight = FontWeight.ExtraBold, color = p.iconIndigo)
+        Icon(Icons.Filled.ChevronRight, null, tint = p.iconIndigo, modifier = Modifier.size(18.dp))
     }
 }
 
@@ -632,7 +632,7 @@ private fun StatRule(p: HomePalette) {
     Box(
         modifier = Modifier
             .width(1.dp)
-            .height(54.dp)
+            .height(44.dp)
             .background(if (p.dark) Color(0xFF3A2F66) else Color(0xFFE2D8F8))
     )
 }
@@ -649,13 +649,13 @@ private fun RowScope.IdentityStat(
         modifier = Modifier.weight(1f),
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
-        Icon(icon, contentDescription = null, tint = iconColor, modifier = Modifier.size(26.dp))
-        Spacer(Modifier.height(4.dp))
-        Text(label, fontSize = 12.sp, color = p.body, maxLines = 1)
+        Icon(icon, contentDescription = null, tint = iconColor, modifier = Modifier.size(22.dp))
+        Spacer(Modifier.height(3.dp))
+        Text(label, fontSize = 11.sp, color = p.body, maxLines = 1)
         Spacer(Modifier.height(2.dp))
         Text(
             value,
-            fontSize = 14.sp,
+            fontSize = 13.sp,
             fontWeight = FontWeight.ExtraBold,
             color = p.title,
             maxLines = 1
@@ -680,21 +680,21 @@ private fun MedalCard(
     subtitle: String,
     earned: Boolean
 ) {
-    val shape = RoundedCornerShape(24.dp)
+    val shape = RoundedCornerShape(20.dp)
     Column(
         modifier = modifier
-            .shadow(8.dp, shape, ambientColor = spec.mid.copy(alpha = 0.35f), spotColor = spec.mid.copy(alpha = 0.35f))
+            .shadow(6.dp, shape, ambientColor = spec.mid.copy(alpha = 0.35f), spotColor = spec.mid.copy(alpha = 0.35f))
             .clip(shape)
             .background(Brush.verticalGradient(if (p.dark) spec.cardDark else spec.cardLight))
             .border(1.dp, if (p.dark) SolidColor(p.cardBorder) else GlossyWhite, shape)
-            .padding(top = 10.dp, bottom = 14.dp, start = 8.dp, end = 8.dp),
+            .padding(top = 8.dp, bottom = 10.dp, start = 6.dp, end = 6.dp),
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
         // Medal: crown on top of a glossy disc with a trophy.
-        Box(modifier = Modifier.size(width = 84.dp, height = 92.dp), contentAlignment = Alignment.BottomCenter) {
+        Box(modifier = Modifier.size(width = 66.dp, height = 74.dp), contentAlignment = Alignment.BottomCenter) {
             Box(
                 modifier = Modifier
-                    .size(78.dp)
+                    .size(60.dp)
                     .shadow(6.dp, CircleShape, ambientColor = spec.dark, spotColor = spec.dark)
                     .clip(CircleShape)
                     .background(Brush.radialGradient(listOf(spec.light, spec.mid, spec.dark)))
@@ -703,18 +703,18 @@ private fun MedalCard(
             ) {
                 Box(
                     modifier = Modifier
-                        .size(58.dp)
+                        .size(44.dp)
                         .clip(CircleShape)
                         .border(1.5.dp, Color.White.copy(alpha = 0.35f), CircleShape),
                     contentAlignment = Alignment.Center
                 ) {
-                    Icon(Icons.Filled.EmojiEvents, null, tint = Color.White, modifier = Modifier.size(36.dp))
+                    Icon(Icons.Filled.EmojiEvents, null, tint = Color.White, modifier = Modifier.size(28.dp))
                 }
             }
             Canvas(
                 modifier = Modifier
                     .align(Alignment.TopCenter)
-                    .size(width = 34.dp, height = 20.dp)
+                    .size(width = 28.dp, height = 16.dp)
             ) {
                 val w = size.width
                 val h = size.height
@@ -732,11 +732,11 @@ private fun MedalCard(
                 drawCircle(spec.light, radius = h * 0.12f, center = Offset(w * 0.5f, h * 0.02f))
             }
         }
-        Spacer(Modifier.height(8.dp))
-        Text(title, fontSize = 15.sp, fontWeight = FontWeight.ExtraBold, color = p.title, maxLines = 1)
+        Spacer(Modifier.height(6.dp))
+        Text(title, fontSize = 13.sp, fontWeight = FontWeight.ExtraBold, color = p.title, maxLines = 1)
         Spacer(Modifier.height(2.dp))
-        Text(subtitle, fontSize = 12.sp, color = p.body, maxLines = 1)
-        Spacer(Modifier.height(10.dp))
+        Text(subtitle, fontSize = 11.sp, color = p.body, maxLines = 1)
+        Spacer(Modifier.height(8.dp))
         Row(
             modifier = Modifier
                 .clip(RoundedCornerShape(50))
@@ -744,19 +744,19 @@ private fun MedalCard(
                     if (earned) EarnedPink.copy(alpha = 0.16f)
                     else if (p.dark) Color(0xFF3A2F66) else Color(0xFFE6DCFB)
                 )
-                .padding(horizontal = 14.dp, vertical = 7.dp),
+                .padding(horizontal = 10.dp, vertical = 5.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
             Icon(
                 if (earned) Icons.Filled.Check else Icons.Filled.Lock,
                 contentDescription = null,
                 tint = if (earned) EarnedPink else p.chipText,
-                modifier = Modifier.size(14.dp)
+                modifier = Modifier.size(12.dp)
             )
             Spacer(Modifier.width(4.dp))
             Text(
                 if (earned) "Earned" else "Locked",
-                fontSize = 13.sp,
+                fontSize = 11.sp,
                 fontWeight = FontWeight.ExtraBold,
                 color = if (earned) EarnedPink else p.chipText
             )
@@ -776,36 +776,36 @@ private fun ActivityStat(
     value: String,
     label: String
 ) {
-    val shape = RoundedCornerShape(22.dp)
+    val shape = RoundedCornerShape(18.dp)
     Row(
         modifier = modifier
-            .shadow(6.dp, shape, ambientColor = iconColor.copy(alpha = 0.3f), spotColor = iconColor.copy(alpha = 0.3f))
+            .shadow(5.dp, shape, ambientColor = iconColor.copy(alpha = 0.3f), spotColor = iconColor.copy(alpha = 0.3f))
             .clip(shape)
             .background(Brush.linearGradient(if (p.dark) fillDark else fillLight))
             .border(1.dp, if (p.dark) SolidColor(p.cardBorder) else GlossyWhite, shape)
-            .padding(horizontal = 12.dp, vertical = 14.dp),
+            .padding(horizontal = 10.dp, vertical = 10.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
         Box(
             modifier = Modifier
-                .size(50.dp)
-                .shadow(4.dp, RoundedCornerShape(16.dp), ambientColor = iconColor.copy(alpha = 0.3f), spotColor = iconColor.copy(alpha = 0.3f))
-                .clip(RoundedCornerShape(16.dp))
+                .size(40.dp)
+                .shadow(4.dp, RoundedCornerShape(13.dp), ambientColor = iconColor.copy(alpha = 0.3f), spotColor = iconColor.copy(alpha = 0.3f))
+                .clip(RoundedCornerShape(13.dp))
                 .background(if (p.dark) Color(0xFF2A2352) else Color.White.copy(alpha = 0.95f)),
             contentAlignment = Alignment.Center
         ) {
-            Icon(icon, contentDescription = null, tint = iconColor, modifier = Modifier.size(30.dp))
+            Icon(icon, contentDescription = null, tint = iconColor, modifier = Modifier.size(24.dp))
         }
         Spacer(Modifier.width(10.dp))
         Column {
             Text(
                 value,
-                fontSize = 22.sp,
+                fontSize = 18.sp,
                 fontWeight = FontWeight.ExtraBold,
                 color = p.title,
                 maxLines = 1
             )
-            Text(label, fontSize = 13.sp, color = labelColor, maxLines = 1)
+            Text(label, fontSize = 12.sp, color = labelColor, maxLines = 1)
         }
     }
 }
@@ -821,30 +821,30 @@ private fun MenuRow(
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .glassCard(p, radius = 32, elevation = 8)
+            .glassCard(p, radius = 26, elevation = 6)
             .clickable { onClick() }
-            .padding(start = 12.dp, end = 20.dp, top = 10.dp, bottom = 10.dp),
+            .padding(start = 10.dp, end = 16.dp, top = 8.dp, bottom = 8.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
         Box(
             modifier = Modifier
-                .size(48.dp)
+                .size(38.dp)
                 .clip(CircleShape)
                 .background(iconBrush)
                 .border(1.dp, Color.White.copy(alpha = 0.35f), CircleShape),
             contentAlignment = Alignment.Center
         ) {
-            Icon(icon, contentDescription = null, tint = Color.White, modifier = Modifier.size(26.dp))
+            Icon(icon, contentDescription = null, tint = Color.White, modifier = Modifier.size(21.dp))
         }
-        Spacer(Modifier.width(18.dp))
+        Spacer(Modifier.width(14.dp))
         Text(
             title,
-            fontSize = 18.sp,
+            fontSize = 15.sp,
             fontWeight = FontWeight.ExtraBold,
             color = p.title,
             modifier = Modifier.weight(1f)
         )
-        Icon(Icons.Filled.ChevronRight, contentDescription = null, tint = p.title, modifier = Modifier.size(26.dp))
+        Icon(Icons.Filled.ChevronRight, contentDescription = null, tint = p.title, modifier = Modifier.size(22.dp))
     }
 }
 
