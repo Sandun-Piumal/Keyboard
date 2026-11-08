@@ -52,11 +52,29 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.border
+import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.material.icons.filled.Group
+import androidx.compose.material.icons.filled.KeyboardArrowDown
+import androidx.compose.material.icons.filled.ManageAccounts
+import androidx.compose.material.icons.filled.Save
+import androidx.compose.material.icons.filled.CameraAlt
+import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.text.TextStyle
+import androidx.compose.foundation.layout.imePadding
+import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.foundation.layout.statusBarsPadding
 import com.spmods.sinkey.R
 import kotlinx.coroutines.launch
 import java.util.Calendar
 
-private val SetupIndigo = Color(0xFF6C4CE0)
+private val SetupIndigo = Color(0xFF5B2BEF)
+private val SetupIndigoDeep = Color(0xFF34128F)
 private val SetupPink = Color(0xFFE0498A)
 private val SetupGrey = Color(0xFF6B7280)
 
@@ -122,319 +140,432 @@ fun ProfileSetupScreen(
         }
     }
 
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(MaterialTheme.colorScheme.background)
-    ) {
-        if (isEditMode && onBack != null) {
-            // ── Header (matches ProfileScreen's header) — fixed, doesn't scroll ──
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(20.dp, 18.dp, 20.dp, 6.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Box(
-                    modifier = Modifier
-                        .size(40.dp)
-                        .clip(CircleShape)
-                        .background(if (isDark) Color(0xFF2C2145) else Color(0xFFEDE7FB))
-                        .clickable { onBack() },
-                    contentAlignment = Alignment.Center
-                ) {
-                    Icon(
-                        Icons.Filled.ArrowBack,
-                        contentDescription = "Back",
-                        tint = SetupIndigo,
-                        modifier = Modifier.size(20.dp)
-                    )
-                }
+    val p = remember(isDark) { homePalette(isDark) }
+    val shape = RoundedCornerShape(50)
 
-                Column(
-                    modifier = Modifier.weight(1f),
-                    horizontalAlignment = Alignment.CenterHorizontally
+    // The page draws its own About-Developer background so it looks the same
+    // wherever it is shown (first-time setup, onboarding overlay, edit mode).
+    Box(modifier = Modifier.fillMaxSize()) {
+        DeveloperBackground(dark = isDark)
+
+        Column(modifier = Modifier.fillMaxSize()) {
+            // ── Header ───────────────────────────────────────────────────
+            if (isEditMode && onBack != null) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(16.dp, 10.dp, 16.dp, 0.dp),
+                    verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Row {
-                        Text("Edit ", fontSize = 22.sp, fontWeight = FontWeight.ExtraBold, color = SetupIndigo)
-                        Text("Profile", fontSize = 22.sp, fontWeight = FontWeight.ExtraBold, color = SetupPink)
+                    Box(
+                        modifier = Modifier
+                            .size(48.dp)
+                            .shadow(8.dp, CircleShape, ambientColor = SetupIndigo, spotColor = SetupIndigo)
+                            .clip(CircleShape)
+                            .background(Brush.verticalGradient(listOf(Color(0xFF6A34F0), SetupIndigoDeep)))
+                            .border(1.dp, Color.White.copy(alpha = 0.35f), CircleShape)
+                            .clickable { onBack() },
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(Icons.Filled.ArrowBack, contentDescription = "Back", tint = Color.White, modifier = Modifier.size(24.dp))
                     }
-                    Text(
-                        "Type Smart. Type Easy. Type SinKey.",
-                        fontSize = 11.sp,
-                        color = if (isDark) Color(0xFFB6AEC9) else SetupGrey,
-                        modifier = Modifier.padding(top = 2.dp)
-                    )
-                }
 
-                Box(
-                    modifier = Modifier
-                        .size(36.dp)
-                        .clip(CircleShape)
-                        .background(if (isDark) Color(0xFF2C2145) else Color.White)
-                        .clickable(enabled = isFormValid) { handleSave() },
-                    contentAlignment = Alignment.Center
-                ) {
-                    Icon(
-                        Icons.Filled.Check,
-                        contentDescription = "Save",
-                        tint = if (isFormValid) SetupIndigo else SetupGrey,
-                        modifier = Modifier.size(18.dp)
-                    )
-                }
-            }
-        }
-
-        // ── Scrollable form content ──────────────────────────────────────
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .weight(1f)
-                .verticalScroll(rememberScrollState())
-                .padding(24.dp)
-        ) {
-        if (!isEditMode) {
-            Spacer(Modifier.height(20.dp))
-
-            Box(
-                modifier = Modifier
-                    .size(72.dp)
-                    .clip(CircleShape)
-                    .background(
-                        Brush.linearGradient(listOf(SetupIndigo, SetupPink))
-                    ),
-                contentAlignment = Alignment.Center
-            ) {
-                when (gender) {
-                    "male" -> Image(
-                        painter = painterResource(id = R.drawable.avatar_male),
-                        contentDescription = null,
-                        contentScale = ContentScale.Crop,
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .clip(CircleShape)
-                    )
-                    "female" -> Image(
-                        painter = painterResource(id = R.drawable.avatar_female),
-                        contentDescription = null,
-                        contentScale = ContentScale.Crop,
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .clip(CircleShape)
-                    )
-                    else -> Icon(
-                        Icons.Filled.Person,
-                        contentDescription = null,
-                        tint = Color.White,
-                        modifier = Modifier.size(36.dp)
-                    )
-                }
-            }
-
-            Spacer(Modifier.height(20.dp))
-
-            Row {
-                Text(
-                    "Set up your ",
-                    fontSize = 22.sp,
-                    fontWeight = FontWeight.ExtraBold,
-                    color = MaterialTheme.colorScheme.onBackground
-                )
-                Text("Profile", fontSize = 22.sp, fontWeight = FontWeight.ExtraBold, color = SetupPink)
-            }
-            Spacer(Modifier.height(6.dp))
-            Text(
-                "Just a few details before you get started — this only takes a moment.",
-                fontSize = 13.sp,
-                color = SetupGrey
-            )
-
-            Spacer(Modifier.height(28.dp))
-        } else {
-            Spacer(Modifier.height(20.dp))
-        }
-
-        FieldLabel("First name")
-        OutlinedTextField(
-            value = firstName,
-            onValueChange = { firstName = it },
-            modifier = Modifier.fillMaxWidth(),
-            placeholder = { Text("e.g. Sandun") },
-            singleLine = true,
-            keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Words),
-            shape = RoundedCornerShape(14.dp),
-            colors = fieldColors()
-        )
-
-        Spacer(Modifier.height(16.dp))
-
-        FieldLabel("Last name")
-        OutlinedTextField(
-            value = lastName,
-            onValueChange = { lastName = it },
-            modifier = Modifier.fillMaxWidth(),
-            placeholder = { Text("e.g. Piumal") },
-            singleLine = true,
-            keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Words),
-            shape = RoundedCornerShape(14.dp),
-            colors = fieldColors()
-        )
-
-        Spacer(Modifier.height(16.dp))
-
-        FieldLabel("Gender")
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(12.dp)
-        ) {
-            GenderOption(
-                modifier = Modifier.weight(1f),
-                icon = Icons.Filled.Male,
-                label = "Male",
-                selected = gender == "male",
-                onClick = { gender = "male" }
-            )
-            GenderOption(
-                modifier = Modifier.weight(1f),
-                icon = Icons.Filled.Female,
-                label = "Female",
-                selected = gender == "female",
-                onClick = { gender = "female" }
-            )
-        }
-
-        Spacer(Modifier.height(16.dp))
-
-        FieldLabel("Birthday")
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(10.dp)
-        ) {
-            DropdownField(
-                modifier = Modifier.weight(1f),
-                label = "Day",
-                selectedText = birthDay?.toString(),
-                options = (1..31).map { it.toString() },
-                onSelect = { birthDay = it.toInt() }
-            )
-            DropdownField(
-                modifier = Modifier.weight(1.4f),
-                label = "Month",
-                selectedText = birthMonth?.let { monthNames[it - 1] },
-                options = monthNames,
-                onSelect = { birthMonth = monthNames.indexOf(it) + 1 }
-            )
-            DropdownField(
-                modifier = Modifier.weight(1f),
-                label = "Year",
-                selectedText = birthYear?.toString(),
-                options = (calendar.get(Calendar.YEAR) - 10 downTo calendar.get(Calendar.YEAR) - 100).map { it.toString() },
-                onSelect = { birthYear = it.toInt() }
-            )
-        }
-
-        Spacer(Modifier.height(32.dp))
-
-        Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .clip(RoundedCornerShape(16.dp))
-                .background(
-                    if (isFormValid) {
-                        Brush.linearGradient(listOf(SetupIndigo, SetupPink))
-                    } else {
-                        Brush.linearGradient(
-                            listOf(
-                                if (isDark) Color(0xFF3A3450) else Color(0xFFE4E1EE),
-                                if (isDark) Color(0xFF3A3450) else Color(0xFFE4E1EE)
+                    Column(
+                        modifier = Modifier.weight(1f),
+                        horizontalAlignment = Alignment.CenterHorizontally
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(Icons.Filled.ManageAccounts, null, tint = p.iconIndigo, modifier = Modifier.size(32.dp))
+                            Spacer(Modifier.width(8.dp))
+                            Text("Edit ", fontSize = 26.sp, fontWeight = FontWeight.ExtraBold, color = p.title)
+                            Text(
+                                "Profile",
+                                style = TextStyle(
+                                    brush = Brush.horizontalGradient(listOf(Color(0xFF5B2BEF), Color(0xFF9B4DFF))),
+                                    fontSize = 26.sp,
+                                    fontWeight = FontWeight.ExtraBold
+                                )
                             )
+                        }
+                        Text(
+                            "Update your profile information",
+                            fontSize = 13.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            color = p.body,
+                            modifier = Modifier.padding(top = 2.dp)
                         )
                     }
+
+                    Box(
+                        modifier = Modifier
+                            .size(48.dp)
+                            .shadow(8.dp, CircleShape, ambientColor = p.glow.copy(alpha = 0.4f), spotColor = p.glow.copy(alpha = 0.4f))
+                            .clip(CircleShape)
+                            .background(
+                                if (isDark) Brush.verticalGradient(listOf(Color(0xFF2E2560), Color(0xFF211A48)))
+                                else Brush.verticalGradient(listOf(Color.White, Color(0xFFEAE0FF)))
+                            )
+                            .border(1.5.dp, if (isDark) SolidColor(p.cardBorder) else GlossyWhite, CircleShape)
+                            .clickable(enabled = isFormValid) { handleSave() },
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            Icons.Filled.Check,
+                            contentDescription = "Save",
+                            tint = if (isFormValid) p.iconIndigo else p.sub,
+                            modifier = Modifier.size(24.dp)
+                        )
+                    }
+                }
+            }
+
+            // ── Scrollable form ──────────────────────────────────────────
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .weight(1f)
+                    .verticalScroll(rememberScrollState())
+                    .padding(horizontal = 20.dp)
+            ) {
+                if (!isEditMode) {
+                    Spacer(Modifier.height(18.dp))
+                    Column(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalAlignment = Alignment.CenterHorizontally
+                    ) {
+                        Row {
+                            Text("Set up your ", fontSize = 26.sp, fontWeight = FontWeight.ExtraBold, color = p.title)
+                            Text(
+                                "Profile",
+                                style = TextStyle(
+                                    brush = Brush.horizontalGradient(listOf(Color(0xFF5B2BEF), Color(0xFF9B4DFF))),
+                                    fontSize = 26.sp,
+                                    fontWeight = FontWeight.ExtraBold
+                                )
+                            )
+                        }
+                        Spacer(Modifier.height(4.dp))
+                        Text(
+                            "Just a few details before you get started — this only takes a moment.",
+                            fontSize = 13.sp,
+                            color = p.body
+                        )
+                    }
+                } else {
+                    Spacer(Modifier.height(6.dp))
+                }
+
+                // ── Avatar ───────────────────────────────────────────────
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(vertical = 14.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    // little "sparkle" strokes either side of the avatar
+                    Canvas(modifier = Modifier.size(width = 250.dp, height = 150.dp)) {
+                        val c = SetupIndigo.copy(alpha = 0.55f)
+                        val w = 3.dp.toPx()
+                        fun line(x1: Float, y1: Float, x2: Float, y2: Float) =
+                            drawLine(c, Offset(x1.dp.toPx(), y1.dp.toPx()), Offset(x2.dp.toPx(), y2.dp.toPx()), w, StrokeCap.Round)
+                        line(8f, 52f, 26f, 60f); line(2f, 74f, 20f, 76f); line(10f, 96f, 24f, 92f)
+                        line(224f, 60f, 240f, 52f); line(230f, 78f, 246f, 80f); line(222f, 94f, 236f, 100f)
+                    }
+                    Box(modifier = Modifier.size(150.dp)) {
+                        Box(
+                            modifier = Modifier
+                                .size(142.dp)
+                                .align(Alignment.Center)
+                                .shadow(14.dp, CircleShape, ambientColor = SetupIndigo, spotColor = SetupIndigo)
+                                .clip(CircleShape)
+                                .background(if (isDark) Color(0xFF3A2E5C) else Color(0xFFD8CCF7))
+                                .border(5.dp, Brush.linearGradient(listOf(Color(0xFF9B7BFF), Color(0xFF4A1FB8))), CircleShape)
+                                .padding(8.dp)
+                                .clip(CircleShape),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            when (gender) {
+                                "male" -> Image(
+                                    painter = painterResource(id = R.drawable.avatar_male),
+                                    contentDescription = null,
+                                    contentScale = ContentScale.Crop,
+                                    modifier = Modifier.fillMaxSize().clip(CircleShape)
+                                )
+                                "female" -> Image(
+                                    painter = painterResource(id = R.drawable.avatar_female),
+                                    contentDescription = null,
+                                    contentScale = ContentScale.Crop,
+                                    modifier = Modifier.fillMaxSize().clip(CircleShape)
+                                )
+                                else -> Icon(
+                                    Icons.Filled.Person,
+                                    contentDescription = null,
+                                    tint = p.iconIndigo,
+                                    modifier = Modifier.size(70.dp)
+                                )
+                            }
+                        }
+                        Box(
+                            modifier = Modifier
+                                .align(Alignment.BottomEnd)
+                                .padding(end = 2.dp, bottom = 4.dp)
+                                .size(46.dp)
+                                .shadow(8.dp, CircleShape, ambientColor = SetupIndigo, spotColor = SetupIndigo)
+                                .clip(CircleShape)
+                                .background(Brush.verticalGradient(listOf(Color(0xFF6A34F0), SetupIndigoDeep)))
+                                .border(2.dp, Color.White.copy(alpha = if (isDark) 0.4f else 0.9f), CircleShape),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(Icons.Filled.CameraAlt, "Photo", tint = Color.White, modifier = Modifier.size(24.dp))
+                        }
+                    }
+                }
+
+                // ── Names ────────────────────────────────────────────────
+                FieldLabel(p, Icons.Filled.Person, "First name")
+                GlassTextField(
+                    p = p,
+                    value = firstName,
+                    onValueChange = { firstName = it },
+                    placeholder = "e.g. Sandun"
                 )
-                .clickable(enabled = isFormValid) { handleSave() }
-                .padding(vertical = 16.dp),
-            contentAlignment = Alignment.Center
-        ) {
-            Text(
-                if (isEditMode) "Save Changes" else "Save & Continue",
-                fontSize = 15.sp,
-                fontWeight = FontWeight.Bold,
-                color = if (isFormValid) Color.White else SetupGrey
-            )
-        }
 
-        if (!isFormValid) {
-            Spacer(Modifier.height(10.dp))
-            Text(
-                "All fields are required to continue.",
-                fontSize = 11.sp,
-                color = SetupGrey,
-                modifier = Modifier.fillMaxWidth(),
-            )
-        }
+                Spacer(Modifier.height(14.dp))
 
-        Spacer(Modifier.height(24.dp))
-        } // end scrollable form Column
+                FieldLabel(p, Icons.Filled.Group, "Last name")
+                GlassTextField(
+                    p = p,
+                    value = lastName,
+                    onValueChange = { lastName = it },
+                    placeholder = "e.g. Piumal"
+                )
+
+                Spacer(Modifier.height(16.dp))
+
+                // ── Gender ───────────────────────────────────────────────
+                FieldLabel(p, Icons.Filled.Male, "Gender")
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    GenderOption(
+                        p = p,
+                        modifier = Modifier.weight(1f),
+                        icon = Icons.Filled.Male,
+                        label = "Male",
+                        selected = gender == "male",
+                        onClick = { gender = "male" }
+                    )
+                    GenderOption(
+                        p = p,
+                        modifier = Modifier.weight(1f),
+                        icon = Icons.Filled.Female,
+                        label = "Female",
+                        selected = gender == "female",
+                        onClick = { gender = "female" }
+                    )
+                }
+
+                Spacer(Modifier.height(16.dp))
+
+                // ── Birthday ─────────────────────────────────────────────
+                FieldLabel(p, Icons.Filled.CalendarMonth, "Birthday")
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    DropdownField(
+                        p = p,
+                        modifier = Modifier.weight(1f),
+                        label = "Day",
+                        selectedText = birthDay?.toString(),
+                        options = (1..31).map { it.toString() },
+                        onSelect = { birthDay = it.toInt() }
+                    )
+                    DropdownField(
+                        p = p,
+                        modifier = Modifier.weight(1.45f),
+                        label = "Month",
+                        selectedText = birthMonth?.let { monthNames[it - 1] },
+                        options = monthNames,
+                        onSelect = { birthMonth = monthNames.indexOf(it) + 1 }
+                    )
+                    DropdownField(
+                        p = p,
+                        modifier = Modifier.weight(1.1f),
+                        label = "Year",
+                        selectedText = birthYear?.toString(),
+                        options = (calendar.get(Calendar.YEAR) - 10 downTo calendar.get(Calendar.YEAR) - 100).map { it.toString() },
+                        onSelect = { birthYear = it.toInt() }
+                    )
+                }
+
+                Spacer(Modifier.height(28.dp))
+
+                // ── Save ─────────────────────────────────────────────────
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .then(
+                            if (isFormValid) Modifier.shadow(14.dp, shape, ambientColor = SetupIndigo, spotColor = SetupIndigo)
+                            else Modifier
+                        )
+                        .clip(shape)
+                        .background(
+                            if (isFormValid) Brush.horizontalGradient(listOf(Color(0xFF3A1AA8), Color(0xFF6A34F0), Color(0xFFB02BD8)))
+                            else Brush.horizontalGradient(
+                                listOf(
+                                    if (isDark) Color(0xFF3A3450) else Color(0xFFD9D2EE),
+                                    if (isDark) Color(0xFF3A3450) else Color(0xFFD9D2EE)
+                                )
+                            )
+                        )
+                        .border(2.dp, Color.White.copy(alpha = if (isFormValid) 0.5f else 0.2f), shape)
+                        .clickable(enabled = isFormValid) { handleSave() }
+                        .padding(vertical = 20.dp),
+                    horizontalArrangement = Arrangement.Center,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Icon(
+                        Icons.Filled.Save, null,
+                        tint = if (isFormValid) Color.White else p.sub,
+                        modifier = Modifier.size(28.dp)
+                    )
+                    Spacer(Modifier.width(14.dp))
+                    Text(
+                        if (isEditMode) "Save Changes" else "Save & Continue",
+                        fontSize = 22.sp,
+                        fontWeight = FontWeight.ExtraBold,
+                        color = if (isFormValid) Color.White else p.sub
+                    )
+                }
+
+                if (!isFormValid) {
+                    Spacer(Modifier.height(10.dp))
+                    Text(
+                        "All fields are required to continue.",
+                        fontSize = 12.sp,
+                        color = p.sub,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                }
+
+                Spacer(Modifier.height(130.dp))
+            }
+        }
     }
 }
 
 @Composable
-private fun FieldLabel(text: String) {
-    Text(
-        text,
-        fontSize = 12.sp,
-        fontWeight = FontWeight.Bold,
-        color = SetupGrey,
-        modifier = Modifier.padding(bottom = 6.dp)
-    )
+private fun FieldLabel(p: HomePalette, icon: androidx.compose.ui.graphics.vector.ImageVector, text: String) {
+    Row(
+        modifier = Modifier.padding(start = 4.dp, bottom = 8.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Icon(icon, null, tint = p.iconIndigo, modifier = Modifier.size(26.dp))
+        Spacer(Modifier.width(12.dp))
+        Text(text, fontSize = 18.sp, fontWeight = FontWeight.ExtraBold, color = p.title)
+    }
+}
+
+/** Glass pill text field: round person tile + bold text. */
+@Composable
+private fun GlassTextField(
+    p: HomePalette,
+    value: String,
+    onValueChange: (String) -> Unit,
+    placeholder: String
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .glassCard(p, radius = 32, elevation = 8)
+            .padding(start = 14.dp, end = 18.dp, top = 12.dp, bottom = 12.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Box(
+            modifier = Modifier
+                .size(46.dp)
+                .clip(CircleShape)
+                .background(if (p.dark) Color(0xFF3A2F66) else Color(0xFFE9E0FC)),
+            contentAlignment = Alignment.Center
+        ) {
+            Icon(Icons.Filled.Person, null, tint = p.iconIndigo, modifier = Modifier.size(26.dp))
+        }
+        Spacer(Modifier.width(18.dp))
+        BasicTextField(
+            value = value,
+            onValueChange = onValueChange,
+            singleLine = true,
+            keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Words),
+            textStyle = TextStyle(fontSize = 19.sp, fontWeight = FontWeight.ExtraBold, color = p.title),
+            cursorBrush = SolidColor(SetupIndigo),
+            modifier = Modifier.weight(1f),
+            decorationBox = { inner ->
+                Box {
+                    if (value.isEmpty()) {
+                        Text(placeholder, fontSize = 17.sp, fontWeight = FontWeight.Medium, color = p.sub)
+                    }
+                    inner()
+                }
+            }
+        )
+    }
 }
 
 @Composable
-private fun fieldColors() = OutlinedTextFieldDefaults.colors(
-    focusedBorderColor = SetupIndigo,
-    unfocusedBorderColor = MaterialTheme.colorScheme.outlineVariant,
-    cursorColor = SetupIndigo
-)
-
-@Composable
 private fun GenderOption(
+    p: HomePalette,
     modifier: Modifier = Modifier,
     icon: androidx.compose.ui.graphics.vector.ImageVector,
     label: String,
     selected: Boolean,
     onClick: () -> Unit
 ) {
-    val isDark = isSystemInDarkTheme()
+    val shape = RoundedCornerShape(32.dp)
     Row(
         modifier = modifier
-            .clip(RoundedCornerShape(14.dp))
-            .background(
-                if (selected) SetupIndigo.copy(alpha = if (isDark) 0.3f else 0.12f)
-                else MaterialTheme.colorScheme.surface
+            .then(
+                if (selected) Modifier
+                    .shadow(12.dp, shape, ambientColor = SetupIndigo, spotColor = SetupIndigo)
+                    .clip(shape)
+                    .background(Brush.horizontalGradient(listOf(Color(0xFF4A1FB8), Color(0xFF7C4DFF))))
+                    .border(2.dp, Color.White.copy(alpha = 0.45f), shape)
+                else Modifier.glassCard(p, radius = 32, elevation = 6)
             )
             .clickable { onClick() }
-            .padding(vertical = 14.dp),
+            .padding(horizontal = 16.dp, vertical = 18.dp),
         horizontalArrangement = Arrangement.Center,
         verticalAlignment = Alignment.CenterVertically
     ) {
         Icon(
             icon,
             contentDescription = null,
-            tint = if (selected) SetupIndigo else SetupGrey,
-            modifier = Modifier.size(18.dp)
+            tint = if (selected) Color.White else p.iconIndigo,
+            modifier = Modifier.size(28.dp)
         )
-        Spacer(Modifier.width(8.dp))
+        Spacer(Modifier.width(10.dp))
         Text(
             label,
-            fontSize = 13.sp,
-            fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium,
-            color = if (selected) SetupIndigo else MaterialTheme.colorScheme.onSurface
+            fontSize = 17.sp,
+            fontWeight = FontWeight.ExtraBold,
+            color = if (selected) Color.White else p.title
         )
+        if (selected) {
+            Spacer(Modifier.width(12.dp))
+            Box(
+                modifier = Modifier.size(26.dp).clip(CircleShape).background(Color.White),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(Icons.Filled.Check, null, tint = SetupIndigo, modifier = Modifier.size(18.dp))
+            }
+        }
     }
 }
 
 @Composable
 private fun DropdownField(
+    p: HomePalette,
     modifier: Modifier = Modifier,
     label: String,
     selectedText: String?,
@@ -443,43 +574,37 @@ private fun DropdownField(
 ) {
     var expanded by remember { mutableStateOf(false) }
 
-    Column(modifier = modifier) {
-        Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .clip(RoundedCornerShape(14.dp))
-                .background(MaterialTheme.colorScheme.surface)
-                .clickable { expanded = true }
-                .padding(horizontal = 12.dp, vertical = 14.dp)
+    Box(
+        modifier = modifier
+            .glassCard(p, radius = 24, elevation = 6)
+            .clickable { expanded = true }
+            .padding(horizontal = 12.dp, vertical = 16.dp)
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Icon(Icons.Filled.CalendarMonth, null, tint = p.iconIndigo, modifier = Modifier.size(22.dp))
+            Spacer(Modifier.width(8.dp))
+            Text(
+                selectedText ?: label,
+                fontSize = 16.sp,
+                fontWeight = FontWeight.ExtraBold,
+                color = if (selectedText != null) p.title else p.sub,
+                maxLines = 1,
+                modifier = Modifier.weight(1f)
+            )
+            Icon(Icons.Filled.KeyboardArrowDown, null, tint = p.iconIndigo, modifier = Modifier.size(22.dp))
+        }
+        DropdownMenu(
+            expanded = expanded,
+            onDismissRequest = { expanded = false }
         ) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Icon(
-                    Icons.Filled.CalendarMonth,
-                    contentDescription = null,
-                    tint = SetupGrey,
-                    modifier = Modifier.size(15.dp)
+            options.forEach { option ->
+                DropdownMenuItem(
+                    text = { Text(option) },
+                    onClick = {
+                        onSelect(option)
+                        expanded = false
+                    }
                 )
-                Spacer(Modifier.width(6.dp))
-                Text(
-                    selectedText ?: label,
-                    fontSize = 13.sp,
-                    color = if (selectedText != null) MaterialTheme.colorScheme.onSurface else SetupGrey,
-                    maxLines = 1
-                )
-            }
-            DropdownMenu(
-                expanded = expanded,
-                onDismissRequest = { expanded = false }
-            ) {
-                options.forEach { option ->
-                    DropdownMenuItem(
-                        text = { Text(option) },
-                        onClick = {
-                            onSelect(option)
-                            expanded = false
-                        }
-                    )
-                }
             }
         }
     }
