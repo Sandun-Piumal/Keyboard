@@ -546,6 +546,7 @@ private fun SinKeyApp(prefs: PreferencesManager, initialTab: Tab = Tab.HOME) {
         drawerContent = {
             SinKeyDrawer(
                 userDisplayName = drawerDisplayName,
+                gender = profileGender,
                 onDestinationClick = { destination ->
                     when (destination) {
                         DrawerDestination.PROFILE -> showProfile = true
