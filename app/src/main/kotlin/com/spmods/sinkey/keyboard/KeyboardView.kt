@@ -82,6 +82,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.shadow
+import androidx.compose.foundation.border
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.onSizeChanged
@@ -187,6 +188,9 @@ internal data class KeyboardColors(
     // At the default 1f every .copy(alpha = keyOpacity) call below is a
     // no-op, so existing themes render unchanged until the user lowers it.
     val keyOpacity: Float = 1f,
+    // SinKey Neon look (BackgroundStyle.SINKEY_NEON): glossy purple keys with
+    // gradient borders; drawn by neonChrome().
+    val neon: Boolean = false,
 )
 
 @Composable
@@ -251,7 +255,48 @@ internal fun keyboardColors(
  * NONE is a true no-op (returns `this` unchanged) so keys look byte-for-byte
  * identical to before this feature existed when no effect is selected.
  */
-private fun Modifier.keyEffectDecoration(colors: KeyboardColors, keyShape: RoundedCornerShape): Modifier {
+private fun Modifier.keyEffectDecoration(colors: KeyboardColors, keyShape: RoundedCornerShape): Modifier =
+    this.neonChrome(colors, keyShape, 0).keyEffectDecorationInner(colors, keyShape)
+
+/** Colours for the SinKey Neon theme — see BackgroundStyle.SINKEY_NEON. */
+internal fun neonKeyboardColors(c: KeyboardColors): KeyboardColors {
+    val o = c.keyOpacity
+    return c.copy(
+        neon = true,
+        bg = Color.Transparent,
+        keyBg = Color(0x8C2A0F66).let { it.copy(alpha = it.alpha * o) },
+        specialKeyBg = Color(0x995B2BEF).let { it.copy(alpha = it.alpha * o) },
+        spaceKeyBg = Color(0x8C2A0F66).let { it.copy(alpha = it.alpha * o) },
+        keyText = Color.White,
+        specialKeyText = Color.White,
+        subText = Color(0xFFB79CFF),
+        spaceKeyText = Color(0xFFC9B3FF),
+        cardBg = Color(0xFF241046),
+        accent = Color(0xFF9B4DFF),
+    )
+}
+
+/**
+ * Glossy neon key surface: top-light gloss + gradient border. [role] 0 = letter
+ * key, 1 = function key (brighter violet), 2 = enter (violet→magenta).
+ * No-op unless the SinKey Neon theme is active.
+ */
+private fun Modifier.neonChrome(colors: KeyboardColors?, shape: androidx.compose.ui.graphics.Shape, role: Int = 0): Modifier {
+    if (colors == null || !colors.neon) return this
+    val fill = when (role) {
+        1 -> androidx.compose.ui.graphics.Brush.verticalGradient(listOf(Color(0x557C3AED), Color(0x884C1D95)))
+        2 -> androidx.compose.ui.graphics.Brush.horizontalGradient(listOf(Color(0xFF7C3AED), Color(0xFFD946EF)))
+        else -> androidx.compose.ui.graphics.Brush.verticalGradient(listOf(Color(0x40FFFFFF), Color(0x00FFFFFF), Color(0x2A5B2BEF)))
+    }
+    val border = androidx.compose.ui.graphics.Brush.linearGradient(
+        if (role == 2) listOf(Color(0xFFF5D0FE), Color(0xFFA855F7)) else listOf(Color(0xFFB79CFF), Color(0xFF5B2BEF))
+    )
+    return this
+        .background(fill)
+        .border(1.2.dp, border, shape)
+}
+
+private fun Modifier.keyEffectDecorationInner(colors: KeyboardColors, keyShape: RoundedCornerShape): Modifier {
     return when (colors.keyEffect) {
         com.spmods.sinkey.data.KeyEffect.NONE -> this
         // GLOW and RIPPLE are board-wide overlays (see MechGlowOverlay /
@@ -755,6 +800,11 @@ internal fun KeyboardView(
     val effectiveBrightness = previewBrightness ?: customBackgroundBrightness
     val keyOpacity = previewKeyOpacity ?: keyOpacityPref
 
+    // SinKey Neon is a dark-surface look — force dark text/icon tinting for it.
+    val neon = backgroundStyle == com.spmods.sinkey.data.BackgroundStyle.SINKEY_NEON &&
+        previewBackgroundBitmap == null && customBackgroundUri == null
+    @Suppress("NAME_SHADOWING")
+    val isDark = isDark || neon
     val colors = keyboardColors(
         showKeyBorders = effectiveShowKeyBorders,
         isDark = isDark,
@@ -768,7 +818,7 @@ internal fun KeyboardView(
         // KeyColorPalette — purely a color swap, effects/backgrounds
         // still layer on top exactly as before.
         if (materialYouEnabled) base.copy(accent = materialYouAccentColor(context, isDark)) else base
-    }
+    }.let { c -> if (neon) neonKeyboardColors(c) else c }
     val screenWidthDp = androidx.compose.ui.platform.LocalConfiguration.current.screenWidthDp
     val keyHeight = stepToKeyHeight(keyboardHeight, screenWidthDp)
     val bottomPadding = if (bottomSpaceEnabled) stepToBottomPadding(bottomSpaceSize, screenWidthDp) else 4.dp
@@ -2521,6 +2571,14 @@ private fun AppsMicBar(
                     .fillMaxWidth()
                     .height(48.dp)
                     .background(colors.bg)
+                    .let { m ->
+                        if (colors.neon) m
+                            .padding(horizontal = 4.dp, vertical = 2.dp)
+                            .clip(RoundedCornerShape(24.dp))
+                            .background(androidx.compose.ui.graphics.Brush.verticalGradient(listOf(Color(0x33FFFFFF), Color(0x14FFFFFF))))
+                            .border(1.2.dp, androidx.compose.ui.graphics.Brush.horizontalGradient(listOf(Color(0xFF5B2BEF), Color(0xFFB79CFF), Color(0xFF5B2BEF))), RoundedCornerShape(24.dp))
+                        else m
+                    }
                     .padding(horizontal = 8.dp),
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
@@ -3884,6 +3942,7 @@ private fun RowScope.BackspaceKey(
             .scale(bumpScale)
             .offset(y = bumpOffsetY)
             .clip(keyShape).background(colors.specialKeyBg)
+            .neonChrome(colors, keyShape, 1)
             .let { m -> if (onPositioned != null) m.onGloballyPositioned(onPositioned) else m }
             .pointerInput(Unit) {
                 detectTapGestures(
@@ -3939,6 +3998,7 @@ private fun RowScope.SpecialKey(
             .offset(y = bumpOffsetY)
             .clip(keyShape)
             .background(if (pressed) colors.specialKeyBg.copy(alpha = 0.6f) else colors.specialKeyBg)
+            .neonChrome(colors, keyShape, 1)
             .onSizeChanged { keyWidthPx = it.width }
             .onGloballyPositioned { keyAnchor.centerX = it.boundsInWindow().center.x }
             .clickable { onTap() }
@@ -3977,6 +4037,7 @@ private fun RowScope.SymbolsKey(
             .offset(y = bumpOffsetY)
             .clip(keyShape)
             .background(if (pressed) colors.specialKeyBg.copy(alpha = 0.6f) else colors.specialKeyBg)
+            .neonChrome(colors, keyShape, 1)
             .let { m -> if (onPositioned != null) m.onGloballyPositioned(onPositioned) else m }
             .clickable { onTap() }
             .pointerInput(Unit) {
@@ -4022,6 +4083,7 @@ private fun LangToggleKey(
             .offset(y = bumpOffsetY)
             .clip(keyShape)
             .background(if (pressed) colors.specialKeyBg.copy(alpha = 0.6f) else colors.specialKeyBg)
+            .neonChrome(colors, keyShape, 1)
             .let { m -> if (onPositioned != null) m.onGloballyPositioned(onPositioned) else m }
             .clickable { onTap() }
             .pointerInput(Unit) {
@@ -4071,6 +4133,7 @@ private fun RowScope.EmojiKey(
             .offset(y = bumpOffsetY)
             .clip(keyShape)
             .background(if (pressed) colors.specialKeyBg.copy(alpha = 0.6f) else colors.specialKeyBg)
+            .neonChrome(colors, keyShape, 1)
             .let { m -> if (onPositioned != null) m.onGloballyPositioned(onPositioned) else m }
             .combinedClickable(onClick = { onTap() }, onLongClick = { onLongPress() })
             .pointerInput(Unit) {
@@ -4113,6 +4176,7 @@ private fun RowScope.SpaceKey(
             .height(keyHeight).weight(weight)
             .clip(spaceShape)
             .background(if (pressed) colors.spaceKeyBg.copy(alpha = 0.6f) else colors.spaceKeyBg)
+            .neonChrome(colors, spaceShape, 0)
             .let { m -> if (onPositioned != null) m.onGloballyPositioned(onPositioned) else m }
             .combinedClickable(onClick = { onTap() }, onLongClick = { onLongPress() })
             .pointerInput(Unit) {
@@ -4126,7 +4190,10 @@ private fun RowScope.SpaceKey(
         contentAlignment = Alignment.Center
     ) {
         Text(
-            text = "Sinkey board", fontSize = 12.sp,
+            text = if (colors.neon) "♛  SinKey Board" else "Sinkey board",
+            fontSize = if (colors.neon) 15.sp else 12.sp,
+            fontStyle = if (colors.neon) androidx.compose.ui.text.font.FontStyle.Italic else androidx.compose.ui.text.font.FontStyle.Normal,
+            fontWeight = if (colors.neon) FontWeight.SemiBold else FontWeight.Normal,
             color = colors.spaceKeyText,
             textAlign = androidx.compose.ui.text.style.TextAlign.Center
         )
@@ -4171,7 +4238,8 @@ private fun RowScope.EnterKey(
                     .scale(bumpScale)
                     .offset(y = bumpOffsetY)
                     .clip(androidx.compose.foundation.shape.CircleShape)
-                    .background(if (pressed) DeshGreen.copy(alpha = 0.8f) else DeshGreen)
+                    .background(if (colors?.neon == true) Color.Transparent else if (pressed) DeshGreen.copy(alpha = 0.8f) else DeshGreen)
+                    .neonChrome(colors, androidx.compose.foundation.shape.CircleShape, 2)
                     .clickable { onTap() }
                     .pointerInput(Unit) {
                         awaitEachGesture {
@@ -4228,7 +4296,8 @@ private fun RowScope.EnterKey(
             .scale(bumpScale)
             .offset(y = bumpOffsetY)
             .clip(keyShape)
-            .background(if (pressed) DeshGreen.copy(alpha = 0.8f) else DeshGreen)
+            .background(if (colors?.neon == true) Color.Transparent else if (pressed) DeshGreen.copy(alpha = 0.8f) else DeshGreen)
+            .neonChrome(colors, keyShape, 2)
             .clickable { onTap() }
             .pointerInput(Unit) {
                 awaitEachGesture {
@@ -4359,6 +4428,7 @@ private fun SymbolsKeyboardView(
                         .height(keyHeight).weight(1.4f)
                         .clip(keyShape)
                         .background(if (shifted) DeshGreen else colors.specialKeyBg)
+                        .neonChrome(colors, keyShape, 1)
                         .clickable { shifted = !shifted },
                     contentAlignment = Alignment.Center
                 ) {
@@ -4389,6 +4459,7 @@ private fun SymbolsKeyboardView(
                     modifier = Modifier
                         .height(keyHeight).weight(1.8f)
                         .clip(keyShape).background(colors.specialKeyBg)
+                        .neonChrome(colors, keyShape, 1)
                         .clickable { onBack() },
                     contentAlignment = Alignment.Center
                 ) {
@@ -4403,6 +4474,7 @@ private fun SymbolsKeyboardView(
                     modifier = Modifier
                         .height(keyHeight).weight(0.9f)
                         .clip(keyShape).background(colors.specialKeyBg)
+                        .neonChrome(colors, keyShape, 1)
                         .clickable { onEmoji() },
                     contentAlignment = Alignment.Center
                 ) {
@@ -4418,6 +4490,7 @@ private fun SymbolsKeyboardView(
                     modifier = Modifier
                         .height(keyHeight).weight(5.5f)
                         .clip(keyShape).background(colors.spaceKeyBg)
+                        .neonChrome(colors, keyShape, 0)
                         .clickable { onKey("SPACE") },
                     contentAlignment = Alignment.Center
                 ) { }
@@ -4426,6 +4499,7 @@ private fun SymbolsKeyboardView(
                     modifier = Modifier
                         .height(keyHeight).weight(1.0f)
                         .clip(keyShape).background(colors.specialKeyBg)
+                        .neonChrome(colors, keyShape, 1)
                         .clickable { onNumpad() },
                     contentAlignment = Alignment.Center
                 ) {
@@ -4438,7 +4512,7 @@ private fun SymbolsKeyboardView(
                     colors = colors, keyShape = keyShape) { onKey(".") }
                 // Enter  (enterKeyStyle)
                 EnterKey(weight = 2.0f, keyHeight = keyHeight,
-                    keyShape = keyShape) { onKey("ENTER") }
+                    keyShape = keyShape, colors = colors) { onKey("ENTER") }
             }
         }
     }
@@ -4478,6 +4552,7 @@ private fun NumberPadView(
                     modifier = Modifier
                         .height(keyHeight).weight(1f)
                         .clip(keyShape).background(colors.specialKeyBg)
+            .neonChrome(colors, keyShape, 1)
                         .clickable { onBoardStackChange(listOf(Board.MAIN)) },
                     contentAlignment = Alignment.Center
                 ) {
@@ -4503,6 +4578,7 @@ private fun NumberPadView(
                     modifier = Modifier
                         .height(keyHeight).weight(1f)
                         .clip(keyShape).background(colors.specialKeyBg)
+            .neonChrome(colors, keyShape, 1)
                         .clickable { onKey(",") },
                     contentAlignment = Alignment.Center
                 ) {
@@ -5358,6 +5434,7 @@ private fun PhoneDialPadView(
                                 modifier = Modifier
                                     .height(keyHeight).weight(1f)
                                     .clip(keyShape).background(colors.specialKeyBg)
+            .neonChrome(colors, keyShape, 1)
                                     .clickable { onKey("-") },
                                 contentAlignment = Alignment.Center
                             ) {
@@ -5369,6 +5446,7 @@ private fun PhoneDialPadView(
                                 modifier = Modifier
                                     .height(keyHeight).weight(1f)
                                     .clip(keyShape).background(colors.specialKeyBg)
+            .neonChrome(colors, keyShape, 1)
                                     .clickable { onKey(".") },
                                 contentAlignment = Alignment.Center
                             ) {
