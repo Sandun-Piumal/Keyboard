@@ -870,7 +870,8 @@ enum class BackgroundStyle(val key: String, val label: String) {
     GALAXY("galaxy", "Galaxy"),
     SMOKE("smoke", "Smoke"),
     SUNSET_SKY("sunset_sky", "Sunset"),
-    MINT_CUTE("mint_cute", "Mint Cute"),
+    /** Light lavender look: white glossy keys, violet function keys, diagonal purple stripes. */
+    SINKEY_LAVENDER("sinkey_lavender", "SinKey Lavender"),
     /** The app's own look: near-black violet with neon swooshes + glossy purple keys. */
     SINKEY_NEON("sinkey_neon", "SinKey Neon");
 
