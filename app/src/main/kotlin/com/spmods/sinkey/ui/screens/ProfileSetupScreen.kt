@@ -154,12 +154,12 @@ fun ProfileSetupScreen(
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(16.dp, 10.dp, 16.dp, 0.dp),
+                        .padding(16.dp, 12.dp, 16.dp, 0.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Box(
                         modifier = Modifier
-                            .size(48.dp)
+                            .size(44.dp)
                             .shadow(8.dp, CircleShape, ambientColor = SetupIndigo, spotColor = SetupIndigo)
                             .clip(CircleShape)
                             .background(Brush.verticalGradient(listOf(Color(0xFF6A34F0), SetupIndigoDeep)))
@@ -167,7 +167,7 @@ fun ProfileSetupScreen(
                             .clickable { onBack() },
                         contentAlignment = Alignment.Center
                     ) {
-                        Icon(Icons.Filled.ArrowBack, contentDescription = "Back", tint = Color.White, modifier = Modifier.size(24.dp))
+                        Icon(Icons.Filled.ArrowBack, contentDescription = "Back", tint = Color.White, modifier = Modifier.size(22.dp))
                     }
 
                     Column(
@@ -175,22 +175,22 @@ fun ProfileSetupScreen(
                         horizontalAlignment = Alignment.CenterHorizontally
                     ) {
                         Row(verticalAlignment = Alignment.CenterVertically) {
-                            Icon(Icons.Filled.ManageAccounts, null, tint = p.iconIndigo, modifier = Modifier.size(32.dp))
+                            Icon(Icons.Filled.ManageAccounts, null, tint = p.iconIndigo, modifier = Modifier.size(26.dp))
                             Spacer(Modifier.width(8.dp))
-                            Text("Edit ", fontSize = 26.sp, fontWeight = FontWeight.ExtraBold, color = p.title)
+                            Text("Edit ", fontSize = 24.sp, fontWeight = FontWeight.ExtraBold, color = p.title)
                             Text(
                                 "Profile",
                                 style = TextStyle(
                                     brush = Brush.horizontalGradient(listOf(Color(0xFF5B2BEF), Color(0xFF9B4DFF))),
-                                    fontSize = 26.sp,
+                                    fontSize = 24.sp,
                                     fontWeight = FontWeight.ExtraBold
                                 )
                             )
                         }
                         Text(
                             "Update your profile information",
-                            fontSize = 13.sp,
-                            fontWeight = FontWeight.SemiBold,
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.Medium,
                             color = p.body,
                             modifier = Modifier.padding(top = 2.dp)
                         )
@@ -198,7 +198,7 @@ fun ProfileSetupScreen(
 
                     Box(
                         modifier = Modifier
-                            .size(48.dp)
+                            .size(44.dp)
                             .shadow(8.dp, CircleShape, ambientColor = p.glow.copy(alpha = 0.4f), spotColor = p.glow.copy(alpha = 0.4f))
                             .clip(CircleShape)
                             .background(
@@ -213,7 +213,7 @@ fun ProfileSetupScreen(
                             Icons.Filled.Check,
                             contentDescription = "Save",
                             tint = if (isFormValid) p.iconIndigo else p.sub,
-                            modifier = Modifier.size(24.dp)
+                            modifier = Modifier.size(22.dp)
                         )
                     }
                 }
@@ -225,7 +225,7 @@ fun ProfileSetupScreen(
                     .fillMaxWidth()
                     .weight(1f)
                     .verticalScroll(rememberScrollState())
-                    .padding(horizontal = 20.dp)
+                    .padding(horizontal = 16.dp)
             ) {
                 if (!isEditMode) {
                     Spacer(Modifier.height(18.dp))
@@ -259,28 +259,28 @@ fun ProfileSetupScreen(
                 Box(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(vertical = 14.dp),
+                        .padding(vertical = 8.dp),
                     contentAlignment = Alignment.Center
                 ) {
                     // little "sparkle" strokes either side of the avatar
-                    Canvas(modifier = Modifier.size(width = 250.dp, height = 150.dp)) {
+                    Canvas(modifier = Modifier.size(width = 220.dp, height = 112.dp)) {
                         val c = SetupIndigo.copy(alpha = 0.55f)
                         val w = 3.dp.toPx()
                         fun line(x1: Float, y1: Float, x2: Float, y2: Float) =
                             drawLine(c, Offset(x1.dp.toPx(), y1.dp.toPx()), Offset(x2.dp.toPx(), y2.dp.toPx()), w, StrokeCap.Round)
-                        line(8f, 52f, 26f, 60f); line(2f, 74f, 20f, 76f); line(10f, 96f, 24f, 92f)
-                        line(224f, 60f, 240f, 52f); line(230f, 78f, 246f, 80f); line(222f, 94f, 236f, 100f)
+                        line(6f, 38f, 22f, 46f); line(0f, 58f, 16f, 60f); line(8f, 76f, 20f, 72f)
+                        line(198f, 46f, 214f, 38f); line(204f, 62f, 220f, 64f); line(196f, 74f, 210f, 80f)
                     }
-                    Box(modifier = Modifier.size(150.dp)) {
+                    Box(modifier = Modifier.size(116.dp)) {
                         Box(
                             modifier = Modifier
-                                .size(142.dp)
+                                .size(108.dp)
                                 .align(Alignment.Center)
                                 .shadow(14.dp, CircleShape, ambientColor = SetupIndigo, spotColor = SetupIndigo)
                                 .clip(CircleShape)
                                 .background(if (isDark) Color(0xFF3A2E5C) else Color(0xFFD8CCF7))
-                                .border(5.dp, Brush.linearGradient(listOf(Color(0xFF9B7BFF), Color(0xFF4A1FB8))), CircleShape)
-                                .padding(8.dp)
+                                .border(4.dp, Brush.linearGradient(listOf(Color(0xFF9B7BFF), Color(0xFF4A1FB8))), CircleShape)
+                                .padding(6.dp)
                                 .clip(CircleShape),
                             contentAlignment = Alignment.Center
                         ) {
@@ -301,22 +301,22 @@ fun ProfileSetupScreen(
                                     Icons.Filled.Person,
                                     contentDescription = null,
                                     tint = p.iconIndigo,
-                                    modifier = Modifier.size(70.dp)
+                                    modifier = Modifier.size(54.dp)
                                 )
                             }
                         }
                         Box(
                             modifier = Modifier
                                 .align(Alignment.BottomEnd)
-                                .padding(end = 2.dp, bottom = 4.dp)
-                                .size(46.dp)
+                                .padding(end = 0.dp, bottom = 2.dp)
+                                .size(36.dp)
                                 .shadow(8.dp, CircleShape, ambientColor = SetupIndigo, spotColor = SetupIndigo)
                                 .clip(CircleShape)
                                 .background(Brush.verticalGradient(listOf(Color(0xFF6A34F0), SetupIndigoDeep)))
                                 .border(2.dp, Color.White.copy(alpha = if (isDark) 0.4f else 0.9f), CircleShape),
                             contentAlignment = Alignment.Center
                         ) {
-                            Icon(Icons.Filled.CameraAlt, "Photo", tint = Color.White, modifier = Modifier.size(24.dp))
+                            Icon(Icons.Filled.CameraAlt, "Photo", tint = Color.White, modifier = Modifier.size(19.dp))
                         }
                     }
                 }
@@ -330,7 +330,7 @@ fun ProfileSetupScreen(
                     placeholder = "e.g. Sandun"
                 )
 
-                Spacer(Modifier.height(14.dp))
+                Spacer(Modifier.height(10.dp))
 
                 FieldLabel(p, Icons.Filled.Group, "Last name")
                 GlassTextField(
@@ -340,7 +340,7 @@ fun ProfileSetupScreen(
                     placeholder = "e.g. Piumal"
                 )
 
-                Spacer(Modifier.height(16.dp))
+                Spacer(Modifier.height(12.dp))
 
                 // ── Gender ───────────────────────────────────────────────
                 FieldLabel(p, Icons.Filled.Male, "Gender")
@@ -366,7 +366,7 @@ fun ProfileSetupScreen(
                     )
                 }
 
-                Spacer(Modifier.height(16.dp))
+                Spacer(Modifier.height(12.dp))
 
                 // ── Birthday ─────────────────────────────────────────────
                 FieldLabel(p, Icons.Filled.CalendarMonth, "Birthday")
@@ -400,7 +400,7 @@ fun ProfileSetupScreen(
                     )
                 }
 
-                Spacer(Modifier.height(28.dp))
+                Spacer(Modifier.height(22.dp))
 
                 // ── Save ─────────────────────────────────────────────────
                 Row(
@@ -422,19 +422,19 @@ fun ProfileSetupScreen(
                         )
                         .border(2.dp, Color.White.copy(alpha = if (isFormValid) 0.5f else 0.2f), shape)
                         .clickable(enabled = isFormValid) { handleSave() }
-                        .padding(vertical = 20.dp),
+                        .padding(vertical = 14.dp),
                     horizontalArrangement = Arrangement.Center,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Icon(
                         Icons.Filled.Save, null,
                         tint = if (isFormValid) Color.White else p.sub,
-                        modifier = Modifier.size(28.dp)
+                        modifier = Modifier.size(22.dp)
                     )
-                    Spacer(Modifier.width(14.dp))
+                    Spacer(Modifier.width(10.dp))
                     Text(
                         if (isEditMode) "Save Changes" else "Save & Continue",
-                        fontSize = 22.sp,
+                        fontSize = 17.sp,
                         fontWeight = FontWeight.ExtraBold,
                         color = if (isFormValid) Color.White else p.sub
                     )
@@ -450,7 +450,7 @@ fun ProfileSetupScreen(
                     )
                 }
 
-                Spacer(Modifier.height(130.dp))
+                Spacer(Modifier.height(100.dp))
             }
         }
     }
@@ -459,12 +459,12 @@ fun ProfileSetupScreen(
 @Composable
 private fun FieldLabel(p: HomePalette, icon: androidx.compose.ui.graphics.vector.ImageVector, text: String) {
     Row(
-        modifier = Modifier.padding(start = 4.dp, bottom = 8.dp),
+        modifier = Modifier.padding(start = 4.dp, bottom = 6.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        Icon(icon, null, tint = p.iconIndigo, modifier = Modifier.size(26.dp))
-        Spacer(Modifier.width(12.dp))
-        Text(text, fontSize = 18.sp, fontWeight = FontWeight.ExtraBold, color = p.title)
+        Icon(icon, null, tint = p.iconIndigo, modifier = Modifier.size(20.dp))
+        Spacer(Modifier.width(10.dp))
+        Text(text, fontSize = 15.sp, fontWeight = FontWeight.ExtraBold, color = p.title)
     }
 }
 
@@ -479,32 +479,32 @@ private fun GlassTextField(
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .glassCard(p, radius = 32, elevation = 8)
-            .padding(start = 14.dp, end = 18.dp, top = 12.dp, bottom = 12.dp),
+            .glassCard(p, radius = 26, elevation = 6)
+            .padding(start = 10.dp, end = 16.dp, top = 8.dp, bottom = 8.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
         Box(
             modifier = Modifier
-                .size(46.dp)
+                .size(36.dp)
                 .clip(CircleShape)
                 .background(if (p.dark) Color(0xFF3A2F66) else Color(0xFFE9E0FC)),
             contentAlignment = Alignment.Center
         ) {
-            Icon(Icons.Filled.Person, null, tint = p.iconIndigo, modifier = Modifier.size(26.dp))
+            Icon(Icons.Filled.Person, null, tint = p.iconIndigo, modifier = Modifier.size(20.dp))
         }
-        Spacer(Modifier.width(18.dp))
+        Spacer(Modifier.width(14.dp))
         BasicTextField(
             value = value,
             onValueChange = onValueChange,
             singleLine = true,
             keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Words),
-            textStyle = TextStyle(fontSize = 19.sp, fontWeight = FontWeight.ExtraBold, color = p.title),
+            textStyle = TextStyle(fontSize = 16.sp, fontWeight = FontWeight.ExtraBold, color = p.title),
             cursorBrush = SolidColor(SetupIndigo),
             modifier = Modifier.weight(1f),
             decorationBox = { inner ->
                 Box {
                     if (value.isEmpty()) {
-                        Text(placeholder, fontSize = 17.sp, fontWeight = FontWeight.Medium, color = p.sub)
+                        Text(placeholder, fontSize = 15.sp, fontWeight = FontWeight.Medium, color = p.sub)
                     }
                     inner()
                 }
@@ -522,7 +522,7 @@ private fun GenderOption(
     selected: Boolean,
     onClick: () -> Unit
 ) {
-    val shape = RoundedCornerShape(32.dp)
+    val shape = RoundedCornerShape(26.dp)
     Row(
         modifier = modifier
             .then(
@@ -531,10 +531,10 @@ private fun GenderOption(
                     .clip(shape)
                     .background(Brush.horizontalGradient(listOf(Color(0xFF4A1FB8), Color(0xFF7C4DFF))))
                     .border(2.dp, Color.White.copy(alpha = 0.45f), shape)
-                else Modifier.glassCard(p, radius = 32, elevation = 6)
+                else Modifier.glassCard(p, radius = 26, elevation = 5)
             )
             .clickable { onClick() }
-            .padding(horizontal = 16.dp, vertical = 18.dp),
+            .padding(horizontal = 12.dp, vertical = 12.dp),
         horizontalArrangement = Arrangement.Center,
         verticalAlignment = Alignment.CenterVertically
     ) {
@@ -542,22 +542,22 @@ private fun GenderOption(
             icon,
             contentDescription = null,
             tint = if (selected) Color.White else p.iconIndigo,
-            modifier = Modifier.size(28.dp)
+            modifier = Modifier.size(22.dp)
         )
-        Spacer(Modifier.width(10.dp))
+        Spacer(Modifier.width(8.dp))
         Text(
             label,
-            fontSize = 17.sp,
+            fontSize = 15.sp,
             fontWeight = FontWeight.ExtraBold,
             color = if (selected) Color.White else p.title
         )
         if (selected) {
-            Spacer(Modifier.width(12.dp))
+            Spacer(Modifier.width(10.dp))
             Box(
-                modifier = Modifier.size(26.dp).clip(CircleShape).background(Color.White),
+                modifier = Modifier.size(22.dp).clip(CircleShape).background(Color.White),
                 contentAlignment = Alignment.Center
             ) {
-                Icon(Icons.Filled.Check, null, tint = SetupIndigo, modifier = Modifier.size(18.dp))
+                Icon(Icons.Filled.Check, null, tint = SetupIndigo, modifier = Modifier.size(15.dp))
             }
         }
     }
@@ -576,22 +576,22 @@ private fun DropdownField(
 
     Box(
         modifier = modifier
-            .glassCard(p, radius = 24, elevation = 6)
+            .glassCard(p, radius = 22, elevation = 5)
             .clickable { expanded = true }
-            .padding(horizontal = 12.dp, vertical = 16.dp)
+            .padding(horizontal = 10.dp, vertical = 12.dp)
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
-            Icon(Icons.Filled.CalendarMonth, null, tint = p.iconIndigo, modifier = Modifier.size(22.dp))
-            Spacer(Modifier.width(8.dp))
+            Icon(Icons.Filled.CalendarMonth, null, tint = p.iconIndigo, modifier = Modifier.size(18.dp))
+            Spacer(Modifier.width(6.dp))
             Text(
                 selectedText ?: label,
-                fontSize = 16.sp,
+                fontSize = 14.sp,
                 fontWeight = FontWeight.ExtraBold,
                 color = if (selectedText != null) p.title else p.sub,
                 maxLines = 1,
                 modifier = Modifier.weight(1f)
             )
-            Icon(Icons.Filled.KeyboardArrowDown, null, tint = p.iconIndigo, modifier = Modifier.size(22.dp))
+            Icon(Icons.Filled.KeyboardArrowDown, null, tint = p.iconIndigo, modifier = Modifier.size(18.dp))
         }
         DropdownMenu(
             expanded = expanded,
