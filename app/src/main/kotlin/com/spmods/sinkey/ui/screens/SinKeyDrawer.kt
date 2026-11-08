@@ -33,7 +33,17 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalDrawerSheet
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
+import androidx.compose.ui.geometry.CornerRadius
+import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.drawscope.withTransform
+import androidx.compose.ui.graphics.vector.PathParser
+import com.spmods.sinkey.data.TypingStatsRepository
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -95,6 +105,17 @@ fun SinKeyDrawer(
     val context = LocalContext.current
     val version = remember(context) {
         runCatching { context.packageManager.getPackageInfo(context.packageName, 0).versionName }.getOrNull() ?: "1.0.0"
+    }
+    // Same "first active" date the Profile page shows as "Joined".
+    val statsRepo = remember(context) { TypingStatsRepository(context) }
+    val firstActiveDate by statsRepo.firstActiveDate.collectAsState(initial = null)
+    val joinedLabel = remember(firstActiveDate) {
+        firstActiveDate?.let { raw ->
+            runCatching {
+                val parsed = SimpleDateFormat("yyyy-MM-dd", Locale.US).parse(raw)
+                "Joined " + SimpleDateFormat("MMM yyyy", Locale.US).format(parsed ?: Date())
+            }.getOrDefault("Joined $raw")
+        } ?: "Just joined"
     }
     fun open(url: String) {
         runCatching { context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) }
@@ -210,7 +231,7 @@ fun SinKeyDrawer(
                                 maxLines = 2
                             )
                             Text(
-                                text = "SPMods Team",
+                                text = joinedLabel,
                                 fontSize = 14.sp,
                                 color = Color.White.copy(alpha = 0.75f),
                                 modifier = Modifier.padding(top = 4.dp)
@@ -302,8 +323,8 @@ fun SinKeyDrawer(
                         Text("Follow us", fontSize = 13.sp, fontWeight = FontWeight.ExtraBold, color = Color.White)
                         Spacer(Modifier.height(6.dp))
                         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            SocialTile("♪", Color(0xFF111111)) { open(DRAWER_TIKTOK_URL) }
-                            SocialTile("▶", Color(0xFFE62117)) { open(DRAWER_YOUTUBE_URL) }
+                            SocialTile(Color(0xFF0B0B12), { open(DRAWER_TIKTOK_URL) }) { TikTokGlyph() }
+                            SocialTile(Color.White, { open(DRAWER_YOUTUBE_URL) }) { YouTubeGlyph() }
                         }
                     }
                 }
@@ -313,17 +334,59 @@ fun SinKeyDrawer(
 }
 
 @Composable
-private fun SocialTile(glyph: String, bg: Color, onClick: () -> Unit) {
+private fun SocialTile(bg: Color, onClick: () -> Unit, glyph: @Composable () -> Unit) {
+    val shape = RoundedCornerShape(11.dp)
     Box(
         modifier = Modifier
-            .size(34.dp)
-            .clip(RoundedCornerShape(10.dp))
+            .size(38.dp)
+            .clip(shape)
             .background(bg)
-            .border(1.dp, Color.White.copy(alpha = 0.35f), RoundedCornerShape(10.dp))
+            .border(1.dp, Color.White.copy(alpha = 0.4f), shape)
             .clickable(onClick = onClick),
         contentAlignment = Alignment.Center
-    ) {
-        Text(glyph, fontSize = 16.sp, color = Color.White, fontWeight = FontWeight.ExtraBold)
+    ) { glyph() }
+}
+
+// Same brand glyphs as the About-developer "Follow Us" tiles.
+private const val DRAWER_TIKTOK_D =
+    "M12.525.02c1.31-.02 2.61-.01 3.91-.02.08 1.53.63 3.09 1.75 4.17 1.12 1.11 2.7 1.62 4.24 1.79v4.03c-1.44-.05-2.89-.35-4.2-.97-.57-.26-1.1-.59-1.62-.93-.01 2.92.01 5.84-.02 8.75-.08 1.4-.54 2.79-1.35 3.94-1.31 1.92-3.58 3.17-5.91 3.21-1.43.08-2.86-.31-4.08-1.03-2.02-1.19-3.44-3.37-3.65-5.71-.02-.5-.03-1-.01-1.49.18-1.9 1.12-3.72 2.58-4.96 1.66-1.44 3.98-2.13 6.15-1.72.02 1.48-.04 2.96-.04 4.44-.99-.32-2.15-.23-3.02.37-.63.41-1.11 1.04-1.36 1.75-.21.51-.15 1.07-.14 1.61.24 1.64 1.82 3.02 3.5 2.87 1.12-.01 2.19-.66 2.77-1.61.19-.33.4-.67.41-1.06.1-1.79.06-3.57.07-5.36.01-4.03-.01-8.05.02-12.07z"
+private val drawerTikTokPath: Path by lazy { PathParser().parsePathString(DRAWER_TIKTOK_D).toPath() }
+
+@Composable
+private fun TikTokGlyph() {
+    Canvas(Modifier.size(22.dp)) {
+        val s = size.width / 24f
+        fun layer(dx: Float, dy: Float, color: Color) {
+            withTransform({
+                translate(dx * s, dy * s)
+                scale(s, s, Offset.Zero)
+            }) { drawPath(drawerTikTokPath, color) }
+        }
+        layer(-0.9f, -0.7f, Color(0xFF25F4EE))
+        layer(0.9f, 0.7f, Color(0xFFFE2C55))
+        layer(0f, 0f, Color.White)
+    }
+}
+
+@Composable
+private fun YouTubeGlyph() {
+    Canvas(Modifier.size(26.dp)) {
+        val w = size.width
+        val h = w * 0.70f
+        val top = (size.height - h) / 2f
+        drawRoundRect(
+            color = Color(0xFFFF0000),
+            topLeft = Offset(0f, top),
+            size = Size(w, h),
+            cornerRadius = CornerRadius(h * 0.30f)
+        )
+        val tri = Path().apply {
+            moveTo(w * 0.40f, top + h * 0.27f)
+            lineTo(w * 0.40f, top + h * 0.73f)
+            lineTo(w * 0.68f, top + h * 0.50f)
+            close()
+        }
+        drawPath(tri, Color.White)
     }
 }
 
