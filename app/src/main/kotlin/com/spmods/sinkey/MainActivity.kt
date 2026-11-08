@@ -568,8 +568,14 @@ private fun SinKeyApp(prefs: PreferencesManager, initialTab: Tab = Tab.HOME) {
         settingsSubScreen == SettingsSubScreen.QUICK_TEXT ||
         settingsSubScreen == SettingsSubScreen.PERSONAL_DICTIONARY ||
         settingsSubScreen == SettingsSubScreen.KEYBOARD_HEIGHT
-    val homeLook = ((tab == Tab.HOME || tab == Tab.SETTINGS || tab == Tab.THEMES) && settingsSubScreen == SettingsSubScreen.MAIN || glassSubPage) &&
-        photoEditStep == PhotoEditStep.NONE && !showKeyboardPreview && !showTypingTest && !showProfile
+    // The Typing Test page and the Profile page (not its edit/setup forms) share it too.
+    val profileGlass = showProfile && !showEditProfile && profileSetupComplete == true
+    val homeLook = (
+        ((tab == Tab.HOME || tab == Tab.SETTINGS || tab == Tab.THEMES) && settingsSubScreen == SettingsSubScreen.MAIN || glassSubPage) &&
+            !showTypingTest && !showProfile ||
+            showTypingTest && settingsSubScreen == SettingsSubScreen.MAIN ||
+            profileGlass && settingsSubScreen == SettingsSubScreen.MAIN
+        ) && photoEditStep == PhotoEditStep.NONE && !showKeyboardPreview
     Box(
         modifier = Modifier
             .fillMaxSize()
