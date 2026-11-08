@@ -191,6 +191,8 @@ internal data class KeyboardColors(
     // SinKey Neon look (BackgroundStyle.SINKEY_NEON): glossy purple keys with
     // gradient borders; drawn by neonChrome().
     val neon: Boolean = false,
+    // SinKey Lavender look (BackgroundStyle.SINKEY_LAVENDER): light, white glossy keys.
+    val lavender: Boolean = false,
 )
 
 @Composable
@@ -258,6 +260,21 @@ internal fun keyboardColors(
 private fun Modifier.keyEffectDecoration(colors: KeyboardColors, keyShape: RoundedCornerShape): Modifier =
     this.neonChrome(colors, keyShape, 0).keyEffectDecorationInner(colors, keyShape)
 
+/** Colours for the SinKey Lavender theme — see BackgroundStyle.SINKEY_LAVENDER. */
+internal fun lavenderKeyboardColors(c: KeyboardColors): KeyboardColors = c.copy(
+    lavender = true,
+    bg = Color.Transparent,
+    keyBg = Color.White.copy(alpha = c.keyOpacity),
+    specialKeyBg = Color(0xFF5B2BEF).copy(alpha = c.keyOpacity),
+    spaceKeyBg = Color.White.copy(alpha = c.keyOpacity),
+    keyText = Color(0xFF1B1245),
+    specialKeyText = Color.White,
+    subText = Color(0xFF6D28D9),
+    spaceKeyText = Color(0xFF3B1D8F),
+    cardBg = Color(0xFFF3EEFF),
+    accent = Color(0xFF7C3AED),
+)
+
 /** Colours for the SinKey Neon theme — see BackgroundStyle.SINKEY_NEON. */
 internal fun neonKeyboardColors(c: KeyboardColors): KeyboardColors {
     val o = c.keyOpacity
@@ -282,7 +299,17 @@ internal fun neonKeyboardColors(c: KeyboardColors): KeyboardColors {
  * No-op unless the SinKey Neon theme is active.
  */
 private fun Modifier.neonChrome(colors: KeyboardColors?, shape: androidx.compose.ui.graphics.Shape, role: Int = 0): Modifier {
-    if (colors == null || !colors.neon) return this
+    if (colors == null || !(colors.neon || colors.lavender)) return this
+    if (colors.lavender) {
+        val lfill = when (role) {
+            0 -> androidx.compose.ui.graphics.Brush.verticalGradient(listOf(Color(0xFFFFFFFF), Color(0xFFF1EAFF)))
+            else -> androidx.compose.ui.graphics.Brush.linearGradient(listOf(Color(0xFF9B6DFF), Color(0xFF5B2BEF), Color(0xFF3A1AA8)))
+        }
+        val lborder = androidx.compose.ui.graphics.Brush.linearGradient(
+            if (role == 0) listOf(Color(0xFFFFFFFF), Color(0xFFC9B8F3)) else listOf(Color(0xFFD6C4FF), Color(0xFF6D3BEF))
+        )
+        return this.background(lfill).border(1.2.dp, lborder, shape)
+    }
     val fill = when (role) {
         1 -> androidx.compose.ui.graphics.Brush.verticalGradient(listOf(Color(0x557C3AED), Color(0x884C1D95)))
         2 -> androidx.compose.ui.graphics.Brush.horizontalGradient(listOf(Color(0xFF7C3AED), Color(0xFFD946EF)))
@@ -803,8 +830,10 @@ internal fun KeyboardView(
     // SinKey Neon is a dark-surface look — force dark text/icon tinting for it.
     val neon = backgroundStyle == com.spmods.sinkey.data.BackgroundStyle.SINKEY_NEON &&
         previewBackgroundBitmap == null && customBackgroundUri == null
+    val lavender = backgroundStyle == com.spmods.sinkey.data.BackgroundStyle.SINKEY_LAVENDER &&
+        previewBackgroundBitmap == null && customBackgroundUri == null
     @Suppress("NAME_SHADOWING")
-    val isDark = isDark || neon
+    val isDark = (isDark || neon) && !lavender
     val colors = keyboardColors(
         showKeyBorders = effectiveShowKeyBorders,
         isDark = isDark,
@@ -818,7 +847,7 @@ internal fun KeyboardView(
         // KeyColorPalette — purely a color swap, effects/backgrounds
         // still layer on top exactly as before.
         if (materialYouEnabled) base.copy(accent = materialYouAccentColor(context, isDark)) else base
-    }.let { c -> if (neon) neonKeyboardColors(c) else c }
+    }.let { c -> if (neon) neonKeyboardColors(c) else if (lavender) lavenderKeyboardColors(c) else c }
     val screenWidthDp = androidx.compose.ui.platform.LocalConfiguration.current.screenWidthDp
     val keyHeight = stepToKeyHeight(keyboardHeight, screenWidthDp)
     val bottomPadding = if (bottomSpaceEnabled) stepToBottomPadding(bottomSpaceSize, screenWidthDp) else 4.dp
@@ -2565,7 +2594,7 @@ private fun AppsMicBar(
             // Pure white on dark theme, pure black on light theme — see the
             // doc comment at this Row's icon Icon() calls for why this
             // isn't colors.subText.
-            val toolIconTint = if (isDark) Color.White else Color.Black
+            val toolIconTint = if (colors.lavender) Color(0xFF4C1D95) else if (isDark) Color.White else Color.Black
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -2577,6 +2606,11 @@ private fun AppsMicBar(
                             .clip(RoundedCornerShape(24.dp))
                             .background(androidx.compose.ui.graphics.Brush.verticalGradient(listOf(Color(0x33FFFFFF), Color(0x14FFFFFF))))
                             .border(1.2.dp, androidx.compose.ui.graphics.Brush.horizontalGradient(listOf(Color(0xFF5B2BEF), Color(0xFFB79CFF), Color(0xFF5B2BEF))), RoundedCornerShape(24.dp))
+                        else if (colors.lavender) m
+                            .padding(horizontal = 4.dp, vertical = 2.dp)
+                            .clip(RoundedCornerShape(24.dp))
+                            .background(androidx.compose.ui.graphics.Brush.verticalGradient(listOf(Color(0xCCFFFFFF), Color(0x66E6DCFB))))
+                            .border(1.2.dp, androidx.compose.ui.graphics.Brush.verticalGradient(listOf(Color.White, Color(0xFFC9B8F3))), RoundedCornerShape(24.dp))
                         else m
                     }
                     .padding(horizontal = 8.dp),
@@ -2787,7 +2821,13 @@ private fun RowScope.CopyPreviewInline(
 @Composable
 private fun EmojiRow(emojis: List<String>, colors: KeyboardColors, onKey: (String) -> Unit, onMoreClick: () -> Unit) {
     LazyRow(
-        modifier = Modifier.fillMaxWidth().background(colors.bg).padding(vertical = 2.dp),
+        modifier = Modifier.fillMaxWidth().background(colors.bg).padding(vertical = 2.dp)
+            .let { m ->
+                if (colors.lavender) m.padding(horizontal = 4.dp).clip(RoundedCornerShape(20.dp))
+                    .background(androidx.compose.ui.graphics.Brush.verticalGradient(listOf(Color(0x99FFFFFF), Color(0x55E6DCFB))))
+                    .border(1.dp, androidx.compose.ui.graphics.Brush.verticalGradient(listOf(Color.White, Color(0xFFC9B8F3))), RoundedCornerShape(20.dp))
+                else m
+            },
         horizontalArrangement = Arrangement.spacedBy(2.dp),
         verticalAlignment = Alignment.CenterVertically,
         state = rememberLazyListState()
@@ -4189,7 +4229,18 @@ private fun RowScope.SpaceKey(
             },
         contentAlignment = Alignment.Center
     ) {
-        Text(
+        if (colors.lavender) {
+            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                Text("♛", fontSize = 14.sp, color = Color(0xFF7C3AED))
+                Text(
+                    "Sinkey board",
+                    fontSize = 19.sp,
+                    fontFamily = androidx.compose.ui.text.font.FontFamily.Cursive,
+                    fontStyle = androidx.compose.ui.text.font.FontStyle.Italic,
+                    color = colors.spaceKeyText
+                )
+            }
+        } else Text(
             text = if (colors.neon) "♛  SinKey Board" else "Sinkey board",
             fontSize = if (colors.neon) 15.sp else 12.sp,
             fontStyle = if (colors.neon) androidx.compose.ui.text.font.FontStyle.Italic else androidx.compose.ui.text.font.FontStyle.Normal,
@@ -4238,7 +4289,7 @@ private fun RowScope.EnterKey(
                     .scale(bumpScale)
                     .offset(y = bumpOffsetY)
                     .clip(androidx.compose.foundation.shape.CircleShape)
-                    .background(if (colors?.neon == true) Color.Transparent else if (pressed) DeshGreen.copy(alpha = 0.8f) else DeshGreen)
+                    .background(if (colors?.neon == true || colors?.lavender == true) Color.Transparent else if (pressed) DeshGreen.copy(alpha = 0.8f) else DeshGreen)
                     .neonChrome(colors, androidx.compose.foundation.shape.CircleShape, 2)
                     .clickable { onTap() }
                     .pointerInput(Unit) {
@@ -4296,7 +4347,7 @@ private fun RowScope.EnterKey(
             .scale(bumpScale)
             .offset(y = bumpOffsetY)
             .clip(keyShape)
-            .background(if (colors?.neon == true) Color.Transparent else if (pressed) DeshGreen.copy(alpha = 0.8f) else DeshGreen)
+            .background(if (colors?.neon == true || colors?.lavender == true) Color.Transparent else if (pressed) DeshGreen.copy(alpha = 0.8f) else DeshGreen)
             .neonChrome(colors, keyShape, 2)
             .clickable { onTap() }
             .pointerInput(Unit) {
