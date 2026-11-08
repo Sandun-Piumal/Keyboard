@@ -2,13 +2,18 @@ package com.spmods.sinkey.ui.screens
 
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
@@ -19,6 +24,8 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material.icons.filled.Bolt
+import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Description
 import androidx.compose.material.icons.filled.ExpandMore
@@ -48,6 +55,13 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.layout.ContentScale
@@ -174,41 +188,38 @@ fun TypingTestScreen(
         }
     }
 
-    val cardBg = if (isDark) Color(0xFF000000) else Color(0xFFFFFFFF)
-    val statBarBg = if (isDark) Color(0xFF000000) else Color(0xFFFFFFFF)
-    val passageBg = if (isDark) Color(0xFF1A1A1A) else Color(0xFFF5F5F5)
-    val titleColor = if (isDark) Color(0xFFF2EEFB) else Color(0xFF1A1A2E)
-    val subColor = if (isDark) Color(0xFFB6AEC9) else Color(0xFF6B7280)
-    val indigo = Color(0xFF6C4CE0)
-    val indigoMid = Color(0xFF7C5CF0)
+    val p = remember(isDark) { homePalette(isDark) }
+    val titleColor = p.title
+    val subColor = p.body
+    val indigo = Color(0xFF5B2BEF)
+    val indigoDeep = Color(0xFF34128F)
+    val innerBg = if (isDark) Color(0xFF2A2352) else Color(0xFFE6DCFB)
 
+    // Transparent page — MainActivity paints the About-Developer background.
     Column(
         modifier = Modifier
-            .fillMaxWidth()
-            .background(MaterialTheme.colorScheme.background)
+            .fillMaxSize()
+            .verticalScroll(rememberScrollState())
             .padding(bottom = 24.dp)
     ) {
         // ── Header ────────────────────────────────────────────────────────
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(20.dp, 18.dp, 20.dp, 6.dp),
+                .padding(16.dp, 12.dp, 16.dp, 6.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
             Box(
                 modifier = Modifier
-                    .size(40.dp)
+                    .size(46.dp)
+                    .shadow(8.dp, CircleShape, ambientColor = indigo, spotColor = indigo)
                     .clip(CircleShape)
-                    .background(if (isDark) Color(0xFF2C2145) else Color(0xFFEDE7FB))
+                    .background(Brush.verticalGradient(listOf(Color(0xFF6A34F0), indigoDeep)))
+                    .border(1.dp, Color.White.copy(alpha = 0.35f), CircleShape)
                     .clickable { onBack() },
                 contentAlignment = Alignment.Center
             ) {
-                Icon(
-                    Icons.Filled.ArrowBack,
-                    contentDescription = "Back",
-                    tint = indigo,
-                    modifier = Modifier.size(20.dp)
-                )
+                Icon(Icons.Filled.ArrowBack, contentDescription = "Back", tint = Color.White, modifier = Modifier.size(22.dp))
             }
 
             Column(
@@ -216,29 +227,42 @@ fun TypingTestScreen(
                 horizontalAlignment = Alignment.CenterHorizontally
             ) {
                 Row {
-                    Text("SinKey ", fontSize = 22.sp, fontWeight = FontWeight.ExtraBold, color = Color(0xFF3B2F8C))
-                    Text("Board", fontSize = 22.sp, fontWeight = FontWeight.ExtraBold, color = Color(0xFFE0498A))
+                    Text("SinKey ", fontSize = 26.sp, fontWeight = FontWeight.ExtraBold, color = titleColor)
+                    Text(
+                        "Board",
+                        style = androidx.compose.ui.text.TextStyle(
+                            brush = Brush.horizontalGradient(listOf(Color(0xFF5B2BEF), Color(0xFF9B4DFF))),
+                            fontSize = 26.sp,
+                            fontWeight = FontWeight.ExtraBold
+                        )
+                    )
                 }
                 Text(
                     "Type Smart. Type Easy. Type SinKey.",
                     fontSize = 11.sp,
-                    color = subColor,
-                    modifier = Modifier.padding(top = 2.dp)
+                    color = p.sub,
+                    maxLines = 1,
+                    modifier = Modifier.padding(top = 1.dp)
                 )
             }
 
             Box(
                 modifier = Modifier
-                    .size(36.dp)
+                    .size(46.dp)
+                    .shadow(8.dp, CircleShape, ambientColor = p.glow.copy(alpha = 0.4f), spotColor = p.glow.copy(alpha = 0.4f))
                     .clip(CircleShape)
-                    .background(if (isDark) Color(0xFF2C2145) else Color.White),
+                    .background(
+                        if (isDark) Brush.verticalGradient(listOf(Color(0xFF2E2560), Color(0xFF211A48)))
+                        else Brush.verticalGradient(listOf(Color.White, Color(0xFFEAE0FF)))
+                    )
+                    .border(1.5.dp, if (isDark) SolidColor(p.cardBorder) else GlossyWhite, CircleShape),
                 contentAlignment = Alignment.Center
             ) {
                 Icon(
                     Icons.Filled.WorkspacePremium,
                     contentDescription = "Premium",
-                    tint = indigo,
-                    modifier = Modifier.size(18.dp)
+                    tint = p.iconIndigo,
+                    modifier = Modifier.size(24.dp)
                 )
             }
         }
@@ -247,7 +271,7 @@ fun TypingTestScreen(
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(20.dp, 12.dp, 20.dp, 0.dp),
+                .padding(20.dp, 14.dp, 12.dp, 0.dp),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.SpaceBetween
         ) {
@@ -255,28 +279,33 @@ fun TypingTestScreen(
                 modifier = Modifier.weight(1f),
                 verticalArrangement = Arrangement.Center
             ) {
-                Box(
+                val chipShape = RoundedCornerShape(50)
+                Row(
                     modifier = Modifier
-                        .clip(RoundedCornerShape(50))
-                        .background(if (isDark) Color(0xFF3A2D5C) else Color(0xFFEDE7FB))
-                        .padding(horizontal = 14.dp, vertical = 6.dp)
+                        .shadow(8.dp, chipShape, ambientColor = indigo, spotColor = indigo)
+                        .clip(chipShape)
+                        .background(Brush.horizontalGradient(listOf(Color(0xFF4A1FB8), Color(0xFF6A34F0))))
+                        .padding(horizontal = 14.dp, vertical = 8.dp),
+                    verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Text(
-                        "Typing Test",
-                        fontSize = 12.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = if (isDark) Color(0xFFB39DEF) else indigo
-                    )
+                    Icon(Icons.Filled.Bolt, null, tint = Color(0xFFFFC928), modifier = Modifier.size(18.dp))
+                    Spacer(Modifier.width(6.dp))
+                    Text("Typing Test", fontSize = 14.sp, fontWeight = FontWeight.ExtraBold, color = Color.White)
                 }
-                Spacer(Modifier.height(10.dp))
+                Spacer(Modifier.height(14.dp))
                 Text(
-                    if (isFinished) "Nice work!" else "Take a deep breath\nand start typing!",
-                    fontSize = 24.sp,
+                    if (isFinished) buildAnnotatedString { append("Nice work!") }
+                    else buildAnnotatedString {
+                        append("Take a deep breath\nand start ")
+                        withStyle(SpanStyle(color = if (isDark) Color(0xFFB39DEF) else indigo)) { append("typing") }
+                        append("!")
+                    },
+                    fontSize = 26.sp,
                     fontWeight = FontWeight.ExtraBold,
                     color = titleColor,
-                    lineHeight = 28.sp
+                    lineHeight = 32.sp
                 )
-                Spacer(Modifier.height(8.dp))
+                Spacer(Modifier.height(10.dp))
                 Text(
                     if (isFinished)
                         "WPM: $finalWpm  •  Accuracy: $finalAccuracy%"
@@ -285,164 +314,174 @@ fun TypingTestScreen(
                     fontSize = 13.sp,
                     color = subColor
                 )
-            }
-
-            Spacer(Modifier.width(12.dp))
-
-            Box(
-                modifier = Modifier
-                    .width(120.dp)
-                    .height(120.dp),
-                contentAlignment = Alignment.Center
-            ) {
-                Image(
-                    painter = painterResource(id = R.drawable.test_typing_stopwatch),
-                    contentDescription = "Typing test illustration",
-                    contentScale = ContentScale.Fit,
+                // small purple swoosh under the subtitle
+                Canvas(
                     modifier = Modifier
-                        .width(110.dp)
-                        .height(110.dp)
-                )
+                        .padding(top = 6.dp)
+                        .size(width = 96.dp, height = 12.dp)
+                ) {
+                    val path = Path().apply {
+                        moveTo(0f, size.height * 0.9f)
+                        quadraticBezierTo(size.width * 0.5f, size.height * 0.1f, size.width, size.height * 0.2f)
+                    }
+                    drawPath(path, indigo, style = Stroke(width = 3.dp.toPx(), cap = androidx.compose.ui.graphics.StrokeCap.Round))
+                }
             }
+
+            Spacer(Modifier.width(6.dp))
+
+            Image(
+                painter = painterResource(id = R.drawable.test_typing_stopwatch),
+                contentDescription = "Typing test illustration",
+                contentScale = ContentScale.Fit,
+                modifier = Modifier
+                    .width(130.dp)
+                    .height(130.dp)
+            )
         }
 
         // ── Stats strip: Time / Goal Speed / Mode ────────────────────────
-        Card(
+        Row(
             modifier = Modifier
-                .padding(20.dp, 16.dp, 20.dp, 0.dp)
-                .fillMaxWidth(),
-            shape = RoundedCornerShape(18.dp),
-            colors = CardDefaults.cardColors(containerColor = statBarBg),
-            elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
+                .padding(16.dp, 18.dp, 16.dp, 0.dp)
+                .fillMaxWidth()
+                .glassCard(p, radius = 28, elevation = 8)
+                .padding(vertical = 14.dp),
+            verticalAlignment = Alignment.CenterVertically
         ) {
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(vertical = 14.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
+            StatItem(
+                p = p,
+                icon = Icons.Filled.Schedule,
+                label = "Time",
+                value = formatTime(secondsLeft),
+                tint = p.iconIndigo,
+                modifier = Modifier.weight(1f)
+            )
+            StatDivider(p)
+            StatItem(
+                p = p,
+                icon = Icons.Filled.Speed,
+                label = "Goal Speed",
+                value = "40 WPM",
+                tint = p.iconIndigo,
+                modifier = Modifier.weight(1f)
+            )
+            StatDivider(p)
+            Box(modifier = Modifier.weight(1f)) {
                 StatItem(
-                    icon = Icons.Filled.Schedule,
-                    label = "Time",
-                    value = formatTime(secondsLeft),
-                    tint = indigo,
-                    valueColor = titleColor,
-                    labelColor = subColor,
-                    modifier = Modifier.weight(1f)
+                    p = p,
+                    icon = Icons.Filled.Settings,
+                    label = "Mode",
+                    value = when (mode) {
+                        TypingTestMode.ENGLISH -> "English"
+                        TypingTestMode.SINHALA -> "Sinhala"
+                        TypingTestMode.MIX -> "Mix"
+                    },
+                    tint = p.iconIndigo,
+                    trailingIcon = Icons.Filled.ExpandMore,
+                    onClick = { modeMenuExpanded = true }
                 )
-                StatDivider()
-                StatItem(
-                    icon = Icons.Filled.Speed,
-                    label = "Goal Speed",
-                    value = "40 WPM",
-                    tint = indigo,
-                    valueColor = titleColor,
-                    labelColor = subColor,
-                    modifier = Modifier.weight(1f)
-                )
-                StatDivider()
-                Box(modifier = Modifier.weight(1f)) {
-                    StatItem(
-                        icon = Icons.Filled.GpsFixed,
-                        label = "Mode",
-                        value = when (mode) {
-                            TypingTestMode.ENGLISH -> "English"
-                            TypingTestMode.SINHALA -> "Sinhala"
-                            TypingTestMode.MIX -> "Mix"
-                        },
-                        tint = indigo,
-                        valueColor = titleColor,
-                        labelColor = subColor,
-                        trailingIcon = Icons.Filled.ExpandMore,
-                        onClick = { modeMenuExpanded = true }
+                DropdownMenu(
+                    expanded = modeMenuExpanded,
+                    onDismissRequest = { modeMenuExpanded = false }
+                ) {
+                    DropdownMenuItem(
+                        text = { Text("Mix") },
+                        onClick = {
+                            mode = TypingTestMode.MIX
+                            modeMenuExpanded = false
+                        }
                     )
-                    DropdownMenu(
-                        expanded = modeMenuExpanded,
-                        onDismissRequest = { modeMenuExpanded = false }
-                    ) {
-                        DropdownMenuItem(
-                            text = { Text("Mix") },
-                            onClick = {
-                                mode = TypingTestMode.MIX
-                                modeMenuExpanded = false
-                            }
-                        )
-                        DropdownMenuItem(
-                            text = { Text("English") },
-                            onClick = {
-                                mode = TypingTestMode.ENGLISH
-                                modeMenuExpanded = false
-                            }
-                        )
-                        DropdownMenuItem(
-                            text = { Text("Sinhala") },
-                            onClick = {
-                                mode = TypingTestMode.SINHALA
-                                modeMenuExpanded = false
-                            }
-                        )
-                    }
+                    DropdownMenuItem(
+                        text = { Text("English") },
+                        onClick = {
+                            mode = TypingTestMode.ENGLISH
+                            modeMenuExpanded = false
+                        }
+                    )
+                    DropdownMenuItem(
+                        text = { Text("Sinhala") },
+                        onClick = {
+                            mode = TypingTestMode.SINHALA
+                            modeMenuExpanded = false
+                        }
+                    )
                 }
             }
         }
 
         // ── Passage card ──────────────────────────────────────────────────
-        Card(
+        Column(
             modifier = Modifier
-                .padding(20.dp, 16.dp, 20.dp, 0.dp)
-                .fillMaxWidth(),
-            shape = RoundedCornerShape(20.dp),
-            colors = CardDefaults.cardColors(containerColor = cardBg),
-            elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
+                .padding(16.dp, 16.dp, 16.dp, 0.dp)
+                .fillMaxWidth()
+                .glassCard(p, radius = 28, elevation = 8)
+                .padding(14.dp)
         ) {
-            Column(modifier = Modifier.padding(18.dp)) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Box(
-                        modifier = Modifier
-                            .size(32.dp)
-                            .clip(RoundedCornerShape(9.dp))
-                            .background(if (isDark) Color(0xFF3A2D5C) else Color(0xFFEDE7FB)),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Icon(
-                            Icons.Filled.Description,
-                            contentDescription = null,
-                            tint = indigo,
-                            modifier = Modifier.size(16.dp)
-                        )
-                    }
-                    Spacer(Modifier.width(10.dp))
-                    Text(
-                        "Type the following text",
-                        fontSize = 14.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = titleColor
-                    )
-                }
-
-                Spacer(Modifier.height(14.dp))
-
-                // Passage with live highlighting: typed-correct in indigo bg,
-                // typed-incorrect in red-ish, remaining plain.
+            Row(verticalAlignment = Alignment.CenterVertically) {
                 Box(
                     modifier = Modifier
-                        .fillMaxWidth()
+                        .size(46.dp)
                         .clip(RoundedCornerShape(14.dp))
-                        .background(passageBg)
-                        .padding(16.dp)
+                        .background(Brush.verticalGradient(listOf(Color(0xFF6A34F0), indigoDeep))),
+                    contentAlignment = Alignment.Center
                 ) {
-                    Text(
-                        text = buildHighlightedPassage(passage, input.text, titleColor),
-                        fontSize = 17.sp,
-                        lineHeight = 26.sp
-                    )
+                    Icon(Icons.Filled.Description, contentDescription = null, tint = Color.White, modifier = Modifier.size(26.dp))
                 }
+                Spacer(Modifier.width(14.dp))
+                Text(
+                    "Type the following text",
+                    fontSize = 17.sp,
+                    fontWeight = FontWeight.ExtraBold,
+                    color = titleColor
+                )
+            }
 
-                Spacer(Modifier.height(14.dp))
+            Spacer(Modifier.height(12.dp))
 
-                // Hidden-ish text field — visually the passage above is what
-                // the person reads, but typing happens here so we can track
-                // exact keystrokes against the target passage.
+            // Passage with live highlighting: typed-correct in indigo bg,
+            // typed-incorrect in red-ish, remaining plain.
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(22.dp))
+                    .background(innerBg)
+                    .padding(14.dp),
+                verticalAlignment = Alignment.Top
+            ) {
+                Box(
+                    modifier = Modifier
+                        .size(34.dp)
+                        .clip(CircleShape)
+                        .background(if (isDark) Color(0xFF4A3F85) else Color(0xFFCDBDF5)),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text("\u201C", fontSize = 26.sp, fontWeight = FontWeight.ExtraBold, color = indigo, modifier = Modifier.padding(top = 6.dp))
+                }
+                Spacer(Modifier.width(12.dp))
+                Text(
+                    text = buildHighlightedPassage(passage, input.text, titleColor, isDark),
+                    fontSize = 16.sp,
+                    lineHeight = 26.sp,
+                    modifier = Modifier.weight(1f)
+                )
+            }
+
+            Spacer(Modifier.height(14.dp))
+
+            // Hidden-ish text field — visually the passage above is what
+            // the person reads, but typing happens here so we can track
+            // exact keystrokes against the target passage.
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 8.dp, vertical = 6.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Icon(Icons.Filled.Edit, contentDescription = null, tint = p.iconIndigo, modifier = Modifier.size(24.dp))
+                Spacer(Modifier.width(12.dp))
+                Box(modifier = Modifier.width(2.dp).height(30.dp).background(indigo))
+                Spacer(Modifier.width(12.dp))
                 BasicTextField(
                     value = input,
                     onValueChange = { new ->
@@ -464,53 +503,57 @@ fun TypingTestScreen(
                         if (!isRunning && new.text.isNotEmpty()) isRunning = true
                     },
                     textStyle = androidx.compose.ui.text.TextStyle(
-                        fontSize = 15.sp,
+                        fontSize = 16.sp,
                         color = titleColor
                     ),
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clip(RoundedCornerShape(12.dp))
-                        .background(if (isDark) Color(0xFF3A2D5C) else Color.White)
-                        .padding(14.dp),
+                    cursorBrush = SolidColor(indigo),
+                    modifier = Modifier.weight(1f),
                     decorationBox = { inner ->
-                        if (input.text.isEmpty()) {
-                            Text(
-                                "Start typing here…",
-                                fontSize = 15.sp,
-                                color = subColor
-                            )
+                        Box {
+                            if (input.text.isEmpty()) {
+                                Text(
+                                    "Start typing here…",
+                                    fontSize = 16.sp,
+                                    color = subColor
+                                )
+                            }
+                            inner()
                         }
-                        inner()
                     }
                 )
             }
         }
 
         // ── Progress ──────────────────────────────────────────────────────
-        Column(modifier = Modifier.padding(20.dp, 16.dp, 20.dp, 0.dp)) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(20.dp, 18.dp, 20.dp, 0.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(
+                "${input.text.length} / ${passage.length}",
+                fontSize = 15.sp,
+                fontWeight = FontWeight.ExtraBold,
+                color = p.iconIndigo
+            )
+            Spacer(Modifier.width(12.dp))
+            val frac = if (passage.isNotEmpty())
+                (input.text.length.toFloat() / passage.length.toFloat()).coerceIn(0f, 1f)
+            else 0f
+            Box(
+                modifier = Modifier
+                    .weight(1f)
+                    .height(16.dp)
+                    .clip(RoundedCornerShape(50))
+                    .background(if (isDark) Color(0xFF3A2F66) else Color(0xFFD9CCF8))
             ) {
-                Text(
-                    "${input.text.length} / ${passage.length}",
-                    fontSize = 13.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = indigo
-                )
-                Spacer(Modifier.width(10.dp))
-                LinearProgressIndicator(
-                    progress = {
-                        if (passage.isNotEmpty())
-                            input.text.length.toFloat() / passage.length.toFloat()
-                        else 0f
-                    },
+                Box(
                     modifier = Modifier
-                        .weight(1f)
-                        .height(6.dp)
-                        .clip(RoundedCornerShape(50)),
-                    color = indigo,
-                    trackColor = if (isDark) Color(0xFF3A2D5C) else Color(0xFFE0D8F5)
+                        .fillMaxWidth(fraction = frac)
+                        .height(16.dp)
+                        .clip(RoundedCornerShape(50))
+                        .background(Brush.horizontalGradient(listOf(Color(0xFF4A1FB8), Color(0xFF7C4DFF))))
                 )
             }
         }
@@ -519,28 +562,27 @@ fun TypingTestScreen(
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(20.dp, 24.dp, 20.dp, 0.dp),
-            verticalAlignment = Alignment.CenterVertically
+                .padding(16.dp, 22.dp, 16.dp, 0.dp),
+            verticalAlignment = Alignment.Top
         ) {
             RoundIconLabel(
+                p = p,
                 icon = Icons.Filled.Settings,
                 label = "Settings",
-                tint = subColor,
-                bg = if (isDark) Color(0xFF2C2145) else Color(0xFFEDE7FB),
                 onClick = onSettingsClick
             )
 
-            Spacer(Modifier.width(14.dp))
+            Spacer(Modifier.width(12.dp))
 
+            val startShape = RoundedCornerShape(50)
             Row(
                 modifier = Modifier
                     .weight(1f)
-                    .clip(RoundedCornerShape(50))
-                    .background(
-                        androidx.compose.ui.graphics.Brush.horizontalGradient(
-                            listOf(indigo, indigoMid)
-                        )
-                    )
+                    .padding(top = 4.dp)
+                    .shadow(14.dp, startShape, ambientColor = indigo, spotColor = indigo)
+                    .clip(startShape)
+                    .background(Brush.verticalGradient(listOf(Color(0xFF6A34F0), Color(0xFF3A1AA8))))
+                    .border(2.dp, Color.White.copy(alpha = 0.45f), startShape)
                     .clickable {
                         if (isFinished) {
                             resetTest()
@@ -548,7 +590,7 @@ fun TypingTestScreen(
                             isRunning = true
                         }
                     }
-                    .padding(vertical = 15.dp),
+                    .padding(vertical = 18.dp),
                 horizontalArrangement = Arrangement.Center,
                 verticalAlignment = Alignment.CenterVertically
             ) {
@@ -556,24 +598,24 @@ fun TypingTestScreen(
                     if (isFinished) Icons.Filled.Refresh else Icons.Filled.PlayArrow,
                     contentDescription = null,
                     tint = Color.White,
-                    modifier = Modifier.size(18.dp)
+                    modifier = Modifier.size(28.dp)
                 )
                 Spacer(Modifier.width(8.dp))
                 Text(
                     if (isFinished) "Try Again" else if (isRunning) "Typing…" else "Start Test",
                     color = Color.White,
-                    fontSize = 15.sp,
-                    fontWeight = FontWeight.Bold
+                    fontSize = 20.sp,
+                    fontWeight = FontWeight.ExtraBold,
+                    maxLines = 1
                 )
             }
 
-            Spacer(Modifier.width(14.dp))
+            Spacer(Modifier.width(12.dp))
 
             RoundIconLabel(
+                p = p,
                 icon = Icons.Filled.Refresh,
                 label = "Reset",
-                tint = subColor,
-                bg = if (isDark) Color(0xFF2C2145) else Color(0xFFEDE7FB),
                 onClick = { resetTest() }
             )
         }
@@ -581,31 +623,31 @@ fun TypingTestScreen(
         if (isFinished) {
             Row(
                 modifier = Modifier
-                    .padding(20.dp, 18.dp, 20.dp, 0.dp)
+                    .padding(16.dp, 20.dp, 16.dp, 0.dp)
                     .fillMaxWidth()
-                    .clip(RoundedCornerShape(16.dp))
-                    .background(if (isDark) Color(0xFF1E3A2A) else Color(0xFFE3F5EA))
+                    .glassCard(p, radius = 22, elevation = 6)
+                    .background(if (isDark) Color(0x331E8A4C) else Color(0x3322B14C))
                     .padding(16.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Icon(
                     Icons.Filled.CheckCircle,
                     contentDescription = null,
-                    tint = Color(0xFF1E8A4C),
-                    modifier = Modifier.size(20.dp)
+                    tint = Color(0xFF22B14C),
+                    modifier = Modifier.size(24.dp)
                 )
-                Spacer(Modifier.width(10.dp))
+                Spacer(Modifier.width(12.dp))
                 Column {
                     Text(
                         "Test complete",
-                        fontSize = 14.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = Color(0xFF1E8A4C)
+                        fontSize = 15.sp,
+                        fontWeight = FontWeight.ExtraBold,
+                        color = if (isDark) Color(0xFF7FE3A0) else Color(0xFF1E8A4C)
                     )
                     Text(
                         "$finalWpm WPM at $finalAccuracy% accuracy. Tap Try Again for another round.",
                         fontSize = 12.sp,
-                        color = if (isDark) Color(0xFFB6AEC9) else Color(0xFF3F6B4F)
+                        color = p.body
                     )
                 }
             }
@@ -615,12 +657,11 @@ fun TypingTestScreen(
 
 @Composable
 private fun StatItem(
+    p: HomePalette,
     icon: androidx.compose.ui.graphics.vector.ImageVector,
     label: String,
     value: String,
     tint: Color,
-    valueColor: Color,
-    labelColor: Color,
     modifier: Modifier = Modifier,
     trailingIcon: androidx.compose.ui.graphics.vector.ImageVector? = null,
     onClick: (() -> Unit)? = null
@@ -628,21 +669,30 @@ private fun StatItem(
     Row(
         modifier = modifier
             .then(if (onClick != null) Modifier.clickable { onClick() } else Modifier)
-            .padding(horizontal = 12.dp),
+            .padding(horizontal = 8.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        Icon(icon, contentDescription = null, tint = tint, modifier = Modifier.size(18.dp))
-        Spacer(Modifier.width(8.dp))
+        Box(
+            modifier = Modifier
+                .size(38.dp)
+                .shadow(4.dp, CircleShape, ambientColor = p.glow.copy(alpha = 0.3f), spotColor = p.glow.copy(alpha = 0.3f))
+                .clip(CircleShape)
+                .background(if (p.dark) Color(0xFF2E2560) else Color.White),
+            contentAlignment = Alignment.Center
+        ) {
+            Icon(icon, contentDescription = null, tint = tint, modifier = Modifier.size(22.dp))
+        }
+        Spacer(Modifier.width(6.dp))
         Column {
-            Text(label, fontSize = 11.sp, color = labelColor)
+            Text(label, fontSize = 12.sp, color = p.body, maxLines = 1)
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Text(value, fontSize = 14.sp, fontWeight = FontWeight.Bold, color = valueColor)
+                Text(value, fontSize = 15.sp, fontWeight = FontWeight.ExtraBold, color = p.title, maxLines = 1, overflow = TextOverflow.Clip)
                 if (trailingIcon != null) {
                     Icon(
                         trailingIcon,
                         contentDescription = null,
-                        tint = labelColor,
-                        modifier = Modifier.size(16.dp)
+                        tint = p.iconIndigo,
+                        modifier = Modifier.size(18.dp)
                     )
                 }
             }
@@ -651,36 +701,40 @@ private fun StatItem(
 }
 
 @Composable
-private fun StatDivider() {
+private fun StatDivider(p: HomePalette) {
     Box(
         modifier = Modifier
             .width(1.dp)
-            .height(30.dp)
-            .background(MaterialTheme.colorScheme.outlineVariant)
+            .height(40.dp)
+            .background(if (p.dark) Color(0xFF3A2F66) else Color(0xFFD3C5F5))
     )
 }
 
 @Composable
 private fun RoundIconLabel(
+    p: HomePalette,
     icon: androidx.compose.ui.graphics.vector.ImageVector,
     label: String,
-    tint: Color,
-    bg: Color,
     onClick: () -> Unit
 ) {
     Column(horizontalAlignment = Alignment.CenterHorizontally) {
         Box(
             modifier = Modifier
-                .size(48.dp)
+                .size(58.dp)
+                .shadow(8.dp, CircleShape, ambientColor = p.glow.copy(alpha = 0.4f), spotColor = p.glow.copy(alpha = 0.4f))
                 .clip(CircleShape)
-                .background(bg)
+                .background(
+                    if (p.dark) Brush.verticalGradient(listOf(Color(0xFF2E2560), Color(0xFF211A48)))
+                    else Brush.verticalGradient(listOf(Color.White, Color(0xFFEAE0FF)))
+                )
+                .border(1.5.dp, if (p.dark) SolidColor(p.cardBorder) else GlossyWhite, CircleShape)
                 .clickable { onClick() },
             contentAlignment = Alignment.Center
         ) {
-            Icon(icon, contentDescription = label, tint = tint, modifier = Modifier.size(20.dp))
+            Icon(icon, contentDescription = label, tint = p.iconIndigo, modifier = Modifier.size(28.dp))
         }
         Spacer(Modifier.height(4.dp))
-        Text(label, fontSize = 11.sp, color = tint)
+        Text(label, fontSize = 13.sp, fontWeight = FontWeight.ExtraBold, color = p.iconIndigo)
     }
 }
 
@@ -701,9 +755,10 @@ private fun formatTime(seconds: Int): String {
 private fun buildHighlightedPassage(
     passage: String,
     typed: String,
-    plainColor: Color
+    plainColor: Color,
+    isDark: Boolean = false
 ) = buildAnnotatedString {
-    val correctBg = Color(0xFFD6C9F7)
+    val correctBg = if (isDark) Color(0xFF5B49B0) else Color(0xFFCBB9F7)
     val wrongColor = Color(0xFFE0498A)
     val mutedColor = plainColor.copy(alpha = 0.45f)
 
