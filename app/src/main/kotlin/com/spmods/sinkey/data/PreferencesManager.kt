@@ -871,6 +871,8 @@ enum class BackgroundStyle(val key: String, val label: String) {
     SMOKE("smoke", "Smoke"),
     /** Glass keys with neon-cyan lettering over a blurred neon-flower / circuit-board photo. */
     CYBER_BLOOM("cyber_bloom", "Cyber Bloom"),
+    /** Cream glossy keys, wooden function keys, watercolor spring-garden photo. */
+    SPRING_MEADOW("spring_meadow", "Spring Meadow"),
     /** Light lavender look: white glossy keys, violet function keys, diagonal purple stripes. */
     SINKEY_LAVENDER("sinkey_lavender", "SinKey Lavender"),
     /** The app's own look: near-black violet with neon swooshes + glossy purple keys. */
