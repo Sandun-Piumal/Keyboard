@@ -969,9 +969,6 @@ class SinKeyInputMethodService : InputMethodService() {
     // Activity transition.
     private var hostWindowFocused = mutableStateOf(true)
 
-    // Watchdog so hostWindowFocused can never stay stuck false (blank keyboard).
-    private var focusRecoveryJob: kotlinx.coroutines.Job? = null
-
     // Tracks the actual visible keyboard content's measured height in
     // pixels — NOT the same as imeComposeView's own height, which is now
     // MATCH_PARENT (full window height) as part of the FlorisBoard-style
@@ -986,10 +983,15 @@ class SinKeyInputMethodService : InputMethodService() {
     override fun onCreateInputView(): View? {
         android.util.Log.d("SinKeyDebug", "onCreateInputView called, imeComposeView is null? ${imeComposeView == null}")
         if (imeComposeView != null) {
-            // Already added directly to the window's content in a
-            // previous call — nothing to do. Returning null again keeps
-            // the framework's default input-view placement disabled.
-            android.util.Log.d("SinKeyDebug", "onCreateInputView: returning early, already have a composeView")
+            // FIX (keyboard icon shows but keyboard never opens until you
+            // switch to another keyboard and back): the framework calls
+            // initViews() on every configuration change (dark-mode switch,
+            // rotation, font/display size, locale...), which REPLACES the
+            // window's whole content view. Our compose view lived in the
+            // old content, so it is silently orphaned while this field is
+            // still non-null -> returning early here left the window blank
+            // for the rest of the service's life. Re-attach it instead.
+            ensureComposeViewAttached()
             return null
         }
 
@@ -1221,16 +1223,13 @@ class SinKeyInputMethodService : InputMethodService() {
             // torn down.
             decor.viewTreeObserver.addOnWindowFocusChangeListener { hasFocus ->
                 android.util.Log.d("SinKeyDebug", "decor window focus changed: hasFocus=$hasFocus")
-                focusRecoveryJob?.cancel()
-                if (hasFocus) {
-                    hostWindowFocused.value = true
-                } else {
-                    hostWindowFocused.value = false
-                    // Safety: never allow the keyboard to stay blank.
-                    focusRecoveryJob = serviceScope.launch {
-                        delay(500)
-                        hostWindowFocused.value = true
-                    }
+                hostWindowFocused.value = hasFocus
+                if (!hasFocus) {
+                    // FIX: never stay blank. If the "focus regained" callback
+                    // is lost/late (OEM timing, or the listener being dropped
+                    // when the window is re-attached), the keyboard used to
+                    // stay invisible until the service was restarted.
+                    decor.postDelayed({ hostWindowFocused.value = true }, 500L)
                 }
             }
         }
@@ -1276,8 +1275,28 @@ class SinKeyInputMethodService : InputMethodService() {
     // returns null and disables that machinery entirely, so there's
     // nothing left here to patch around.
 
+    /**
+     * Makes sure the (single, reused) compose view is a child of the IME
+     * window's CURRENT content view. See the FIX note in onCreateInputView.
+     */
+    private fun ensureComposeViewAttached() {
+        val view = imeComposeView ?: return
+        val content = window?.window?.findViewById<ViewGroup>(android.R.id.content) ?: return
+        if (view.parent === content) return
+        android.util.Log.w("SinKeyDebug", "compose view was orphaned (window content replaced) - re-attaching")
+        (view.parent as? ViewGroup)?.removeView(view)
+        content.addView(view)
+        // Re-assert the ViewTree owners in case the decor was rebuilt.
+        window?.window?.decorView?.let { decor ->
+            decor.setViewTreeLifecycleOwner(lifecycleOwner)
+            decor.setViewTreeSavedStateRegistryOwner(lifecycleOwner)
+            decor.setViewTreeViewModelStoreOwner(lifecycleOwner)
+        }
+    }
+
     override fun onWindowShown() {
         super.onWindowShown()
+        ensureComposeViewAttached()
         android.util.Log.d("SinKeyDebug", "onWindowShown called, lifecycle state before = ${lifecycleOwner.lifecycle.currentState}, content childCount = ${window?.window?.findViewById<ViewGroup>(android.R.id.content)?.childCount}")
         // Unconditional, matching FlorisBoard's LifecycleInputMethodService
         // exactly. Earlier versions of this method tried to guard against
@@ -1316,8 +1335,6 @@ class SinKeyInputMethodService : InputMethodService() {
 
     override fun onWindowHidden() {
         super.onWindowHidden()
-        focusRecoveryJob?.cancel()
-        hostWindowFocused.value = true
         android.util.Log.d("SinKeyDebug", "onWindowHidden called, lifecycle state before = ${lifecycleOwner.lifecycle.currentState}")
         // Unconditional, matching FlorisBoard exactly — see onWindowShown
         // for why the earlier "only pause if resumed" guard is no longer
@@ -1328,6 +1345,7 @@ class SinKeyInputMethodService : InputMethodService() {
 
     override fun onStartInputView(info: EditorInfo?, restarting: Boolean) {
         super.onStartInputView(info, restarting)
+        ensureComposeViewAttached()
         android.util.Log.d("SinKeyDebug", "onStartInputView called, restarting=$restarting, packageName=${info?.packageName}")
         // lifecycle ON_RESUME is driven by onWindowShown()
 
