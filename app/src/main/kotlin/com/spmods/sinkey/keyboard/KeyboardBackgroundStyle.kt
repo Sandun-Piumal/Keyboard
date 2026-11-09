@@ -44,10 +44,7 @@ fun KeyboardBuiltInBackground(style: BackgroundStyle, isDark: Boolean, modifier:
         BackgroundStyle.RAINBOW -> RainbowBackground(modifier)
         BackgroundStyle.GALAXY -> GalaxyBackground(modifier)
         BackgroundStyle.SMOKE -> SmokeBackground(isDark, modifier)
-        BackgroundStyle.SUNSET_SKY -> GradientBackground(
-            colors = listOf(Color(0xFFFF7A45), Color(0xFFFF4E82), Color(0xFF6A3EA1)),
-            modifier = modifier
-        )
+        BackgroundStyle.CYBER_BLOOM -> CyberBloomBackground(modifier)
         BackgroundStyle.SINKEY_LAVENDER -> SinKeyLavenderBackground(modifier)
         BackgroundStyle.SINKEY_NEON -> SinKeyNeonBackground(modifier)
         BackgroundStyle.NONE -> Unit
@@ -239,5 +236,22 @@ private fun SinKeyLavenderBackground(modifier: Modifier = Modifier) {
         sparkle(w * 0.95f, h * 0.55f, h * 0.03f)
         sparkle(w * 0.05f, h * 0.45f, h * 0.02f)
         sparkle(w * 0.30f, h * 0.96f, h * 0.025f)
+    }
+}
+
+
+/**
+ * Cyber Bloom: blurred neon flowers + circuit-board lines (bundled photo,
+ * res/drawable-nodpi/bg_cyber_bloom.jpg) cropped to fill the keyboard.
+ */
+@Composable
+private fun CyberBloomBackground(modifier: Modifier = Modifier) {
+    androidx.compose.foundation.layout.Box(modifier = modifier) {
+        androidx.compose.foundation.Image(
+            painter = androidx.compose.ui.res.painterResource(com.spmods.sinkey.R.drawable.bg_cyber_bloom),
+            contentDescription = null,
+            contentScale = androidx.compose.ui.layout.ContentScale.Crop,
+            modifier = Modifier.matchParentSize()
+        )
     }
 }
