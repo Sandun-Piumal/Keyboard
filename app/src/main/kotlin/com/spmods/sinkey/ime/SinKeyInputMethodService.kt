@@ -969,6 +969,9 @@ class SinKeyInputMethodService : InputMethodService() {
     // Activity transition.
     private var hostWindowFocused = mutableStateOf(true)
 
+    // Watchdog so hostWindowFocused can never stay stuck false (blank keyboard).
+    private var focusRecoveryJob: kotlinx.coroutines.Job? = null
+
     // Tracks the actual visible keyboard content's measured height in
     // pixels — NOT the same as imeComposeView's own height, which is now
     // MATCH_PARENT (full window height) as part of the FlorisBoard-style
@@ -1218,7 +1221,17 @@ class SinKeyInputMethodService : InputMethodService() {
             // torn down.
             decor.viewTreeObserver.addOnWindowFocusChangeListener { hasFocus ->
                 android.util.Log.d("SinKeyDebug", "decor window focus changed: hasFocus=$hasFocus")
-                hostWindowFocused.value = hasFocus
+                focusRecoveryJob?.cancel()
+                if (hasFocus) {
+                    hostWindowFocused.value = true
+                } else {
+                    hostWindowFocused.value = false
+                    // Safety: never allow the keyboard to stay blank.
+                    focusRecoveryJob = serviceScope.launch {
+                        delay(500)
+                        hostWindowFocused.value = true
+                    }
+                }
             }
         }
 
@@ -1303,6 +1316,8 @@ class SinKeyInputMethodService : InputMethodService() {
 
     override fun onWindowHidden() {
         super.onWindowHidden()
+        focusRecoveryJob?.cancel()
+        hostWindowFocused.value = true
         android.util.Log.d("SinKeyDebug", "onWindowHidden called, lifecycle state before = ${lifecycleOwner.lifecycle.currentState}")
         // Unconditional, matching FlorisBoard exactly — see onWindowShown
         // for why the earlier "only pause if resumed" guard is no longer
