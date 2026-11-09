@@ -45,6 +45,7 @@ fun KeyboardBuiltInBackground(style: BackgroundStyle, isDark: Boolean, modifier:
         BackgroundStyle.GALAXY -> GalaxyBackground(modifier)
         BackgroundStyle.SMOKE -> SmokeBackground(isDark, modifier)
         BackgroundStyle.CYBER_BLOOM -> CyberBloomBackground(modifier)
+        BackgroundStyle.SPRING_MEADOW -> PhotoBackground(com.spmods.sinkey.R.drawable.bg_spring_meadow, modifier)
         BackgroundStyle.SINKEY_LAVENDER -> SinKeyLavenderBackground(modifier)
         BackgroundStyle.SINKEY_NEON -> SinKeyNeonBackground(modifier)
         BackgroundStyle.NONE -> Unit
@@ -249,6 +250,18 @@ private fun CyberBloomBackground(modifier: Modifier = Modifier) {
     androidx.compose.foundation.layout.Box(modifier = modifier) {
         androidx.compose.foundation.Image(
             painter = androidx.compose.ui.res.painterResource(com.spmods.sinkey.R.drawable.bg_cyber_bloom),
+            contentDescription = null,
+            contentScale = androidx.compose.ui.layout.ContentScale.Crop,
+            modifier = Modifier.matchParentSize()
+        )
+    }
+}
+
+@Composable
+private fun PhotoBackground(resId: Int, modifier: Modifier = Modifier) {
+    androidx.compose.foundation.layout.Box(modifier = modifier) {
+        androidx.compose.foundation.Image(
+            painter = androidx.compose.ui.res.painterResource(resId),
             contentDescription = null,
             contentScale = androidx.compose.ui.layout.ContentScale.Crop,
             modifier = Modifier.matchParentSize()
