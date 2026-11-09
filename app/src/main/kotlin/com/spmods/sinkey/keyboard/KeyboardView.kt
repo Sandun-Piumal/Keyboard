@@ -195,6 +195,8 @@ internal data class KeyboardColors(
     val lavender: Boolean = false,
     // Cyber Bloom look (BackgroundStyle.CYBER_BLOOM): dark glass keys, neon-cyan text.
     val bloom: Boolean = false,
+    // Spring Meadow look (BackgroundStyle.SPRING_MEADOW): cream glossy keys + wooden keys.
+    val meadow: Boolean = false,
 )
 
 @Composable
@@ -277,6 +279,38 @@ internal fun lavenderKeyboardColors(c: KeyboardColors): KeyboardColors = c.copy(
     accent = Color(0xFF7C3AED),
 )
 
+/** Colours for the Spring Meadow theme — see BackgroundStyle.SPRING_MEADOW. */
+internal fun meadowKeyboardColors(c: KeyboardColors): KeyboardColors = c.copy(
+    meadow = true,
+    bg = Color.Transparent,
+    keyBg = Color(0xFFF3E7CE),
+    specialKeyBg = Color(0xFFF3E7CE),
+    spaceKeyBg = Color(0xFFE2C79A),
+    keyText = Color(0xFF8A3B12),
+    specialKeyText = Color(0xFF8A3B12),
+    subText = Color(0xFF8A4B22),
+    spaceKeyText = Color(0xFF2F5D2A),
+    cardBg = Color(0xFFF3E7CE),
+    accent = Color(0xFF5E9B3F),
+)
+
+/** Draws simple procedural wood grain (no image needed). */
+private fun Modifier.woodGrain(base: Color, grain: Color, edge: Color, shape: androidx.compose.ui.graphics.Shape): Modifier =
+    this.background(base, shape)
+        .drawBehind {
+            val rnd = java.util.Random(7)
+            var y = 4f
+            while (y < size.height) {
+                val p = androidx.compose.ui.graphics.Path()
+                p.moveTo(0f, y)
+                val amp = 1.5f + rnd.nextFloat() * 3f
+                p.cubicTo(size.width * 0.3f, y - amp, size.width * 0.6f, y + amp, size.width, y + (rnd.nextFloat() - 0.5f) * 4f)
+                drawPath(p, grain, style = androidx.compose.ui.graphics.drawscope.Stroke(width = 1.2f + rnd.nextFloat() * 1.5f))
+                y += 6f + rnd.nextFloat() * 9f
+            }
+        }
+        .border(1.5.dp, edge, shape)
+
 /** Colours for the Cyber Bloom theme — see BackgroundStyle.CYBER_BLOOM. */
 internal fun bloomKeyboardColors(c: KeyboardColors): KeyboardColors {
     val o = c.keyOpacity
@@ -319,16 +353,36 @@ internal fun neonKeyboardColors(c: KeyboardColors): KeyboardColors {
  * No-op unless the SinKey Neon theme is active.
  */
 private fun Modifier.neonChrome(colors: KeyboardColors?, shape: androidx.compose.ui.graphics.Shape, role: Int = 0): Modifier {
-    if (colors == null || !(colors.neon || colors.lavender || colors.bloom)) return this
+    if (colors == null || !(colors.neon || colors.lavender || colors.bloom || colors.meadow)) return this
+    if (colors.meadow) {
+        return when (role) {
+            2, 3 -> this.woodGrain(Color(0xFF6B4226), Color(0x55331A0A), Color(0xFF3E2413), shape)
+            4, 5 -> this.woodGrain(Color(0xFFE2C79A), Color(0x44A9824F), Color(0xFFB99A66), shape)
+            else -> this
+                .background(
+                    androidx.compose.ui.graphics.Brush.verticalGradient(listOf(Color(0xFFFFF9EA), Color(0xFFEFE1C4))), shape
+                )
+                .drawBehind {
+                    // soft gloss highlight on the upper half
+                    drawRoundRect(
+                        androidx.compose.ui.graphics.Brush.verticalGradient(
+                            listOf(Color(0x66FFFFFF), Color(0x00FFFFFF)), endY = size.height * 0.55f
+                        ),
+                        cornerRadius = androidx.compose.ui.geometry.CornerRadius(12f, 12f)
+                    )
+                }
+                .border(1.5.dp, Color(0xFFC9B48A), shape)
+        }
+    }
     if (colors.bloom) {
         val bfill = when (role) {
-            1 -> androidx.compose.ui.graphics.Brush.verticalGradient(listOf(Color(0x55B040E0), Color(0x553A1A8A)))
+            1, 5 -> androidx.compose.ui.graphics.Brush.verticalGradient(listOf(Color(0x55B040E0), Color(0x553A1A8A)))
             2 -> androidx.compose.ui.graphics.Brush.horizontalGradient(listOf(Color(0xFF1E5BE0), Color(0xFFB026D8)))
             else -> androidx.compose.ui.graphics.Brush.verticalGradient(listOf(Color(0x26FFFFFF), Color(0x00FFFFFF)))
         }
         val bborder = androidx.compose.ui.graphics.Brush.linearGradient(
             when (role) {
-                1 -> listOf(Color(0xFFC084F0), Color(0xFF8A4BD0))
+                1, 3, 5 -> listOf(Color(0xFFC084F0), Color(0xFF8A4BD0))
                 2 -> listOf(Color(0xFF58E6F5), Color(0xFFD946EF))
                 else -> listOf(Color(0xCC9FB0F5), Color(0xAA6B7BD6))
             }
@@ -869,8 +923,10 @@ internal fun KeyboardView(
         previewBackgroundBitmap == null && customBackgroundUri == null
     val bloom = backgroundStyle == com.spmods.sinkey.data.BackgroundStyle.CYBER_BLOOM &&
         previewBackgroundBitmap == null && customBackgroundUri == null
+    val meadow = backgroundStyle == com.spmods.sinkey.data.BackgroundStyle.SPRING_MEADOW &&
+        previewBackgroundBitmap == null && customBackgroundUri == null
     @Suppress("NAME_SHADOWING")
-    val isDark = (isDark || neon || bloom) && !lavender
+    val isDark = (isDark || neon || bloom) && !lavender && !meadow
     val colors = keyboardColors(
         showKeyBorders = effectiveShowKeyBorders,
         isDark = isDark,
@@ -884,7 +940,7 @@ internal fun KeyboardView(
         // KeyColorPalette — purely a color swap, effects/backgrounds
         // still layer on top exactly as before.
         if (materialYouEnabled) base.copy(accent = materialYouAccentColor(context, isDark)) else base
-    }.let { c -> if (neon) neonKeyboardColors(c) else if (lavender) lavenderKeyboardColors(c) else if (bloom) bloomKeyboardColors(c) else c }
+    }.let { c -> if (neon) neonKeyboardColors(c) else if (lavender) lavenderKeyboardColors(c) else if (bloom) bloomKeyboardColors(c) else if (meadow) meadowKeyboardColors(c) else c }
     val screenWidthDp = androidx.compose.ui.platform.LocalConfiguration.current.screenWidthDp
     val keyHeight = stepToKeyHeight(keyboardHeight, screenWidthDp)
     val bottomPadding = if (bottomSpaceEnabled) stepToBottomPadding(bottomSpaceSize, screenWidthDp) else 4.dp
@@ -2631,7 +2687,7 @@ private fun AppsMicBar(
             // Pure white on dark theme, pure black on light theme — see the
             // doc comment at this Row's icon Icon() calls for why this
             // isn't colors.subText.
-            val toolIconTint = if (colors.lavender) Color(0xFF4C1D95) else if (colors.bloom) Color(0xFF4FF3E0) else if (isDark) Color.White else Color.Black
+            val toolIconTint = if (colors.lavender) Color(0xFF4C1D95) else if (colors.bloom) Color(0xFF4FF3E0) else if (colors.meadow) Color(0xFF4C7A3B) else if (isDark) Color.White else Color.Black
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -3982,6 +4038,7 @@ private fun RowScope.ShiftKey(
             .scale(bumpScale)
             .offset(y = bumpOffsetY)
             .clip(keyShape).background(bg)
+            .let { m -> if (colors.meadow || colors.bloom) m.neonChrome(colors, keyShape, 5) else m }
             .let { m -> if (onPositioned != null) m.onGloballyPositioned(onPositioned) else m }
             .combinedClickable(
                 onClick = onTap,
@@ -4022,7 +4079,7 @@ private fun RowScope.BackspaceKey(
             .scale(bumpScale)
             .offset(y = bumpOffsetY)
             .clip(keyShape).background(colors.specialKeyBg)
-            .neonChrome(colors, keyShape, 1)
+            .neonChrome(colors, keyShape, if (colors.meadow) 3 else 1)
             .let { m -> if (onPositioned != null) m.onGloballyPositioned(onPositioned) else m }
             .pointerInput(Unit) {
                 detectTapGestures(
@@ -4054,7 +4111,7 @@ private fun RowScope.BackspaceKey(
             painter = painterResource(id = R.drawable.ic_backspace),
             contentDescription = "Backspace",
             modifier = Modifier.size(26.dp),
-            tint = colors.specialKeyText
+            tint = if (colors.meadow) Color(0xFFFFA43A) else colors.specialKeyText
         )
     }
 }
@@ -4256,7 +4313,7 @@ private fun RowScope.SpaceKey(
             .height(keyHeight).weight(weight)
             .clip(spaceShape)
             .background(if (pressed) colors.spaceKeyBg.copy(alpha = 0.6f) else colors.spaceKeyBg)
-            .neonChrome(colors, spaceShape, 0)
+            .neonChrome(colors, spaceShape, if (colors.meadow) 4 else 0)
             .let { m -> if (onPositioned != null) m.onGloballyPositioned(onPositioned) else m }
             .combinedClickable(onClick = { onTap() }, onLongClick = { onLongPress() })
             .pointerInput(Unit) {
@@ -4329,7 +4386,7 @@ private fun RowScope.EnterKey(
                     .scale(bumpScale)
                     .offset(y = bumpOffsetY)
                     .clip(androidx.compose.foundation.shape.CircleShape)
-                    .background(if (colors?.neon == true || colors?.lavender == true || colors?.bloom == true) Color.Transparent else if (pressed) DeshGreen.copy(alpha = 0.8f) else DeshGreen)
+                    .background(if (colors?.neon == true || colors?.lavender == true || colors?.bloom == true || colors?.meadow == true) Color.Transparent else if (pressed) DeshGreen.copy(alpha = 0.8f) else DeshGreen)
                     .neonChrome(colors, androidx.compose.foundation.shape.CircleShape, 2)
                     .clickable { onTap() }
                     .pointerInput(Unit) {
@@ -4387,7 +4444,7 @@ private fun RowScope.EnterKey(
             .scale(bumpScale)
             .offset(y = bumpOffsetY)
             .clip(keyShape)
-            .background(if (colors?.neon == true || colors?.lavender == true || colors?.bloom == true) Color.Transparent else if (pressed) DeshGreen.copy(alpha = 0.8f) else DeshGreen)
+            .background(if (colors?.neon == true || colors?.lavender == true || colors?.bloom == true || colors?.meadow == true) Color.Transparent else if (pressed) DeshGreen.copy(alpha = 0.8f) else DeshGreen)
             .neonChrome(colors, keyShape, 2)
             .clickable { onTap() }
             .pointerInput(Unit) {
@@ -4405,29 +4462,29 @@ private fun RowScope.EnterKey(
                 imageVector = Icons.Filled.Search,
                 contentDescription = "Search",
                 modifier = Modifier.size(26.dp),
-                tint = Color.White
+                tint = (if (colors?.meadow == true) Color(0xFFFFA43A) else Color.White)
             )
             android.view.inputmethod.EditorInfo.IME_ACTION_SEND -> Text(
-                "Send", fontSize = 12.sp, color = Color.White,
+                "Send", fontSize = 12.sp, color = (if (colors?.meadow == true) Color(0xFFFFA43A) else Color.White),
                 fontWeight = androidx.compose.ui.text.font.FontWeight.SemiBold
             )
             android.view.inputmethod.EditorInfo.IME_ACTION_GO -> Text(
-                "Go", fontSize = 12.sp, color = Color.White,
+                "Go", fontSize = 12.sp, color = (if (colors?.meadow == true) Color(0xFFFFA43A) else Color.White),
                 fontWeight = androidx.compose.ui.text.font.FontWeight.SemiBold
             )
             android.view.inputmethod.EditorInfo.IME_ACTION_NEXT -> Text(
-                "Next", fontSize = 12.sp, color = Color.White,
+                "Next", fontSize = 12.sp, color = (if (colors?.meadow == true) Color(0xFFFFA43A) else Color.White),
                 fontWeight = androidx.compose.ui.text.font.FontWeight.SemiBold
             )
             android.view.inputmethod.EditorInfo.IME_ACTION_DONE -> Text(
-                "Done", fontSize = 12.sp, color = Color.White,
+                "Done", fontSize = 12.sp, color = (if (colors?.meadow == true) Color(0xFFFFA43A) else Color.White),
                 fontWeight = androidx.compose.ui.text.font.FontWeight.SemiBold
             )
             else -> Icon(
                 painter = painterResource(id = R.drawable.ic_enter_key),
                 contentDescription = "Enter",
                 modifier = Modifier.size(26.dp),
-                tint = Color.White
+                tint = (if (colors?.meadow == true) Color(0xFFFFA43A) else Color.White)
             )
         }
     }
