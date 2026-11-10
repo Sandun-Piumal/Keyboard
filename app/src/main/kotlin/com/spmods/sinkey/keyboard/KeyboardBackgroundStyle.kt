@@ -169,7 +169,7 @@ private fun SinKeyLavenderBackground(isDark: Boolean, modifier: Modifier = Modif
         val h = size.height
         drawRect(
             Brush.verticalGradient(
-                if (isDark) listOf(Color(0xFF1C1340), Color(0xFF130C2E), Color(0xFF1E1448))
+                if (isDark) listOf(Color(0xFF0F0C1A), Color(0xFF07050E), Color(0xFF120E1F))
                 else listOf(Color(0xFFEFE9FF), Color(0xFFDCD0FA), Color(0xFFE6DDFC))
             )
         )
