@@ -854,7 +854,7 @@ enum class LedPattern(val key: String, val label: String) {
 /**
  * Themes screen "Backgrounds" section — a built-in, procedurally-drawn
  * (no bundled image assets, so no copyright/licensing concerns) keyboard
- * background: solid, gradient, rainbow, "galaxy", "smoke", or a couple of
+ * background: solid, "galaxy", "smoke", or a couple of
  * soft pastel/cute presets. Purely decorative, drawn behind the normal key
  * rows exactly like the existing "My themes" photo background.
  *
@@ -865,8 +865,6 @@ enum class LedPattern(val key: String, val label: String) {
 enum class BackgroundStyle(val key: String, val label: String) {
     /** No built-in background — original flat colors.bg. */
     NONE("none", "None"),
-    GRADIENT("gradient", "Gradient"),
-    RAINBOW("rainbow", "Rainbow"),
     GALAXY("galaxy", "Galaxy"),
     SMOKE("smoke", "Smoke"),
     /** Glass keys with neon-cyan lettering over a blurred neon-flower / circuit-board photo. */
