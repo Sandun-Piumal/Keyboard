@@ -917,14 +917,10 @@ internal fun KeyboardView(
     val keyOpacity = previewKeyOpacity ?: keyOpacityPref
 
     // SinKey Neon is a dark-surface look — force dark text/icon tinting for it.
-    val neon = backgroundStyle == com.spmods.sinkey.data.BackgroundStyle.SINKEY_NEON &&
-        previewBackgroundBitmap == null && customBackgroundUri == null
-    val lavender = backgroundStyle == com.spmods.sinkey.data.BackgroundStyle.SINKEY_LAVENDER &&
-        previewBackgroundBitmap == null && customBackgroundUri == null
-    val bloom = backgroundStyle == com.spmods.sinkey.data.BackgroundStyle.CYBER_BLOOM &&
-        previewBackgroundBitmap == null && customBackgroundUri == null
-    val meadow = backgroundStyle == com.spmods.sinkey.data.BackgroundStyle.SPRING_MEADOW &&
-        previewBackgroundBitmap == null && customBackgroundUri == null
+    val neon = backgroundStyle == com.spmods.sinkey.data.BackgroundStyle.SINKEY_NEON
+    val lavender = backgroundStyle == com.spmods.sinkey.data.BackgroundStyle.SINKEY_LAVENDER
+    val bloom = backgroundStyle == com.spmods.sinkey.data.BackgroundStyle.CYBER_BLOOM
+    val meadow = backgroundStyle == com.spmods.sinkey.data.BackgroundStyle.SPRING_MEADOW
     @Suppress("NAME_SHADOWING")
     val isDark = (isDark || neon || bloom) && !lavender && !meadow
     val colors = keyboardColors(
@@ -941,6 +937,12 @@ internal fun KeyboardView(
         // still layer on top exactly as before.
         if (materialYouEnabled) base.copy(accent = materialYouAccentColor(context, isDark)) else base
     }.let { c -> if (neon) neonKeyboardColors(c) else if (lavender) lavenderKeyboardColors(c) else if (bloom) bloomKeyboardColors(c) else if (meadow) meadowKeyboardColors(c) else c }
+    .let { c ->
+        // Themes screen "Colors" tints the letter keys. The theme looks above
+        // (Neon/Lavender/Cyber Bloom/Spring Meadow) set their own text colours,
+        // so re-apply the chosen palette on top so it works with every theme.
+        if (keyColorPalette != com.spmods.sinkey.data.KeyColorPalette.DEFAULT) c.copy(keyText = keyColorPalette.accent) else c
+    }
     val screenWidthDp = androidx.compose.ui.platform.LocalConfiguration.current.screenWidthDp
     val keyHeight = stepToKeyHeight(keyboardHeight, screenWidthDp)
     val bottomPadding = if (bottomSpaceEnabled) stepToBottomPadding(bottomSpaceSize, screenWidthDp) else 4.dp
