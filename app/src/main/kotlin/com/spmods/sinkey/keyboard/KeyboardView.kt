@@ -193,6 +193,8 @@ internal data class KeyboardColors(
     val neon: Boolean = false,
     // SinKey Lavender look (BackgroundStyle.SINKEY_LAVENDER): light, white glossy keys.
     val lavender: Boolean = false,
+    // True when SinKey Lavender is shown with the dark-mode variant.
+    val lavenderDark: Boolean = false,
     // Cyber Bloom look (BackgroundStyle.CYBER_BLOOM): dark glass keys, neon-cyan text.
     val bloom: Boolean = false,
     // Spring Meadow look (BackgroundStyle.SPRING_MEADOW): cream glossy keys + wooden keys.
@@ -268,19 +270,33 @@ private fun Modifier.keyEffectDecoration(colors: KeyboardColors, keyShape: Round
     this.neonChrome(colors, keyShape, 0).keyEffectDecorationInner(colors, keyShape)
 
 /** Colours for the SinKey Lavender theme — see BackgroundStyle.SINKEY_LAVENDER. */
-internal fun lavenderKeyboardColors(c: KeyboardColors): KeyboardColors = c.copy(
-    lavender = true,
-    bg = Color.Transparent,
-    keyBg = Color.White.copy(alpha = c.keyOpacity),
-    specialKeyBg = Color(0xFF5B2BEF).copy(alpha = c.keyOpacity),
-    spaceKeyBg = Color.White.copy(alpha = c.keyOpacity),
-    keyText = Color(0xFF1B1245),
-    specialKeyText = Color.White,
-    subText = Color(0xFF6D28D9),
-    spaceKeyText = Color(0xFF3B1D8F),
-    cardBg = Color(0xFFF3EEFF),
-    accent = Color(0xFF7C3AED),
-)
+internal fun lavenderKeyboardColors(c: KeyboardColors, dark: Boolean = false): KeyboardColors =
+    if (dark) c.copy(
+        lavender = true,
+        lavenderDark = true,
+        bg = Color.Transparent,
+        keyBg = Color(0xFF2A2150).copy(alpha = c.keyOpacity),
+        specialKeyBg = Color(0xFF6D3BEF).copy(alpha = c.keyOpacity),
+        spaceKeyBg = Color(0xFF2A2150).copy(alpha = c.keyOpacity),
+        keyText = Color(0xFFEDE7FF),
+        specialKeyText = Color.White,
+        subText = Color(0xFFB79CFF),
+        spaceKeyText = Color(0xFFD6C4FF),
+        cardBg = Color(0xFF1B1440),
+        accent = Color(0xFFA78BFA),
+    ) else c.copy(
+        lavender = true,
+        bg = Color.Transparent,
+        keyBg = Color.White.copy(alpha = c.keyOpacity),
+        specialKeyBg = Color(0xFF5B2BEF).copy(alpha = c.keyOpacity),
+        spaceKeyBg = Color.White.copy(alpha = c.keyOpacity),
+        keyText = Color(0xFF1B1245),
+        specialKeyText = Color.White,
+        subText = Color(0xFF6D28D9),
+        spaceKeyText = Color(0xFF3B1D8F),
+        cardBg = Color(0xFFF3EEFF),
+        accent = Color(0xFF7C3AED),
+    )
 
 /** Colours for the Spring Meadow theme — see BackgroundStyle.SPRING_MEADOW. */
 internal fun meadowKeyboardColors(c: KeyboardColors): KeyboardColors = c.copy(
@@ -406,11 +422,15 @@ private fun Modifier.neonChrome(colors: KeyboardColors?, shape: androidx.compose
     }
     if (colors.lavender) {
         val lfill = when (role) {
-            0 -> androidx.compose.ui.graphics.Brush.verticalGradient(listOf(Color(0xFFFFFFFF), Color(0xFFF1EAFF)))
+            0 -> if (colors.lavenderDark)
+                androidx.compose.ui.graphics.Brush.verticalGradient(listOf(Color(0xFF34286A), Color(0xFF211847)))
+            else androidx.compose.ui.graphics.Brush.verticalGradient(listOf(Color(0xFFFFFFFF), Color(0xFFF1EAFF)))
             else -> androidx.compose.ui.graphics.Brush.linearGradient(listOf(Color(0xFF9B6DFF), Color(0xFF5B2BEF), Color(0xFF3A1AA8)))
         }
         val lborder = androidx.compose.ui.graphics.Brush.linearGradient(
-            if (role == 0) listOf(Color(0xFFFFFFFF), Color(0xFFC9B8F3)) else listOf(Color(0xFFD6C4FF), Color(0xFF6D3BEF))
+            if (role == 0) {
+                if (colors.lavenderDark) listOf(Color(0xFF7A66D6), Color(0xFF3A2D7A)) else listOf(Color(0xFFFFFFFF), Color(0xFFC9B8F3))
+            } else listOf(Color(0xFFD6C4FF), Color(0xFF6D3BEF))
         )
         return this.background(lfill).border(1.2.dp, lborder, shape)
     }
@@ -937,7 +957,8 @@ internal fun KeyboardView(
     val bloom = backgroundStyle == com.spmods.sinkey.data.BackgroundStyle.CYBER_BLOOM
     val meadow = backgroundStyle == com.spmods.sinkey.data.BackgroundStyle.SPRING_MEADOW
     @Suppress("NAME_SHADOWING")
-    val isDark = (isDark || neon || bloom) && !lavender && !meadow
+    // Lavender follows the system/app dark mode (light + dark variants).
+    val isDark = (isDark || neon || bloom) && !meadow
     val colors = keyboardColors(
         showKeyBorders = effectiveShowKeyBorders,
         isDark = isDark,
@@ -951,7 +972,7 @@ internal fun KeyboardView(
         // KeyColorPalette — purely a color swap, effects/backgrounds
         // still layer on top exactly as before.
         if (materialYouEnabled) base.copy(accent = materialYouAccentColor(context, isDark)) else base
-    }.let { c -> if (neon) neonKeyboardColors(c) else if (lavender) lavenderKeyboardColors(c) else if (bloom) bloomKeyboardColors(c) else if (meadow) meadowKeyboardColors(c) else c }
+    }.let { c -> if (neon) neonKeyboardColors(c) else if (lavender) lavenderKeyboardColors(c, isDark) else if (bloom) bloomKeyboardColors(c) else if (meadow) meadowKeyboardColors(c) else c }
     .let { c ->
         // Themes screen "Colors" tints the letter keys. The theme looks above
         // (Neon/Lavender/Cyber Bloom/Spring Meadow) set their own text colours,
@@ -2715,7 +2736,7 @@ private fun AppsMicBar(
             // Pure white on dark theme, pure black on light theme — see the
             // doc comment at this Row's icon Icon() calls for why this
             // isn't colors.subText.
-            val toolIconTint = if (colors.lavender) Color(0xFF4C1D95) else if (colors.bloom) Color(0xFF4FF3E0) else if (colors.meadow) Color(0xFF4C7A3B) else if (isDark) Color.White else Color.Black
+            val toolIconTint = if (colors.lavender) (if (colors.lavenderDark) Color(0xFFD6C4FF) else Color(0xFF4C1D95)) else if (colors.bloom) Color(0xFF4FF3E0) else if (colors.meadow) Color(0xFF4C7A3B) else if (isDark) Color.White else Color.Black
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -2730,8 +2751,10 @@ private fun AppsMicBar(
                         else if (colors.lavender) m
                             .padding(horizontal = 4.dp, vertical = 2.dp)
                             .clip(RoundedCornerShape(24.dp))
-                            .background(androidx.compose.ui.graphics.Brush.verticalGradient(listOf(Color(0xCCFFFFFF), Color(0x66E6DCFB))))
-                            .border(1.2.dp, androidx.compose.ui.graphics.Brush.verticalGradient(listOf(Color.White, Color(0xFFC9B8F3))), RoundedCornerShape(24.dp))
+                            .background(androidx.compose.ui.graphics.Brush.verticalGradient(
+                                if (colors.lavenderDark) listOf(Color(0x662A2150), Color(0x441B1440)) else listOf(Color(0xCCFFFFFF), Color(0x66E6DCFB))))
+                            .border(1.2.dp, androidx.compose.ui.graphics.Brush.verticalGradient(
+                                if (colors.lavenderDark) listOf(Color(0xFF6D5BC9), Color(0xFF3A2D7A)) else listOf(Color.White, Color(0xFFC9B8F3))), RoundedCornerShape(24.dp))
                         else m
                     }
                     .padding(horizontal = 8.dp),
@@ -2945,8 +2968,10 @@ private fun EmojiRow(emojis: List<String>, colors: KeyboardColors, onKey: (Strin
         modifier = Modifier.fillMaxWidth().background(colors.bg).padding(vertical = 2.dp)
             .let { m ->
                 if (colors.lavender) m.padding(horizontal = 4.dp).clip(RoundedCornerShape(20.dp))
-                    .background(androidx.compose.ui.graphics.Brush.verticalGradient(listOf(Color(0x99FFFFFF), Color(0x55E6DCFB))))
-                    .border(1.dp, androidx.compose.ui.graphics.Brush.verticalGradient(listOf(Color.White, Color(0xFFC9B8F3))), RoundedCornerShape(20.dp))
+                    .background(androidx.compose.ui.graphics.Brush.verticalGradient(
+                        if (colors.lavenderDark) listOf(Color(0x662A2150), Color(0x441B1440)) else listOf(Color(0x99FFFFFF), Color(0x55E6DCFB))))
+                    .border(1.dp, androidx.compose.ui.graphics.Brush.verticalGradient(
+                        if (colors.lavenderDark) listOf(Color(0xFF6D5BC9), Color(0xFF3A2D7A)) else listOf(Color.White, Color(0xFFC9B8F3))), RoundedCornerShape(20.dp))
                 else if (colors.bloom) m.padding(horizontal = 4.dp).clip(RoundedCornerShape(14.dp))
                     .background(Color(0x990A1230))
                     .border(1.dp, Color(0x553E4E8F), RoundedCornerShape(14.dp))
@@ -4356,7 +4381,7 @@ private fun RowScope.SpaceKey(
     ) {
         if (colors.lavender) {
             Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                Text("♛", fontSize = 14.sp, color = Color(0xFF7C3AED))
+                Text("♛", fontSize = 14.sp, color = if (colors.lavenderDark) Color(0xFFB79CFF) else Color(0xFF7C3AED))
                 Text(
                     "Sinkey board",
                     fontSize = 19.sp,
