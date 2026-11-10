@@ -275,14 +275,14 @@ internal fun lavenderKeyboardColors(c: KeyboardColors, dark: Boolean = false): K
         lavender = true,
         lavenderDark = true,
         bg = Color.Transparent,
-        keyBg = Color(0xFF2A2150).copy(alpha = c.keyOpacity),
-        specialKeyBg = Color(0xFF6D3BEF).copy(alpha = c.keyOpacity),
-        spaceKeyBg = Color(0xFF2A2150).copy(alpha = c.keyOpacity),
+        keyBg = Color(0xFF1C1828).copy(alpha = c.keyOpacity),
+        specialKeyBg = Color(0xFF5B2BEF).copy(alpha = c.keyOpacity),
+        spaceKeyBg = Color(0xFF1C1828).copy(alpha = c.keyOpacity),
         keyText = Color(0xFFEDE7FF),
         specialKeyText = Color.White,
         subText = Color(0xFFB79CFF),
         spaceKeyText = Color(0xFFD6C4FF),
-        cardBg = Color(0xFF1B1440),
+        cardBg = Color(0xFF14111F),
         accent = Color(0xFFA78BFA),
     ) else c.copy(
         lavender = true,
@@ -423,13 +423,13 @@ private fun Modifier.neonChrome(colors: KeyboardColors?, shape: androidx.compose
     if (colors.lavender) {
         val lfill = when (role) {
             0 -> if (colors.lavenderDark)
-                androidx.compose.ui.graphics.Brush.verticalGradient(listOf(Color(0xFF34286A), Color(0xFF211847)))
+                androidx.compose.ui.graphics.Brush.verticalGradient(listOf(Color(0xFF26223A), Color(0xFF14111F)))
             else androidx.compose.ui.graphics.Brush.verticalGradient(listOf(Color(0xFFFFFFFF), Color(0xFFF1EAFF)))
             else -> androidx.compose.ui.graphics.Brush.linearGradient(listOf(Color(0xFF9B6DFF), Color(0xFF5B2BEF), Color(0xFF3A1AA8)))
         }
         val lborder = androidx.compose.ui.graphics.Brush.linearGradient(
             if (role == 0) {
-                if (colors.lavenderDark) listOf(Color(0xFF7A66D6), Color(0xFF3A2D7A)) else listOf(Color(0xFFFFFFFF), Color(0xFFC9B8F3))
+                if (colors.lavenderDark) listOf(Color(0xFF58527E), Color(0xFF2A2640)) else listOf(Color(0xFFFFFFFF), Color(0xFFC9B8F3))
             } else listOf(Color(0xFFD6C4FF), Color(0xFF6D3BEF))
         )
         return this.background(lfill).border(1.2.dp, lborder, shape)
@@ -2752,9 +2752,9 @@ private fun AppsMicBar(
                             .padding(horizontal = 4.dp, vertical = 2.dp)
                             .clip(RoundedCornerShape(24.dp))
                             .background(androidx.compose.ui.graphics.Brush.verticalGradient(
-                                if (colors.lavenderDark) listOf(Color(0x662A2150), Color(0x441B1440)) else listOf(Color(0xCCFFFFFF), Color(0x66E6DCFB))))
+                                if (colors.lavenderDark) listOf(Color(0x66181522), Color(0x440E0C16)) else listOf(Color(0xCCFFFFFF), Color(0x66E6DCFB))))
                             .border(1.2.dp, androidx.compose.ui.graphics.Brush.verticalGradient(
-                                if (colors.lavenderDark) listOf(Color(0xFF6D5BC9), Color(0xFF3A2D7A)) else listOf(Color.White, Color(0xFFC9B8F3))), RoundedCornerShape(24.dp))
+                                if (colors.lavenderDark) listOf(Color(0xFF4A4570), Color(0xFF2A2640)) else listOf(Color.White, Color(0xFFC9B8F3))), RoundedCornerShape(24.dp))
                         else m
                     }
                     .padding(horizontal = 8.dp),
@@ -2969,9 +2969,9 @@ private fun EmojiRow(emojis: List<String>, colors: KeyboardColors, onKey: (Strin
             .let { m ->
                 if (colors.lavender) m.padding(horizontal = 4.dp).clip(RoundedCornerShape(20.dp))
                     .background(androidx.compose.ui.graphics.Brush.verticalGradient(
-                        if (colors.lavenderDark) listOf(Color(0x662A2150), Color(0x441B1440)) else listOf(Color(0x99FFFFFF), Color(0x55E6DCFB))))
+                        if (colors.lavenderDark) listOf(Color(0x66181522), Color(0x440E0C16)) else listOf(Color(0x99FFFFFF), Color(0x55E6DCFB))))
                     .border(1.dp, androidx.compose.ui.graphics.Brush.verticalGradient(
-                        if (colors.lavenderDark) listOf(Color(0xFF6D5BC9), Color(0xFF3A2D7A)) else listOf(Color.White, Color(0xFFC9B8F3))), RoundedCornerShape(20.dp))
+                        if (colors.lavenderDark) listOf(Color(0xFF4A4570), Color(0xFF2A2640)) else listOf(Color.White, Color(0xFFC9B8F3))), RoundedCornerShape(20.dp))
                 else if (colors.bloom) m.padding(horizontal = 4.dp).clip(RoundedCornerShape(14.dp))
                     .background(Color(0x990A1230))
                     .border(1.dp, Color(0x553E4E8F), RoundedCornerShape(14.dp))
