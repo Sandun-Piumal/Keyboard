@@ -36,12 +36,6 @@ import kotlin.random.Random
 fun KeyboardBuiltInBackground(style: BackgroundStyle, isDark: Boolean, modifier: Modifier = Modifier) {
     if (style == BackgroundStyle.NONE) return
     when (style) {
-        BackgroundStyle.GRADIENT -> GradientBackground(
-            colors = if (isDark) listOf(Color(0xFF1B1033), Color(0xFF2C1250), Color(0xFF120826))
-                     else listOf(Color(0xFFDCEBFF), Color(0xFFEAF2FF), Color(0xFFFDEFF9)),
-            modifier = modifier
-        )
-        BackgroundStyle.RAINBOW -> RainbowBackground(modifier)
         BackgroundStyle.GALAXY -> GalaxyBackground(modifier)
         BackgroundStyle.SMOKE -> SmokeBackground(isDark, modifier)
         BackgroundStyle.CYBER_BLOOM -> CyberBloomBackground(modifier)
@@ -49,43 +43,6 @@ fun KeyboardBuiltInBackground(style: BackgroundStyle, isDark: Boolean, modifier:
         BackgroundStyle.SINKEY_LAVENDER -> SinKeyLavenderBackground(modifier)
         BackgroundStyle.SINKEY_NEON -> SinKeyNeonBackground(modifier)
         BackgroundStyle.NONE -> Unit
-    }
-}
-
-@Composable
-private fun GradientBackground(colors: List<Color>, modifier: Modifier = Modifier) {
-    Canvas(modifier = modifier) {
-        drawRect(
-            brush = Brush.linearGradient(
-                colors = colors,
-                start = Offset(0f, 0f),
-                end = Offset(size.width, size.height)
-            )
-        )
-    }
-}
-
-/** Slowly-shifting rainbow diagonal gradient — a continuous hue sweep. */
-@Composable
-private fun RainbowBackground(modifier: Modifier = Modifier) {
-    val infinite = rememberInfiniteTransition(label = "rainbowBg")
-    val shift by infinite.animateFloat(
-        initialValue = 0f,
-        targetValue = 360f,
-        animationSpec = infiniteRepeatable(tween(8000, easing = LinearEasing)),
-        label = "rainbowShift"
-    )
-    val hues = remember(shift) {
-        (0..5).map { i -> Color.hsv((shift + i * 60f) % 360f, 0.55f, 0.95f) }
-    }
-    Canvas(modifier = modifier) {
-        drawRect(
-            brush = Brush.linearGradient(
-                colors = hues,
-                start = Offset(0f, 0f),
-                end = Offset(size.width, size.height * 0.4f)
-            )
-        )
     }
 }
 
