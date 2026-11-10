@@ -175,7 +175,7 @@ fun ThemesScreen(
         EffectsGrid(p, selected = keyEffect, onSelect = onKeyEffectChange, isDark = effectsIsDark)
 
         SectionHeader(p, "Backgrounds")
-        SectionHint(p, "Gradient, rainbow, galaxy, smoke and more — used when no custom photo is set above.")
+        SectionHint(p, "Pick a theme. To put your own photo behind its keys, use \"My themes\" at the top.")
         BackgroundsGrid(p, selected = backgroundStyle, onSelect = onBackgroundStyleChange)
 
         SectionHeader(p, "Material You")
@@ -930,3 +930,4 @@ private fun LedIdleDimmingRow(p: HomePalette, enabled: Boolean, onToggle: (Boole
         GlassSwitch(p, enabled, onToggle)
     }
 }
+
