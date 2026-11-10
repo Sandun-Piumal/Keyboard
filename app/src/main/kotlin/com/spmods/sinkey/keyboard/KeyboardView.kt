@@ -197,6 +197,9 @@ internal data class KeyboardColors(
     val bloom: Boolean = false,
     // Spring Meadow look (BackgroundStyle.SPRING_MEADOW): cream glossy keys + wooden keys.
     val meadow: Boolean = false,
+    // Non-null when a "Colors" palette (not Default) is chosen: special keys
+    // (shift/backspace/?123/enter...) are filled with this colour too.
+    val paletteAccent: Color? = null,
 )
 
 @Composable
@@ -354,6 +357,18 @@ internal fun neonKeyboardColors(c: KeyboardColors): KeyboardColors {
  */
 private fun Modifier.neonChrome(colors: KeyboardColors?, shape: androidx.compose.ui.graphics.Shape, role: Int = 0): Modifier {
     if (colors == null || !(colors.neon || colors.lavender || colors.bloom || colors.meadow)) return this
+    // A chosen "Colors" palette recolours every special key (roles 1 function,
+    // 2 enter, 3 backspace, 5 shift) in all themes; letter keys/space keep the theme look.
+    val pa = colors.paletteAccent
+    if (pa != null && (role == 1 || role == 2 || role == 3 || role == 5)) {
+        val top = pa.copy(alpha = 0.95f)
+        val bottom = Color(
+            red = pa.red * 0.7f, green = pa.green * 0.7f, blue = pa.blue * 0.7f, alpha = 0.95f
+        )
+        return this
+            .background(androidx.compose.ui.graphics.Brush.verticalGradient(listOf(top, bottom)), shape)
+            .border(1.2.dp, pa.copy(alpha = 1f), shape)
+    }
     if (colors.meadow) {
         return when (role) {
             2, 3 -> this.woodGrain(Color(0xFF6B4226), Color(0x55331A0A), Color(0xFF3E2413), shape)
@@ -941,7 +956,18 @@ internal fun KeyboardView(
         // Themes screen "Colors" tints the letter keys. The theme looks above
         // (Neon/Lavender/Cyber Bloom/Spring Meadow) set their own text colours,
         // so re-apply the chosen palette on top so it works with every theme.
-        if (keyColorPalette != com.spmods.sinkey.data.KeyColorPalette.DEFAULT) c.copy(keyText = keyColorPalette.accent) else c
+        if (keyColorPalette != com.spmods.sinkey.data.KeyColorPalette.DEFAULT) {
+            val a = keyColorPalette.accent
+            val lum = 0.299f * a.red + 0.587f * a.green + 0.114f * a.blue
+            c.copy(
+                keyText = a,
+                // Special keys take the palette colour as their background,
+                // with an icon/text colour that stays readable on top of it.
+                specialKeyBg = a.copy(alpha = 0.9f * c.keyOpacity),
+                specialKeyText = if (lum > 0.6f) Color(0xFF1B1B1B) else Color.White,
+                paletteAccent = a,
+            )
+        } else c
     }
     val screenWidthDp = androidx.compose.ui.platform.LocalConfiguration.current.screenWidthDp
     val keyHeight = stepToKeyHeight(keyboardHeight, screenWidthDp)
@@ -4113,7 +4139,7 @@ private fun RowScope.BackspaceKey(
             painter = painterResource(id = R.drawable.ic_backspace),
             contentDescription = "Backspace",
             modifier = Modifier.size(26.dp),
-            tint = if (colors.meadow) Color(0xFFFFA43A) else colors.specialKeyText
+            tint = if (colors.meadow && colors.paletteAccent == null) Color(0xFFFFA43A) else colors.specialKeyText
         )
     }
 }
@@ -4464,29 +4490,29 @@ private fun RowScope.EnterKey(
                 imageVector = Icons.Filled.Search,
                 contentDescription = "Search",
                 modifier = Modifier.size(26.dp),
-                tint = (if (colors?.meadow == true) Color(0xFFFFA43A) else Color.White)
+                tint = (if (colors?.paletteAccent != null) (colors?.specialKeyText ?: Color.White) else if (colors?.meadow == true) Color(0xFFFFA43A) else Color.White)
             )
             android.view.inputmethod.EditorInfo.IME_ACTION_SEND -> Text(
-                "Send", fontSize = 12.sp, color = (if (colors?.meadow == true) Color(0xFFFFA43A) else Color.White),
+                "Send", fontSize = 12.sp, color = (if (colors?.paletteAccent != null) (colors?.specialKeyText ?: Color.White) else if (colors?.meadow == true) Color(0xFFFFA43A) else Color.White),
                 fontWeight = androidx.compose.ui.text.font.FontWeight.SemiBold
             )
             android.view.inputmethod.EditorInfo.IME_ACTION_GO -> Text(
-                "Go", fontSize = 12.sp, color = (if (colors?.meadow == true) Color(0xFFFFA43A) else Color.White),
+                "Go", fontSize = 12.sp, color = (if (colors?.paletteAccent != null) (colors?.specialKeyText ?: Color.White) else if (colors?.meadow == true) Color(0xFFFFA43A) else Color.White),
                 fontWeight = androidx.compose.ui.text.font.FontWeight.SemiBold
             )
             android.view.inputmethod.EditorInfo.IME_ACTION_NEXT -> Text(
-                "Next", fontSize = 12.sp, color = (if (colors?.meadow == true) Color(0xFFFFA43A) else Color.White),
+                "Next", fontSize = 12.sp, color = (if (colors?.paletteAccent != null) (colors?.specialKeyText ?: Color.White) else if (colors?.meadow == true) Color(0xFFFFA43A) else Color.White),
                 fontWeight = androidx.compose.ui.text.font.FontWeight.SemiBold
             )
             android.view.inputmethod.EditorInfo.IME_ACTION_DONE -> Text(
-                "Done", fontSize = 12.sp, color = (if (colors?.meadow == true) Color(0xFFFFA43A) else Color.White),
+                "Done", fontSize = 12.sp, color = (if (colors?.paletteAccent != null) (colors?.specialKeyText ?: Color.White) else if (colors?.meadow == true) Color(0xFFFFA43A) else Color.White),
                 fontWeight = androidx.compose.ui.text.font.FontWeight.SemiBold
             )
             else -> Icon(
                 painter = painterResource(id = R.drawable.ic_enter_key),
                 contentDescription = "Enter",
                 modifier = Modifier.size(26.dp),
-                tint = (if (colors?.meadow == true) Color(0xFFFFA43A) else Color.White)
+                tint = (if (colors?.paletteAccent != null) (colors?.specialKeyText ?: Color.White) else if (colors?.meadow == true) Color(0xFFFFA43A) else Color.White)
             )
         }
     }
