@@ -40,7 +40,7 @@ fun KeyboardBuiltInBackground(style: BackgroundStyle, isDark: Boolean, modifier:
         BackgroundStyle.SMOKE -> SmokeBackground(isDark, modifier)
         BackgroundStyle.CYBER_BLOOM -> CyberBloomBackground(modifier)
         BackgroundStyle.SPRING_MEADOW -> PhotoBackground(com.spmods.sinkey.R.drawable.bg_spring_meadow, modifier)
-        BackgroundStyle.SINKEY_LAVENDER -> SinKeyLavenderBackground(modifier)
+        BackgroundStyle.SINKEY_LAVENDER -> SinKeyLavenderBackground(isDark, modifier)
         BackgroundStyle.SINKEY_NEON -> SinKeyNeonBackground(modifier)
         BackgroundStyle.NONE -> Unit
     }
@@ -163,11 +163,16 @@ private fun SinKeyNeonBackground(modifier: Modifier = Modifier) {
  * bottom-left corners and a few sparkles — SinKey Lavender keyboard theme.
  */
 @Composable
-private fun SinKeyLavenderBackground(modifier: Modifier = Modifier) {
+private fun SinKeyLavenderBackground(isDark: Boolean, modifier: Modifier = Modifier) {
     Canvas(modifier = modifier) {
         val w = size.width
         val h = size.height
-        drawRect(Brush.verticalGradient(listOf(Color(0xFFEFE9FF), Color(0xFFDCD0FA), Color(0xFFE6DDFC))))
+        drawRect(
+            Brush.verticalGradient(
+                if (isDark) listOf(Color(0xFF1C1340), Color(0xFF130C2E), Color(0xFF1E1448))
+                else listOf(Color(0xFFEFE9FF), Color(0xFFDCD0FA), Color(0xFFE6DDFC))
+            )
+        )
         fun stripe(x0: Float, x1: Float, x2: Float, x3: Float, y0: Float, y1: Float, a: Float) {
             val p = Path().apply {
                 moveTo(w * x0, h * y0); lineTo(w * x1, h * y0); lineTo(w * x3, h * y1); lineTo(w * x2, h * y1); close()
@@ -189,7 +194,7 @@ private fun SinKeyLavenderBackground(modifier: Modifier = Modifier) {
                 quadraticBezierTo(cx, cy, cx, cy + r); quadraticBezierTo(cx, cy, cx - r, cy)
                 quadraticBezierTo(cx, cy, cx, cy - r); close()
             }
-            drawPath(p, Color(0xFF7C3AED).copy(alpha = 0.7f))
+            drawPath(p, (if (isDark) Color(0xFFB79CFF) else Color(0xFF7C3AED)).copy(alpha = 0.7f))
         }
         sparkle(w * 0.95f, h * 0.55f, h * 0.03f)
         sparkle(w * 0.05f, h * 0.45f, h * 0.02f)
