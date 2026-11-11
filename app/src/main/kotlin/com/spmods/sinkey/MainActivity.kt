@@ -267,13 +267,8 @@ private fun SinKeyApp(prefs: PreferencesManager, initialTab: Tab = Tab.HOME) {
     val customBackgroundUri by prefs.customBackgroundUri.collectAsState(initial = null)
     val customBackgroundBlur by prefs.customBackgroundBlur.collectAsState(initial = 0f)
     val customBackgroundBrightness by prefs.customBackgroundBrightness.collectAsState(initial = 0.5f)
-    val backgroundStyle by prefs.backgroundStyle.collectAsState(initial = com.spmods.sinkey.data.BackgroundStyle.NONE)
-    val materialYouEnabled by prefs.materialYouEnabled.collectAsState(initial = false)
+    val backgroundStyle by prefs.backgroundStyle.collectAsState(initial = com.spmods.sinkey.data.BackgroundStyle.SINKEY_LAVENDER)
     val typingAnimation by prefs.typingAnimation.collectAsState(initial = com.spmods.sinkey.data.TypingAnimation.NONE)
-    val typingAnimationEmoji by prefs.typingAnimationEmoji.collectAsState(initial = "✨")
-    val typingAnimationImageUri by prefs.typingAnimationImageUri.collectAsState(initial = null)
-    val ledPattern by prefs.ledPattern.collectAsState(initial = com.spmods.sinkey.data.LedPattern.NONE)
-    val ledIdleDimming by prefs.ledIdleDimming.collectAsState(initial = true)
 
     // ── "My themes" custom background: photo picker + preview decode ──────
     val context = LocalContext.current
@@ -370,39 +365,6 @@ private fun SinKeyApp(prefs: PreferencesManager, initialTab: Tab = Tab.HOME) {
                 photoEditStep = PhotoEditStep.CROP
             }
         }
-    }
-
-    // ── "Typing Animation" DIY custom image: same picker/preview pattern
-    // as the "My themes" background above, kept as a fully separate
-    // Uri/preview pair since the two features are independent (a user can
-    // have a custom background photo AND a custom typing-animation image
-    // picked from two different photos).
-    var typingAnimationImagePreview by remember { mutableStateOf<Bitmap?>(null) }
-    LaunchedEffect(typingAnimationImageUri) {
-        val uriString = typingAnimationImageUri
-        typingAnimationImagePreview = if (uriString != null) {
-            withContext(Dispatchers.IO) {
-                runCatching {
-                    context.contentResolver.openInputStream(Uri.parse(uriString))?.use {
-                        BitmapFactory.decodeStream(it)
-                    }
-                }.getOrNull()
-            }
-        } else {
-            null
-        }
-    }
-    val pickTypingAnimationImageLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.PickVisualMedia()
-    ) { uri: Uri? ->
-        if (uri == null) return@rememberLauncherForActivityResult
-        runCatching {
-            context.contentResolver.takePersistableUriPermission(
-                uri,
-                android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION
-            )
-        }
-        scope.launch { prefs.setTypingAnimationImageUri(uri.toString()) }
     }
 
     // ── Back press priority (highest → lowest) ───────────────────────────────
@@ -867,26 +829,8 @@ private fun SinKeyApp(prefs: PreferencesManager, initialTab: Tab = Tab.HOME) {
                         },
                         backgroundStyle = backgroundStyle,
                         onBackgroundStyleChange = { style -> scope.launch { prefs.setBackgroundStyle(style) } },
-                        materialYouEnabled = materialYouEnabled,
-                        onMaterialYouEnabledChange = { enabled -> scope.launch { prefs.setMaterialYouEnabled(enabled) } },
-                        materialYouAvailable = android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.S,
                         typingAnimation = typingAnimation,
-                        onTypingAnimationChange = { anim -> scope.launch { prefs.setTypingAnimation(anim) } },
-                        typingAnimationEmoji = typingAnimationEmoji,
-                        onTypingAnimationEmojiChange = { emoji -> scope.launch { prefs.setTypingAnimationEmoji(emoji) } },
-                        typingAnimationImagePreview = typingAnimationImagePreview,
-                        onPickTypingAnimationImage = {
-                            pickTypingAnimationImageLauncher.launch(
-                                androidx.activity.result.PickVisualMediaRequest(
-                                    ActivityResultContracts.PickVisualMedia.ImageOnly
-                                )
-                            )
-                        },
-                        onClearTypingAnimationImage = { scope.launch { prefs.setTypingAnimationImageUri(null) } },
-                        ledPattern = ledPattern,
-                        onLedPatternChange = { pattern -> scope.launch { prefs.setLedPattern(pattern) } },
-                        ledIdleDimming = ledIdleDimming,
-                        onLedIdleDimmingChange = { enabled -> scope.launch { prefs.setLedIdleDimming(enabled) } }
+                        onTypingAnimationChange = { anim -> scope.launch { prefs.setTypingAnimation(anim) } }
                     )
                     tab == Tab.SETTINGS -> SettingsScreen(
                         defaultLanguage = defaultLanguage,
