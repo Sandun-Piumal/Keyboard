@@ -2171,11 +2171,10 @@ class SinKeyInputMethodService : InputMethodService() {
      */
     private fun renderBuffer(): String {
         if (currentLanguage.value == "mix") return wordBuffer.toString()
-        val raw = wordBuffer.toString()
-        if (raw.length <= 2) {
-            com.spmods.sinkey.keyboard.SinhalaCandidateMap.topCandidateFor(raw)?.let { return it }
-        }
-        return SinhalaTransliterator.transliterate(raw)
+        // Always the map-driven transliteration, so what shows while typing is
+        // exactly what gets committed: a bare consonant ("k") shows ක් (hal)
+        // straight away, no need to press space first.
+        return SinhalaTransliterator.transliterate(wordBuffer.toString())
     }
 
     /**
