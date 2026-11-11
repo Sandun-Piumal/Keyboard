@@ -225,8 +225,7 @@ object WijesekaraLayout {
  * Latin → Sinhala transliterator.
  *
  * Layer 1 — the supplied phonetic map (Map.zip → [SinhalaPhoneticMap]),
- * case-sensitive, longest match first, used as given except for the
- * adjustments listed on [phoneticMap] (d-family, ru/ruu).
+ * case-sensitive, longest match first, used exactly as given.
  *
  * Layer 2 — the standard Singlish completion rules, used ONLY where the
  * map has no entry (the same structure the common Singlish→Sinhala
@@ -252,60 +251,10 @@ object SinhalaTransliterator {
     private const val YANSAYA = "\u0DCA\u200D\u0DBA"       // ්‍ය
     private const val ANUSVARA = "\u0D82"                    // ං
 
-    /** Entries added on top of the supplied map (none of these keys exist in it). */
-    private val extras = mapOf(
-        "ae" to "\u0D87",   // ඇ
-        "aee" to "\u0D88",  // ඈ
-        "x" to "\u0D82",    // ං
-        "zn" to "\u0D82",   // ං
-        "H" to "\u0D83"     // ඃ
-    )
+    /** The supplied map, exactly as given (see [SinhalaPhoneticMap]); no overrides or extra entries. */
+    private val phoneticMap: Map<String, String> get() = SinhalaPhoneticMap.entries
 
-    /**
-     * The supplied map with the practical adjustments agreed for typing:
-     *  - d-family: d -> ද, dh -> ධ, D -> ඩ, Dh -> ඪ  (ද is the commonest "d";
-     *    the file's d -> ඩ made "gedara" come out ගෙඩර)
-     *  - ru / ruu -> රු / රූ  (the file lists both ඍ and රු; ඍ/ඎ are Ru / Ruu)
- *  - ඳ ඹ ඟ: nda/mba/nga -> nnda/mmba/nnga (so plain nd/mb/ng are two letters)
-     * Everything else is the file, untouched.
-     */
-    private val phoneticMap: Map<String, String> by lazy {
-        val m = HashMap<String, String>(SinhalaPhoneticMap.entries)
-        for ((k, v) in SinhalaPhoneticMap.entries) {
-            val first = v.firstOrNull() ?: continue
-            val swapped: Char = when {
-                k.startsWith("dh") && first == '\u0DAF' -> '\u0DB0'   // ද -> ධ
-                k.startsWith("Dh") && first == '\u0DB0' -> '\u0DAA'   // ධ -> ඪ
-                k.startsWith("d") && !k.startsWith("dh") && first == '\u0DA9' -> '\u0DAF'   // ඩ -> ද
-                k.startsWith("D") && !k.startsWith("Dh") && first == '\u0DAA' -> '\u0DA9'   // ඪ -> ඩ
-                else -> continue
-            }
-            m[k] = swapped + v.substring(1)
-        }
-        // prenasalised letters ඳ ඹ ඟ are typed with the nasal doubled (nnda, mmba, nnga);
-        // plain nd / mb / ng are then just two consonants (sandesaya, sambandha, sangeetha)
-        for ((k, v) in SinhalaPhoneticMap.entries) {
-            val first = v.firstOrNull() ?: continue
-            val doubled: String = when {
-                k.startsWith("nd") && first == '\u0DB3' -> "n$k"
-                k.startsWith("mb") && first == '\u0DB9' -> "m$k"
-                k.startsWith("ng") && first == '\u0D9F' -> "n$k"
-                else -> continue
-            }
-            m.remove(k)
-            m[doubled] = v
-        }
-        m["ru"] = "\u0DBB\u0DD4"; m["ruu"] = "\u0DBB\u0DD6"
-        m["Ru"] = "\u0D8D"; m["Ruu"] = "\u0D8E"
-        m
-    }
-
-    private val literal: Map<String, String> by lazy {
-        val m = HashMap<String, String>(1024)
-        m.putAll(extras)
-        m.putAll(phoneticMap)                    // the (adjusted) file always wins
-        m
-    }
+    private val literal: Map<String, String> get() = SinhalaPhoneticMap.entries
     private val literalMax: Int by lazy { literal.keys.maxOf { it.length } }
 
     /** Consonant stems derived from the map itself: "k" for ka→ක, "ny" for nya→ඤ … */
