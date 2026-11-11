@@ -155,6 +155,20 @@ val sinhalaKeyHints: Map<Char, String> = mapOf(
     'n' to "න", 'm' to "ම"
 )
 
+/**
+ * Sinhala hint glyph for a key. With Shift on, shows what the shifted
+ * (uppercase) key actually types according to the phonetic map
+ * (N → ණ, T → ඨ, A → ඇ, R → ඍ …); keys whose uppercase has no map entry
+ * keep their normal hint.
+ */
+fun sinhalaKeyHintFor(c: Char, shift: Boolean): String? {
+    val base = sinhalaKeyHints[c.lowercaseChar()]
+    if (!shift) return base
+    val up = c.uppercaseChar().toString()
+    val m = SinhalaPhoneticMap.entries
+    return m[up] ?: m[up + "a"] ?: base
+}
+
 /** Standard English QWERTY rows shown by the keyboard view. */
 val EnglishRows: List<List<String>> = listOf(
     listOf("q", "w", "e", "r", "t", "y", "u", "i", "o", "p"),
