@@ -1998,7 +1998,7 @@ internal fun MainKeyboardKeys(
             )
             EnglishRows[2].forEach { k ->
                 val display = if (shift) k.uppercase() else k
-                val hint = if (showSinhalaHints) sinhalaKeyHints[k.lowercase().firstOrNull() ?: ' '] else null
+                val hint = if (showSinhalaHints) sinhalaKeyHintFor(k.lowercase().firstOrNull() ?: ' ', shift) else null
                 // FIX #5: Reset shift after each letter (one-shot shift behaviour).
                 LetterKey(
                     label = display, weight = 1f, keyHeight = keyHeight, colors = colors, keyShape = keyShape,
@@ -3105,7 +3105,7 @@ private fun NumberedKeyRow(
         keys.forEachIndexed { index, k ->
             val display = if (shift) k.uppercase() else k
             val num = numbers.getOrNull(index) ?: ""
-            val hint = if (showSinhalaHints) sinhalaKeyHints[k.lowercase().firstOrNull() ?: ' '] else null
+            val hint = if (showSinhalaHints) sinhalaKeyHintFor(k.lowercase().firstOrNull() ?: ' ', shift) else null
             NumberedLetterKey(
                 label = display, number = num, weight = 1f,
                 keyHeight = keyHeight, colors = colors, keyShape = keyShape,
@@ -3139,7 +3139,7 @@ private fun KeyRow(
         Box(modifier = Modifier.weight(0.5f))
         keys.forEach { k ->
             val display = if (shift) k.uppercase() else k
-            val hint = if (showSinhalaHints) sinhalaKeyHints[k.lowercase().firstOrNull() ?: ' '] else null
+            val hint = if (showSinhalaHints) sinhalaKeyHintFor(k.lowercase().firstOrNull() ?: ' ', shift) else null
             LetterKey(
                 label = display, weight = 1f, keyHeight = keyHeight, colors = colors, keyShape = keyShape,
                 onPositioned = onKeyPositioned?.let { cb -> { coords: androidx.compose.ui.layout.LayoutCoordinates -> cb(k.lowercase().firstOrNull() ?: ' ', coords) } },
