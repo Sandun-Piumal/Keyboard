@@ -38,7 +38,6 @@ import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.net.Uri
 import androidx.compose.runtime.State
-import com.spmods.sinkey.data.LedPattern
 import com.spmods.sinkey.data.TypingAnimation
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
@@ -65,158 +64,6 @@ fun rememberKeyboardIdleState(lastActivityAtMs: Long, enabled: Boolean, idleAfte
         state.value = true
     }
     return state
-}
-
-/**
- * Decodes the user's DIY typing-animation image (see
- * PreferencesManager.typingAnimationImageUri) off the main thread,
- * re-decoding whenever the Uri changes. Returns null while decoding or if
- * none is set — callers already handle a null bitmap by simply not
- * drawing anything (see TypingAnimationPopup's CUSTOM_IMAGE branch).
- */
-@Composable
-fun rememberCustomAnimationBitmap(uriString: String?): Bitmap? {
-    val context = androidx.compose.ui.platform.LocalContext.current
-    var bitmap by remember(uriString) { mutableStateOf<Bitmap?>(null) }
-    LaunchedEffect(uriString) {
-        bitmap = if (uriString != null) {
-            withContext(Dispatchers.IO) {
-                runCatching {
-                    context.contentResolver.openInputStream(Uri.parse(uriString))?.use {
-                        BitmapFactory.decodeStream(it)
-                    }
-                }.getOrNull()
-            }
-        } else {
-            null
-        }
-    }
-    return bitmap
-}
-
-/**
- * Material You (Android 12+) dynamic accent color derived from the system
- * wallpaper, for use as the keyboard's KeyColorPalette-equivalent accent
- * when the user turns on "Material You" in Themes. Falls back to the
- * existing DeshGreen accent on API < 31 or if the dynamic color resources
- * are unavailable for any reason — never crashes, never returns a jarring
- * default like pure black/white.
- */
-fun materialYouAccentColor(context: Context, isDark: Boolean): Color {
-    if (android.os.Build.VERSION.SDK_INT < android.os.Build.VERSION_CODES.S) {
-        return DeshGreen
-    }
-    return runCatching {
-        // android.R.color.system_accent1_400 (light) / _200 (dark) are the
-        // framework's own dynamic-color swatches, generated from the
-        // current wallpaper by the system at boot / wallpaper-change time —
-        // no separate "Material You" library dependency needed for just
-        // reading these resolved colors.
-        val resId = if (isDark) {
-            android.R.color.system_accent1_200
-        } else {
-            android.R.color.system_accent1_400
-        }
-        Color(context.resources.getColor(resId, context.theme))
-    }.getOrDefault(DeshGreen)
-}
-
-/**
- * "LED / Neon Lighting" — draws a glowing border outline around each key,
- * lit up as the light spreads outward from the pressed key, restarting on
- * every press. This traces each key's own border rather than filling the
- * key or drawing a free-floating dot at its center — "the light runs along
- * the border of the keys around the one I pressed" is the actual visual,
- * not a colored blob sitting on top of the key. Keys further from the
- * pressed one light up later (WAVE/CYCLE) or dimmer (BREATHING/STARS), so
- * the light visibly originates at the pressed key and travels outward
- * across the board through neighboring keys' borders.
- *
- * [keySizes] gives each key's real measured (width, height) in px, keyed
- * by the same Char used in [keyPositions] — captured from that key's own
- * onGloballyPositioned callback in KeyboardView, not estimated, so the
- * glow outline matches each key's actual size and shape, including rows
- * (like the bottom quick-toggle row with Space/./Enter) whose keys are a
- * genuinely different size than the main letter rows. A key missing from
- * this map (e.g. its own position hasn't been measured yet on the very
- * first frame after a board switch) falls back to an average of whatever
- * sizes are already known, computed once per draw call rather than passed
- * in, so this stays a pure function of its two map arguments.
- *
- * [origin] is the pressed key's center (this Box's local coordinates,
- * matching [keyPositions]'s coordinate space) and [triggerId] is bumped by
- * the caller on every press — including two consecutive presses of the
- * exact same key — so the glow restarts from scratch each time even when
- * origin's value didn't change (a plain Offset key wouldn't retrigger for
- * that case). Nothing is drawn once the current glow has fully faded, and
- * nothing is drawn at all when [pattern] is NONE or no press has happened
- * yet ([origin] null) — this only reacts to real typing, it doesn't run
- * on its own the way an ambient strip would.
- *
- * [isIdle] dims the glow's peak alpha when true (see
- * rememberKeyboardIdleState), for the "idle dimming" preference — mostly
- * relevant right as an idle glow is fading, since a genuinely idle board
- * has no presses left to trigger new glows anyway.
- */
-// KeyPoint (see GestureWordMatcher.kt) is `internal` to this module, so any
-// public function taking it as a parameter type would leak that internal
-// type through a public API surface — Kotlin's explicit-API-safety check
-// catches this at compile time. KeyboardLedRipple is only ever called from
-// within this same module (KeyboardView.kt), so `internal` here costs
-// nothing and satisfies that check.
-@Composable
-internal fun KeyboardLedRipple(
-    pattern: LedPattern,
-    origin: Offset?,
-    triggerId: Int,
-    keyPositions: List<KeyPoint>,
-    keySizes: Map<Char, androidx.compose.ui.geometry.Size>,
-    accent: Color,
-    isIdle: Boolean,
-    modifier: Modifier = Modifier
-) {
-    if (pattern == LedPattern.NONE || origin == null || keyPositions.isEmpty()) return
-
-    val progress = remember { Animatable(0f) }
-    LaunchedEffect(triggerId, pattern) {
-        progress.snapTo(0f)
-        progress.animateTo(
-            1f,
-            animationSpec = tween(
-                durationMillis = if (pattern == LedPattern.BREATHING) 900 else 650,
-                easing = androidx.compose.animation.core.LinearOutSlowInEasing
-            )
-        )
-    }
-
-    if (progress.value >= 1f) return
-
-    val idleAlpha by androidx.compose.animation.core.animateFloatAsState(
-        targetValue = if (isIdle) 0.4f else 1f,
-        animationSpec = tween(900),
-        label = "ledIdleAlpha"
-    )
-
-    Canvas(modifier = modifier) {
-        // Fallback for the rare key whose real size hasn't been measured
-        // yet (e.g. the very first frame right after a board switch) — an
-        // average of whatever sizes ARE known so far, so that one key
-        // isn't drawn with a wildly wrong placeholder box while the rest
-        // use their real size. Falls back further to keyPositions' own
-        // count-based default only if literally nothing has been measured.
-        val fallbackSize = if (keySizes.isNotEmpty()) {
-            androidx.compose.ui.geometry.Size(
-                keySizes.values.map { it.width }.average().toFloat(),
-                keySizes.values.map { it.height }.average().toFloat()
-            )
-        } else {
-            androidx.compose.ui.geometry.Size(size.width / 10f, size.height / 4f)
-        }
-        when (pattern) {
-            LedPattern.NONE -> Unit
-            LedPattern.BREATHING -> drawBreathingBorders(origin, keyPositions, keySizes, fallbackSize, accent, progress.value, idleAlpha)
-        }
-    }
 }
 
 /**
@@ -301,27 +148,6 @@ private fun androidx.compose.ui.graphics.drawscope.DrawScope.drawKeyBorderGlow(
         cornerRadius = androidx.compose.ui.geometry.CornerRadius(6.dp.toPx()),
         style = androidx.compose.ui.graphics.drawscope.Stroke(width = LED_BORDER_STROKE_DP.dp.toPx())
     )
-}
-
-/** BREATHING: every key's border softly pulses in unison, brightest near the origin, fading together as progress ages. */
-private fun androidx.compose.ui.graphics.drawscope.DrawScope.drawBreathingBorders(
-    origin: Offset, keyPositions: List<KeyPoint>, keySizes: Map<Char, androidx.compose.ui.geometry.Size>, fallbackSize: androidx.compose.ui.geometry.Size, accent: Color, progress: Float, idleAlpha: Float
-) {
-    val maxDist = LED_RIPPLE_MAX_RADIUS_DP.dp.toPx()
-    // A single breath cycle (brighten then dim) over the whole animation,
-    // rather than a wave front — sin(progress * PI) rises then falls back
-    // to 0 exactly at progress = 1.
-    val breath = kotlin.math.sin(progress * Math.PI).toFloat().coerceIn(0f, 1f)
-    keyPositions.forEach { key ->
-        val dx = key.x - origin.x
-        val dy = key.y - origin.y
-        val dist = kotlin.math.sqrt(dx * dx + dy * dy)
-        val falloff = (1f - (dist / maxDist)).coerceIn(0f, 1f)
-        val alpha = (breath * falloff * idleAlpha).coerceIn(0f, 1f)
-        if (alpha > 0.02f) {
-            drawKeyBorderGlow(key, keySizes[key.char] ?: fallbackSize, accent, alpha)
-        }
-    }
 }
 
 /** WAVE: a ring of light expands outward from the pressed key, lighting each key's border as the front passes over it. */
@@ -410,8 +236,6 @@ private fun androidx.compose.ui.graphics.drawscope.DrawScope.drawStarsBorders(
 fun TypingAnimationPopup(
     trigger: Int,
     animation: TypingAnimation,
-    customEmoji: String,
-    customImageBitmap: android.graphics.Bitmap?,
     keyPositionPx: Offset?,
     modifier: Modifier = Modifier
 ) {
@@ -479,24 +303,7 @@ fun TypingAnimationPopup(
                 },
             contentAlignment = Alignment.Center
         ) {
-            when (animation) {
-                TypingAnimation.CUSTOM_IMAGE -> {
-                    if (customImageBitmap != null) {
-                        Image(
-                            bitmap = customImageBitmap.asImageBitmap(),
-                            contentDescription = null,
-                            contentScale = ContentScale.Fit,
-                            modifier = Modifier.height(28.dp)
-                        )
-                    }
-                }
-                TypingAnimation.CUSTOM_EMOJI -> {
-                    Text(customEmoji, fontSize = 20.sp, fontWeight = FontWeight.Bold)
-                }
-                else -> {
-                    Text(glyph, fontSize = 20.sp, fontWeight = FontWeight.Bold)
-                }
-            }
+            Text(glyph, fontSize = 20.sp, fontWeight = FontWeight.Bold)
         }
     }
 }
