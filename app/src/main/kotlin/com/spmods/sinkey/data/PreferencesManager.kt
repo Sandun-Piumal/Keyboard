@@ -157,30 +157,9 @@ class PreferencesManager(private val context: Context) {
         // BackgroundStyle patterns.
         val CUSTOM_BACKGROUND_BLUR = androidx.datastore.preferences.core.floatPreferencesKey("custom_background_blur")
         val CUSTOM_BACKGROUND_BRIGHTNESS = androidx.datastore.preferences.core.floatPreferencesKey("custom_background_brightness")
-        // Material You (Android 12+ dynamic color from system wallpaper)
-        // applied to the keyboard itself, independent of the app UI's own
-        // Material You usage (if any). Default off — purely opt-in since it
-        // overrides whatever KeyColorPalette/BackgroundStyle is selected.
-        val MATERIAL_YOU_ENABLED = booleanPreferencesKey("material_you_enabled")
-
         // Typing Animation: emoji/icon/custom-image pop-up shown near a key
         // as it's pressed. Off by default (NONE).
         val TYPING_ANIMATION = stringPreferencesKey("typing_animation")
-        // DIY Animation: user-chosen emoji character used as the pop-up
-        // when TYPING_ANIMATION == CUSTOM_EMOJI.
-        val TYPING_ANIMATION_EMOJI = stringPreferencesKey("typing_animation_emoji")
-        // DIY Animation: user-chosen cropped image (content:// Uri, persisted
-        // permission) used as the pop-up when TYPING_ANIMATION == CUSTOM_IMAGE.
-        val TYPING_ANIMATION_IMAGE_URI = stringPreferencesKey("typing_animation_image_uri")
-
-        // LED / Neon lighting pattern driving the whole board's ambient glow
-        // (distinct from the per-key KeyEffect above) — one of
-        // LedPattern.entries' .key values. NONE = no ambient lighting layer.
-        val LED_PATTERN = stringPreferencesKey("led_pattern")
-        // Whether the LED pattern should dim automatically after a few
-        // seconds of no keypresses ("idle dimming"), then brighten again on
-        // the next touch. Only meaningful when LED_PATTERN != NONE.
-        val LED_IDLE_DIMMING = booleanPreferencesKey("led_idle_dimming")
 
         // Smooth IME open/close transition (WindowInsetsAnimationCompat-
         // driven slide/fade instead of an abrupt show/hide). Default on —
@@ -375,9 +354,9 @@ class PreferencesManager(private val context: Context) {
         prefs[Keys.CUSTOM_BACKGROUND_URI]?.takeIf { it.isNotBlank() }
     }
 
-    /** Currently selected built-in background style, defaulting to NONE (flat colors.bg). */
+    /** Currently selected built-in background style, defaulting to SINKEY_LAVENDER. */
     val backgroundStyle: Flow<BackgroundStyle> = context.dataStore.data.map { prefs ->
-        BackgroundStyle.fromKey(prefs[Keys.BACKGROUND_STYLE] ?: BackgroundStyle.NONE.key)
+        BackgroundStyle.fromKey(prefs[Keys.BACKGROUND_STYLE] ?: BackgroundStyle.SINKEY_LAVENDER.key)
     }
 
     /** Blur amount (0f..1f) applied to the "My themes" custom photo background. Default 0f (no blur). */
@@ -390,34 +369,9 @@ class PreferencesManager(private val context: Context) {
         prefs[Keys.CUSTOM_BACKGROUND_BRIGHTNESS] ?: 0.5f
     }
 
-    /** Whether Material You dynamic color is applied to the keyboard. Default off. */
-    val materialYouEnabled: Flow<Boolean> = context.dataStore.data.map { prefs ->
-        prefs[Keys.MATERIAL_YOU_ENABLED] ?: false
-    }
-
     /** Currently selected typing (keypress pop-up) animation, defaulting to NONE. */
     val typingAnimation: Flow<TypingAnimation> = context.dataStore.data.map { prefs ->
         TypingAnimation.fromKey(prefs[Keys.TYPING_ANIMATION] ?: TypingAnimation.NONE.key)
-    }
-
-    /** User-chosen emoji for the DIY "Custom emoji" typing animation. Defaults to a heart. */
-    val typingAnimationEmoji: Flow<String> = context.dataStore.data.map { prefs ->
-        prefs[Keys.TYPING_ANIMATION_EMOJI]?.takeIf { it.isNotBlank() } ?: "✨"
-    }
-
-    /** content:// Uri of the user's chosen DIY typing-animation image, or null if none set. */
-    val typingAnimationImageUri: Flow<String?> = context.dataStore.data.map { prefs ->
-        prefs[Keys.TYPING_ANIMATION_IMAGE_URI]?.takeIf { it.isNotBlank() }
-    }
-
-    /** Currently selected ambient LED/neon lighting pattern, defaulting to NONE. */
-    val ledPattern: Flow<LedPattern> = context.dataStore.data.map { prefs ->
-        LedPattern.fromKey(prefs[Keys.LED_PATTERN] ?: LedPattern.NONE.key)
-    }
-
-    /** Whether the LED pattern dims after a period of inactivity. Default on. */
-    val ledIdleDimming: Flow<Boolean> = context.dataStore.data.map { prefs ->
-        prefs[Keys.LED_IDLE_DIMMING] ?: true
     }
 
     /** Smooth IME show/hide transition toggle. Default on. */
@@ -560,28 +514,8 @@ class PreferencesManager(private val context: Context) {
         context.dataStore.edit { it[Keys.BACKGROUND_STYLE] = style.key }
     }
 
-    suspend fun setMaterialYouEnabled(enabled: Boolean) {
-        context.dataStore.edit { it[Keys.MATERIAL_YOU_ENABLED] = enabled }
-    }
-
     suspend fun setTypingAnimation(animation: TypingAnimation) {
         context.dataStore.edit { it[Keys.TYPING_ANIMATION] = animation.key }
-    }
-
-    suspend fun setTypingAnimationEmoji(emoji: String) {
-        context.dataStore.edit { it[Keys.TYPING_ANIMATION_EMOJI] = emoji }
-    }
-
-    suspend fun setTypingAnimationImageUri(uri: String?) {
-        context.dataStore.edit { it[Keys.TYPING_ANIMATION_IMAGE_URI] = uri ?: "" }
-    }
-
-    suspend fun setLedPattern(pattern: LedPattern) {
-        context.dataStore.edit { it[Keys.LED_PATTERN] = pattern.key }
-    }
-
-    suspend fun setLedIdleDimming(enabled: Boolean) {
-        context.dataStore.edit { it[Keys.LED_IDLE_DIMMING] = enabled }
     }
 
     suspend fun setSmoothImeTransition(enabled: Boolean) {
@@ -620,7 +554,7 @@ class PreferencesManager(private val context: Context) {
      * "THEME MODE" section, not Themes, even though ThemesScreen also
      * offers the same three "Default" cards for convenience).
      *
-     * Clears CUSTOM_BACKGROUND_URI/TYPING_ANIMATION_IMAGE_URI to blank
+     * Clears CUSTOM_BACKGROUND_URI to blank
      * rather than deleting the underlying saved files — matches
      * setCustomBackgroundUri(null)'s existing behavior, so a stray
      * custom_background_*.jpg is simply orphaned (harmless) rather than
@@ -632,15 +566,10 @@ class PreferencesManager(private val context: Context) {
             prefs[Keys.KEY_COLOR_PALETTE] = KeyColorPalette.DEFAULT.key
             prefs[Keys.KEY_EFFECT] = KeyEffect.NONE.key
             prefs[Keys.CUSTOM_BACKGROUND_URI] = ""
-            prefs[Keys.BACKGROUND_STYLE] = BackgroundStyle.NONE.key
+            prefs[Keys.BACKGROUND_STYLE] = BackgroundStyle.SINKEY_LAVENDER.key
             prefs[Keys.CUSTOM_BACKGROUND_BLUR] = 0f
             prefs[Keys.CUSTOM_BACKGROUND_BRIGHTNESS] = 0.5f
-            prefs[Keys.MATERIAL_YOU_ENABLED] = false
             prefs[Keys.TYPING_ANIMATION] = TypingAnimation.NONE.key
-            prefs[Keys.TYPING_ANIMATION_EMOJI] = "✨"
-            prefs[Keys.TYPING_ANIMATION_IMAGE_URI] = ""
-            prefs[Keys.LED_PATTERN] = LedPattern.NONE.key
-            prefs[Keys.LED_IDLE_DIMMING] = true
         }
     }
 
@@ -801,11 +730,7 @@ enum class KeyEffect(val key: String, val label: String) {
  *
  * The preset entries (HEARTS, STARS, SPARKLES, FIRE, CONFETTI) each cycle
  * through a small fixed emoji set per press so repeated presses don't look
- * identical. CUSTOM_EMOJI and CUSTOM_IMAGE are the "DIY Animation" feature:
- * CUSTOM_EMOJI always pops the single emoji character stored in
- * PreferencesManager.typingAnimationEmoji; CUSTOM_IMAGE pops the small
- * cropped image at PreferencesManager.typingAnimationImageUri instead of an
- * emoji glyph.
+ * identical.
  */
 enum class TypingAnimation(val key: String, val label: String, val emojiSet: List<String>) {
     NONE("none", "Off", emptyList()),
@@ -813,41 +738,10 @@ enum class TypingAnimation(val key: String, val label: String, val emojiSet: Lis
     STARS("stars", "Stars", listOf("⭐", "✨", "🌟", "💫")),
     SPARKLES("sparkles", "Sparkles", listOf("✨", "🎇", "💥")),
     FIRE("fire", "Fire", listOf("🔥", "🔥", "💥")),
-    CONFETTI("confetti", "Confetti", listOf("🎉", "🎊", "🎈")),
-    /** DIY: pops the single custom emoji the user chose. */
-    CUSTOM_EMOJI("custom_emoji", "Custom emoji", emptyList()),
-    /** DIY: pops the custom cropped image the user chose. */
-    CUSTOM_IMAGE("custom_image", "Custom image", emptyList());
+    CONFETTI("confetti", "Confetti", listOf("🎉", "🎊", "🎈"));
 
     companion object {
         fun fromKey(key: String): TypingAnimation = entries.find { it.key == key } ?: NONE
-    }
-}
-
-/**
- * "LED / Neon Lighting" — an ambient, whole-board lighting layer distinct
- * from the per-key KeyEffect above. Where KeyEffect decorates individual
- * key borders/glows, LedPattern drives a thin animated light strip along
- * the top edge of the keyboard (like an RGB keyboard's under-glow),
- * independent of which KeyEffect is also selected — the two can be
- * combined (e.g. RIPPLE key-effect + BREATHING led-pattern). WAVE, CYCLE,
- * and STARS previously lived here too but have moved to KeyEffect (see
- * that enum and KeyboardKeyEffectRipple) since Themes' "Effects" grid is
- * where they're now selected from.
- */
-enum class LedPattern(val key: String, val label: String) {
-    /** No ambient lighting strip — original look. */
-    NONE("none", "Off"),
-    /** Strip brightness smoothly rises and falls, like slow breathing. */
-    BREATHING("breathing", "Breathing");
-
-    companion object {
-        // WAVE/CYCLE/STARS keys no longer map to any LedPattern entry
-        // (they live under KeyEffect now — see KeyboardKeyEffectRipple) —
-        // fromKey falls back safely to NONE for any old stored preference
-        // value using those now-removed keys, so existing installs don't
-        // crash on upgrade, they just silently reset this one preference.
-        fun fromKey(key: String): LedPattern = entries.find { it.key == key } ?: NONE
     }
 }
 
@@ -863,8 +757,8 @@ enum class LedPattern(val key: String, val label: String) {
  * a user picks when they don't want to supply their own image.
  */
 enum class BackgroundStyle(val key: String, val label: String) {
-    /** No built-in background — original flat colors.bg. */
-    NONE("none", "None"),
+    /** The plain default look — flat colors.bg, no built-in background. */
+    NONE("none", "Default"),
     GALAXY("galaxy", "Galaxy"),
     SMOKE("smoke", "Smoke"),
     /** Glass keys with neon-cyan lettering over a blurred neon-flower / circuit-board photo. */
