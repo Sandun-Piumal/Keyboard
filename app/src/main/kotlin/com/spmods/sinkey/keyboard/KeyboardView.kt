@@ -927,18 +927,11 @@ internal fun KeyboardView(
     val customBackgroundBlur by prefsManager.customBackgroundBlur.collectAsState(initial = 0f)
     val customBackgroundBrightness by prefsManager.customBackgroundBrightness.collectAsState(initial = 0.5f)
     val backgroundStyle by prefsManager.backgroundStyle.collectAsState(
-        initial = com.spmods.sinkey.data.BackgroundStyle.NONE
+        initial = com.spmods.sinkey.data.BackgroundStyle.SINKEY_LAVENDER
     )
-    val materialYouEnabled by prefsManager.materialYouEnabled.collectAsState(initial = false)
     val typingAnimation by prefsManager.typingAnimation.collectAsState(
         initial = com.spmods.sinkey.data.TypingAnimation.NONE
     )
-    val typingAnimationEmoji by prefsManager.typingAnimationEmoji.collectAsState(initial = "✨")
-    val typingAnimationImageUri by prefsManager.typingAnimationImageUri.collectAsState(initial = null)
-    val ledPattern by prefsManager.ledPattern.collectAsState(
-        initial = com.spmods.sinkey.data.LedPattern.NONE
-    )
-    val ledIdleDimming by prefsManager.ledIdleDimming.collectAsState(initial = true)
     val keyOpacityPref by prefsManager.keyOpacity.collectAsState(initial = 1f)
 
     // Effective values — previewXxx overrides win when non-null (Edit
@@ -966,13 +959,7 @@ internal fun KeyboardView(
         keyEffect = keyEffect,
         transparentBg = previewBackgroundBitmap != null || customBackgroundUri != null || backgroundStyle != com.spmods.sinkey.data.BackgroundStyle.NONE,
         keyOpacity = keyOpacity,
-    ).let { base ->
-        // Material You: when enabled, override the accent with the
-        // dynamic system-wallpaper color instead of the picked
-        // KeyColorPalette — purely a color swap, effects/backgrounds
-        // still layer on top exactly as before.
-        if (materialYouEnabled) base.copy(accent = materialYouAccentColor(context, isDark)) else base
-    }.let { c -> if (neon) neonKeyboardColors(c) else if (lavender) lavenderKeyboardColors(c, isDark) else if (bloom) bloomKeyboardColors(c) else if (meadow) meadowKeyboardColors(c) else c }
+    ).let { c -> if (neon) neonKeyboardColors(c) else if (lavender) lavenderKeyboardColors(c, isDark) else if (bloom) bloomKeyboardColors(c) else if (meadow) meadowKeyboardColors(c) else c }
     .let { c ->
         // Themes screen "Colors" tints the letter keys. The theme looks above
         // (Neon/Lavender/Cyber Bloom/Spring Meadow) set their own text colours,
@@ -1030,8 +1017,7 @@ internal fun KeyboardView(
     var pressOrigin by remember { mutableStateOf<Offset?>(null) }
     var pressTriggerId by remember { mutableStateOf(0) }
     var lastActivityAtMs by remember { mutableStateOf(0L) }
-    val isLedIdle by rememberKeyboardIdleState(lastActivityAtMs, enabled = ledIdleDimming)
-    val typingAnimationImageBitmap = rememberCustomAnimationBitmap(typingAnimationImageUri)
+    val isLedIdle by rememberKeyboardIdleState(lastActivityAtMs, enabled = true)
 
     // shift = true whenever shiftState is ONE_SHOT or LOCKED
     val shift = shiftState != SinKeyInputMethodService.ShiftState.OFF
@@ -1501,7 +1487,7 @@ internal fun KeyboardView(
                     val keyEffectRippleActive = colors.keyEffect == com.spmods.sinkey.data.KeyEffect.WAVE ||
                         colors.keyEffect == com.spmods.sinkey.data.KeyEffect.CYCLE ||
                         colors.keyEffect == com.spmods.sinkey.data.KeyEffect.STARS
-                    val ledActive = ledPattern != com.spmods.sinkey.data.LedPattern.NONE || keyEffectRippleActive
+                    val ledActive = keyEffectRippleActive
                     val typingAnimActive = typingAnimation != com.spmods.sinkey.data.TypingAnimation.NONE
                     // Desh-style RIPPLE is a board-wide overlay (not a
                     // per-key decoration), so it needs the same shared
@@ -1855,20 +1841,6 @@ internal fun KeyboardView(
                         }
 
                         if (ledActive) {
-                            // pressOrigin/pressTriggerId are the same shared
-                            // touch state Typing Animation also reads from —
-                            // each consumer draws its own distinct visual off
-                            // of it.
-                            KeyboardLedRipple(
-                                pattern = ledPattern,
-                                origin = pressOrigin,
-                                triggerId = pressTriggerId,
-                                keyPositions = keyPositions.values.toList(),
-                                keySizes = keySizes,
-                                accent = colors.accent,
-                                isIdle = isLedIdle,
-                                modifier = Modifier.matchParentSize()
-                            )
                             // WAVE/CYCLE/STARS selected from the Themes
                             // "Effects" grid — same underlying animation as
                             // KeyboardLedRipple above, drawn independently
@@ -1894,8 +1866,6 @@ internal fun KeyboardView(
                             TypingAnimationPopup(
                                 trigger = pressTriggerId,
                                 animation = typingAnimation,
-                                customEmoji = typingAnimationEmoji,
-                                customImageBitmap = typingAnimationImageBitmap,
                                 keyPositionPx = pressOrigin
                             )
                         }
