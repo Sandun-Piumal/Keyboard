@@ -57,7 +57,6 @@ import androidx.compose.ui.text.style.TextAlign
 import com.spmods.sinkey.data.BackgroundStyle
 import com.spmods.sinkey.data.KeyColorPalette
 import com.spmods.sinkey.data.KeyEffect
-import com.spmods.sinkey.data.LedPattern
 import com.spmods.sinkey.data.ThemeMode
 import com.spmods.sinkey.data.TypingAnimation
 
@@ -99,27 +98,11 @@ fun ThemesScreen(
     customBackgroundPreview: android.graphics.Bitmap? = null,
     onPickCustomBackground: () -> Unit = {},
     onClearCustomBackground: () -> Unit = {},
-    // Backgrounds: built-in procedural presets (Gradient/Rainbow/Galaxy/...).
-    backgroundStyle: BackgroundStyle = BackgroundStyle.NONE,
+    // Backgrounds: built-in procedural presets (Galaxy/Smoke/...).
+    backgroundStyle: BackgroundStyle = BackgroundStyle.SINKEY_LAVENDER,
     onBackgroundStyleChange: (BackgroundStyle) -> Unit = {},
-    // Material You: dynamic accent from the system wallpaper (Android 12+).
-    materialYouEnabled: Boolean = false,
-    onMaterialYouEnabledChange: (Boolean) -> Unit = {},
-    materialYouAvailable: Boolean = true,
-    // Typing Animation: emoji/icon pop-up on keypress, plus DIY custom
-    // emoji/image variants.
     typingAnimation: TypingAnimation = TypingAnimation.NONE,
     onTypingAnimationChange: (TypingAnimation) -> Unit = {},
-    typingAnimationEmoji: String = "✨",
-    onTypingAnimationEmojiChange: (String) -> Unit = {},
-    typingAnimationImagePreview: android.graphics.Bitmap? = null,
-    onPickTypingAnimationImage: () -> Unit = {},
-    onClearTypingAnimationImage: () -> Unit = {},
-    // LED / Neon lighting pattern (ambient strip) + idle dimming.
-    ledPattern: LedPattern = LedPattern.NONE,
-    onLedPatternChange: (LedPattern) -> Unit = {},
-    ledIdleDimming: Boolean = true,
-    onLedIdleDimmingChange: (Boolean) -> Unit = {}
 ) {
     // Frosted-glass look shared with Home/Settings (HomePalette, GlassKit.kt).
     // No page background here — MainActivity paints the About-Developer
@@ -178,39 +161,9 @@ fun ThemesScreen(
         SectionHint(p, "Pick a theme. To put your own photo behind its keys, use \"My themes\" at the top.")
         BackgroundsGrid(p, selected = backgroundStyle, onSelect = onBackgroundStyleChange)
 
-        SectionHeader(p, "Material You")
-        MaterialYouRow(
-            p = p,
-            enabled = materialYouEnabled,
-            available = materialYouAvailable,
-            onToggle = onMaterialYouEnabledChange
-        )
-
         SectionHeader(p, "Typing Animation")
         SectionHint(p, "An emoji or icon pops up near a key as you type.")
         TypingAnimationGrid(p, selected = typingAnimation, onSelect = onTypingAnimationChange)
-        if (typingAnimation == TypingAnimation.CUSTOM_EMOJI) {
-            CustomEmojiPicker(
-                p = p,
-                emoji = typingAnimationEmoji,
-                onEmojiChange = onTypingAnimationEmojiChange
-            )
-        }
-        if (typingAnimation == TypingAnimation.CUSTOM_IMAGE) {
-            CustomImagePicker(
-                p = p,
-                preview = typingAnimationImagePreview,
-                onPick = onPickTypingAnimationImage,
-                onClear = onClearTypingAnimationImage
-            )
-        }
-
-        SectionHeader(p, "LED / Neon Lighting")
-        SectionHint(p, "An animated light strip along the top of the keyboard.")
-        LedPatternGrid(p, selected = ledPattern, palette = keyColorPalette, onSelect = onLedPatternChange)
-        if (ledPattern != LedPattern.NONE) {
-            LedIdleDimmingRow(p, enabled = ledIdleDimming, onToggle = onLedIdleDimmingChange)
-        }
     }
 }
 
@@ -629,7 +582,7 @@ private fun BackgroundsGrid(p: HomePalette, selected: BackgroundStyle, onSelect:
                                             .background(p.chipBg.copy(alpha = 0.6f)),
                                         contentAlignment = Alignment.Center
                                     ) {
-                                        Text("—", color = p.sub, fontSize = 15.sp, fontWeight = FontWeight.Bold)
+                                        Text("Aa", color = p.sub, fontSize = 15.sp, fontWeight = FontWeight.Bold)
                                     }
                                 } else {
                                     com.spmods.sinkey.keyboard.KeyboardBuiltInBackground(
@@ -654,32 +607,6 @@ private fun BackgroundsGrid(p: HomePalette, selected: BackgroundStyle, onSelect:
                 repeat(3 - row.size) { Box(modifier = Modifier.weight(1f)) }
             }
         }
-    }
-}
-
-@Composable
-private fun MaterialYouRow(p: HomePalette, enabled: Boolean, available: Boolean, onToggle: (Boolean) -> Unit) {
-    Row(
-        modifier = Modifier
-            .padding(horizontal = 14.dp)
-            .fillMaxWidth()
-            .glassCard(p, radius = 20, elevation = 6)
-            .padding(start = 12.dp, end = 14.dp, top = 10.dp, bottom = 10.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(12.dp)
-    ) {
-        IconTile(p, "🎨", size = 42, fontSize = 20)
-        Column(modifier = Modifier.weight(1f)) {
-            Text("Use wallpaper colors", fontSize = 15.sp, fontWeight = FontWeight.ExtraBold, color = p.title)
-            Text(
-                if (available) "Keys pick up your phone's Material You accent."
-                else "Needs Android 12 or newer.",
-                fontSize = 12.sp,
-                color = p.body,
-                modifier = Modifier.padding(top = 2.dp)
-            )
-        }
-        GlassSwitch(p, enabled && available, onToggle, enabled = available)
     }
 }
 
@@ -710,8 +637,6 @@ private fun TypingAnimationGrid(p: HomePalette, selected: TypingAnimation, onSel
                         ) {
                             val glyph = when (anim) {
                                 TypingAnimation.NONE -> "—"
-                                TypingAnimation.CUSTOM_EMOJI -> "😀"
-                                TypingAnimation.CUSTOM_IMAGE -> "🖼️"
                                 else -> anim.emojiSet.firstOrNull() ?: "—"
                             }
                             Text(glyph, fontSize = 26.sp, color = p.title, fontWeight = FontWeight.Bold)
@@ -730,204 +655,6 @@ private fun TypingAnimationGrid(p: HomePalette, selected: TypingAnimation, onSel
                 repeat(3 - row.size) { Box(modifier = Modifier.weight(1f)) }
             }
         }
-    }
-}
-
-/** DIY Animation: lets the user type/paste a single emoji to use as their custom pop-up. */
-@Composable
-private fun CustomEmojiPicker(p: HomePalette, emoji: String, onEmojiChange: (String) -> Unit) {
-    Row(
-        modifier = Modifier
-            .padding(horizontal = 14.dp, vertical = 10.dp)
-            .fillMaxWidth()
-            .glassCard(p, radius = 20, elevation = 6)
-            .padding(16.dp, 12.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(12.dp)
-    ) {
-        Text("Your emoji:", fontSize = 13.sp, fontWeight = FontWeight.Bold, color = p.title)
-        Box(
-            modifier = Modifier
-                .size(44.dp)
-                .clip(RoundedCornerShape(12.dp))
-                .background(p.chipBg),
-            contentAlignment = Alignment.Center
-        ) {
-            BasicTextField(
-                value = emoji,
-                onValueChange = { new ->
-                    // Keep only the last typed character/grapheme-ish chunk so
-                    // pasting a whole sentence doesn't leave junk text behind —
-                    // this field is meant to hold exactly one emoji.
-                    val trimmed = if (new.length > 4) new.takeLast(4) else new
-                    onEmojiChange(trimmed)
-                },
-                textStyle = TextStyle(fontSize = 22.sp, textAlign = TextAlign.Center, color = p.title),
-                singleLine = true,
-                modifier = Modifier.fillMaxSize()
-            )
-        }
-        Text(
-            "Tap and paste or type any single emoji.",
-            fontSize = 11.sp,
-            color = p.body
-        )
-    }
-}
-
-/** DIY Animation: lets the user pick a cropped image to use as their custom pop-up. */
-@Composable
-private fun CustomImagePicker(
-    p: HomePalette,
-    preview: android.graphics.Bitmap?,
-    onPick: () -> Unit,
-    onClear: () -> Unit
-) {
-    val shape = RoundedCornerShape(16.dp)
-    Row(
-        modifier = Modifier.padding(horizontal = 14.dp, vertical = 6.dp),
-        horizontalArrangement = Arrangement.spacedBy(12.dp)
-    ) {
-        Column(
-            modifier = Modifier
-                .size(88.dp)
-                .clip(shape)
-                .background(p.card)
-                .dashedBorder(ringColor(p).copy(alpha = 0.6f), shape)
-                .clickable { onPick() },
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.Center
-        ) {
-            Icon(
-                Icons.Filled.AddPhotoAlternate,
-                contentDescription = "Pick image",
-                tint = p.iconIndigo,
-                modifier = Modifier.size(26.dp)
-            )
-            Text("Pick image", fontSize = 11.sp, fontWeight = FontWeight.ExtraBold, color = p.title, modifier = Modifier.padding(top = 4.dp))
-        }
-        if (preview != null) {
-            Box(modifier = Modifier.size(88.dp)) {
-                Image(
-                    bitmap = preview.asImageBitmap(),
-                    contentDescription = "Custom typing animation image",
-                    contentScale = ContentScale.Crop,
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .shadow(9.dp, shape, ambientColor = ringColor(p).copy(alpha = 0.45f), spotColor = ringColor(p).copy(alpha = 0.45f))
-                        .clip(shape)
-                        .border(2.dp, ringColor(p), shape)
-                )
-                Box(
-                    modifier = Modifier
-                        .padding(6.dp)
-                        .align(Alignment.TopEnd)
-                        .size(20.dp)
-                        .clip(CircleShape)
-                        .background(Color.Black.copy(alpha = 0.55f))
-                        .clickable { onClear() },
-                    contentAlignment = Alignment.Center
-                ) {
-                    Icon(Icons.Filled.Close, contentDescription = "Remove", tint = Color.White, modifier = Modifier.size(12.dp))
-                }
-            }
-        }
-    }
-}
-
-@Composable
-private fun LedPatternGrid(p: HomePalette, selected: LedPattern, palette: KeyColorPalette, onSelect: (LedPattern) -> Unit) {
-    Column(
-        modifier = Modifier.padding(horizontal = 14.dp),
-        verticalArrangement = Arrangement.spacedBy(10.dp)
-    ) {
-        LedPattern.entries.chunked(2).forEach { row ->
-            Row(
-                horizontalArrangement = Arrangement.spacedBy(10.dp),
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                row.forEach { pattern ->
-                    val isSelected = pattern == selected
-                    // Dark tiles (the strip is a light on a dark keyboard) with the
-                    // same ring + ✔ badge as the other grids.
-                    Box(
-                        modifier = Modifier
-                            .weight(1f)
-                            .glassTile(p, isSelected, ringColor(p), Brush.verticalGradient(listOf(Color(0xFF15121F), Color(0xFF05040A))))
-                            .clickable { onSelect(pattern) }
-                    ) {
-                        Column(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalAlignment = Alignment.CenterHorizontally
-                        ) {
-                            Box(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .height(44.dp)
-                                    .padding(vertical = 8.dp),
-                                contentAlignment = Alignment.Center
-                            ) {
-                                // Static illustrative preview only — the real
-                                // effect (KeyboardLedRipple) needs live touch
-                                // positions on the actual keyboard to animate.
-                                // A few small bordered squares stand in for
-                                // "the light traces each key's border".
-                                when (pattern) {
-                                    LedPattern.NONE -> Unit
-                                    LedPattern.BREATHING -> Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                                        repeat(3) { i ->
-                                            Box(
-                                                modifier = Modifier
-                                                    .size(16.dp)
-                                                    .border(
-                                                        1.5.dp,
-                                                        palette.accent.copy(alpha = 1f - i * 0.28f),
-                                                        RoundedCornerShape(4.dp)
-                                                    )
-                                            )
-                                        }
-                                    }
-                                }
-                            }
-                            Text(
-                                pattern.label,
-                                fontSize = 13.sp,
-                                fontWeight = FontWeight.ExtraBold,
-                                color = Color.White,
-                                modifier = Modifier.padding(bottom = 12.dp)
-                            )
-                        }
-                        if (isSelected) SelectedBadge(Modifier.align(Alignment.TopEnd))
-                    }
-                }
-                repeat(2 - row.size) { Box(modifier = Modifier.weight(1f)) }
-            }
-        }
-    }
-}
-
-@Composable
-private fun LedIdleDimmingRow(p: HomePalette, enabled: Boolean, onToggle: (Boolean) -> Unit) {
-    Row(
-        modifier = Modifier
-            .padding(horizontal = 14.dp, vertical = 10.dp)
-            .fillMaxWidth()
-            .glassCard(p, radius = 20, elevation = 6)
-            .padding(start = 12.dp, end = 14.dp, top = 10.dp, bottom = 10.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(12.dp)
-    ) {
-        IconTile(p, "🌙", size = 42, fontSize = 20)
-        Column(modifier = Modifier.weight(1f)) {
-            Text("Idle dimming", fontSize = 15.sp, fontWeight = FontWeight.ExtraBold, color = p.title)
-            Text(
-                "Dim the light strip after a few seconds of no typing.",
-                fontSize = 12.sp,
-                color = p.body,
-                modifier = Modifier.padding(top = 2.dp)
-            )
-        }
-        GlassSwitch(p, enabled, onToggle)
     }
 }
 
