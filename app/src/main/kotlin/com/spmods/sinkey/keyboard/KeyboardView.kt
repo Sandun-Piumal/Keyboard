@@ -4351,7 +4351,6 @@ private fun RowScope.SpaceKey(
     ) {
         if (colors.lavender) {
             Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                Text("♛", fontSize = 14.sp, color = if (colors.lavenderDark) Color(0xFFB79CFF) else Color(0xFF7C3AED))
                 Text(
                     "Sinkey board",
                     fontSize = 19.sp,
@@ -4361,7 +4360,7 @@ private fun RowScope.SpaceKey(
                 )
             }
         } else Text(
-            text = if (colors.neon) "♛  SinKey Board" else "Sinkey board",
+            text = if (colors.neon) "SinKey Board" else "Sinkey board",
             fontSize = if (colors.neon) 15.sp else 12.sp,
             fontStyle = if (colors.neon) androidx.compose.ui.text.font.FontStyle.Italic else androidx.compose.ui.text.font.FontStyle.Normal,
             fontWeight = if (colors.neon) FontWeight.SemiBold else FontWeight.Normal,
