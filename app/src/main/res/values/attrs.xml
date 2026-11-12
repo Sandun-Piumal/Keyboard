@@ -1,5 +1,0 @@
-<declare-styleable name="CustomTheme">
-    <attr name="onSecondaryContainer" format="color"/>
-    <attr name="onAccentContainer" format="color"/>
-    <attr name="onSurfaceHigh" format="color"/>
-</declare-styleable>
