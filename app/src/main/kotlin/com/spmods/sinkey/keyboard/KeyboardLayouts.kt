@@ -268,18 +268,42 @@ object SinhalaTransliterator {
     /** The supplied map, exactly as given (see [SinhalaPhoneticMap]); no overrides or extra entries. */
     private val phoneticMap: Map<String, String> get() = SinhalaPhoneticMap.entries
 
-    private val literal: Map<String, String> get() = SinhalaPhoneticMap.entries
+    /**
+     * The map with ONE rule on top: the prenasalised letters ඳ ඹ ඟ (the map's nda/mba/nga
+     * families) are typed with the nasal doubled — nnda / mmba / nnga — so a plain
+     * nd / mb / ng is just two letters: sandesaya → සන්ඩෙසය, nangi → නංගි, gangaa → ගංගා.
+     * Nothing is added or changed in the map file itself.
+     */
+    private val literal: Map<String, String> by lazy {
+        val m = HashMap<String, String>(SinhalaPhoneticMap.entries.size + 128)
+        for ((k, v) in SinhalaPhoneticMap.entries) {
+            val first = v.firstOrNull()
+            val prefix = when {
+                k.startsWith("nd") && first == '\u0DB3' -> "n"   // ඳ
+                k.startsWith("mb") && first == '\u0DB9' -> "m"   // ඹ
+                k.startsWith("ng") && first == '\u0D9F' -> "n"   // ඟ
+                else -> null
+            }
+            if (prefix != null) m[prefix + k] = v else m[k] = v
+        }
+        m
+    }
     private val literalMax: Int by lazy { literal.keys.maxOf { it.length } }
 
     /** Consonant stems derived from the map itself: "k" for ka→ක, "ny" for nya→ඤ … */
     private val stems: Map<String, String> by lazy {
         val m = HashMap<String, String>()
-        for ((k, v) in phoneticMap) {
+        for ((k, v) in literal) {
             if (k.length >= 2 && k.endsWith("a") && v.length == 1 && v[0] in '\u0D9A'..'\u0DC6') {
                 m[k.dropLast(1)] = v
             }
         }
         m["X"] = "\u0D9E"   // ඞ (the map only has it inside "kaXa")
+        // Single keys the map has no entry for — they follow the key hints on the
+        // keyboard (c → ච, z → ෂ, q → ද). Longer map stems (ch, zk, zh …) still win.
+        for ((k, g) in listOf("c" to "\u0DA0", "z" to "\u0DC2", "q" to "\u0DAF")) {
+            if (!m.containsKey(k)) m[k] = g
+        }
         m
     }
     private val stemMax: Int by lazy { stems.keys.maxOf { it.length } }
@@ -381,6 +405,7 @@ object SinhalaTransliterator {
                     // unmapped capital (e.g. an accidental Shift): retry as lowercase
                     s = s.substring(0, i) + s[i].lowercaseChar() + s.substring(i + 1)
                 }
+                s[i] == 'x' -> { out.append(ANUSVARA); i++ }   // x → ං
                 else -> { out.append(s[i]); i++ }
             }
         }
