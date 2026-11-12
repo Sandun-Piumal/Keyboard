@@ -1482,13 +1482,26 @@ class SinKeyInputMethodService : InputMethodService() {
         // consume it and skip the external-move handling below. See the
         // pendingSelfEdits doc comment for why this replaced comparing
         // newSelEnd against a synchronously-read expectedCursorPosition.
+        // The cursor was moved INTO / away from the word we are composing
+        // (user tapped in the middle of the word to add a missing letter).
+        // Our own setComposingText() always leaves the cursor exactly at the
+        // end of the composing region, so any other position is a real move —
+        // even when pendingSelfEdits is stale and would otherwise swallow it
+        // (which left the old buffer alive and made the next letter land at
+        // the end of the word, or delete the text before the cursor).
+        val leftComposingRegion = wordBuffer.isNotEmpty() &&
+            candidatesStart >= 0 && candidatesEnd >= 0 &&
+            (newSelStart != candidatesEnd || newSelEnd != candidatesEnd)
+        if (leftComposingRegion) pendingSelfEdits = 0
+
         if (pendingSelfEdits > 0) {
             pendingSelfEdits--
             expectedCursorPosition = newSelEnd
             return
         }
 
-        val isExternalMove = expectedCursorPosition != -1 && newSelEnd != expectedCursorPosition
+        val isExternalMove = leftComposingRegion ||
+            (expectedCursorPosition != -1 && newSelEnd != expectedCursorPosition)
         // Recorded before finishComposingText() runs below — see the
         // StackOverflowError note on that call for why this ordering
         // matters, not just tidiness.
@@ -1656,14 +1669,27 @@ class SinKeyInputMethodService : InputMethodService() {
      * against the real field contents makes this a no-op whenever that
      * race happens, instead of eating live text.
      */
-    private fun consumeResumedWordIfStillPresent(ic: android.view.inputmethod.InputConnection) {
-        val resumed = resumedWordBeforeCursor ?: return
+    private fun consumeResumedWordIfStillPresent(ic: android.view.inputmethod.InputConnection): Boolean {
+        val resumed = resumedWordBeforeCursor ?: return false
         resumedWordBeforeCursor = null
         val before = ic.getTextBeforeCursor(resumed.length, 0)?.toString()
         if (before == resumed) {
             ic.deleteSurroundingText(resumed.length, 0)
+            return true
         }
+        return false
     }
+
+    /**
+     * Latin stem for a Sinhala consonant glyph, from the phonetic map
+     * (ම → "m", ද → "dh", ග → "g" …). Used to turn a trailing "consonant + hal"
+     * back into typeable Latin when a vowel is typed right after it.
+     */
+    private fun latinStemForConsonant(glyph: Char): String? =
+        com.spmods.sinkey.keyboard.SinhalaPhoneticMap.entries.entries
+            .filter { it.key.length >= 2 && it.key.endsWith("a") && it.value.length == 1 && it.value[0] == glyph }
+            .minByOrNull { it.key.length }
+            ?.key?.dropLast(1)
 
     override fun onFinishInputView(finishingInput: Boolean) {
         super.onFinishInputView(finishingInput)
@@ -2071,9 +2097,45 @@ class SinKeyInputMethodService : InputMethodService() {
                     // original on-screen copy before appending — otherwise the
                     // upcoming setComposingTextStyled below would insert a
                     // second copy beside the first instead of replacing it.
-                    consumeResumedWordIfStillPresent(ic)
-                    wordBuffer.append(typed)
-                    setComposingTextStyled(ic, renderStyledBuffer())
+                    //
+                    // Cursor tapped into an existing word to add a missing
+                    // letter: everything before the cursor is re-composed
+                    // together with the new letter (text after the cursor is
+                    // never touched), all in ONE batch so the host reports a
+                    // single consistent state back.
+                    ic.beginBatchEdit()
+                    try {
+                        // A Latin word resumed into englishBuffer (mix mode shows
+                        // raw Latin on screen) must continue in wordBuffer, or the
+                        // word before the cursor would be deleted and replaced by
+                        // just the new letter. In pure Sinhala mode it is left
+                        // alone as plain text and the new letter starts fresh.
+                        if (resumedWordBeforeCursor != null && wordBuffer.isEmpty() && englishBuffer.isNotEmpty()) {
+                            if (currentLanguage.value == "mix") wordBuffer.append(englishBuffer)
+                            else resumedWordBeforeCursor = null
+                            englishBuffer.clear()
+                        }
+                        val hadResumed = resumedWordBeforeCursor != null
+                        val removed = consumeResumedWordIfStillPresent(ic)
+                        // The on-screen word could not be removed (text changed under
+                        // us) — never duplicate it; start the buffer fresh instead.
+                        if (hadResumed && !removed) wordBuffer.clear()
+                        // "consonant + hal" right before the cursor followed by a vowel
+                        // (mma → ම්ම, tap between, type a): reopen the consonant as
+                        // Latin so the vowel joins it (m + a → ම) instead of ම්අ.
+                        if (removed && typed.length == 1 && typed[0] in "aeiouAEIOU" &&
+                            wordBuffer.length >= 2 && wordBuffer[wordBuffer.length - 1] == '\u0DCA') {
+                            val stem = latinStemForConsonant(wordBuffer[wordBuffer.length - 2])
+                            if (stem != null) {
+                                wordBuffer.setLength(wordBuffer.length - 2)
+                                wordBuffer.append(stem)
+                            }
+                        }
+                        wordBuffer.append(typed)
+                        setComposingTextStyled(ic, renderStyledBuffer())
+                    } finally {
+                        ic.endBatchEdit()
+                    }
                     updateSuggestions()
                     // Consume one-shot shift after first Sinhala letter
                     if (shiftState.value == ShiftState.ONE_SHOT) { shiftState.value = ShiftState.OFF; wasExplicitShift = false }
@@ -2086,7 +2148,11 @@ class SinKeyInputMethodService : InputMethodService() {
                     // text (not composing), so it must be deleted before the
                     // live per-letter commitText below, or this would insert
                     // a second copy beside the original.
-                    consumeResumedWordIfStillPresent(ic)
+                    //
+                    // The resumed word simply stays on screen: commitText below
+                    // inserts the letter at the cursor, so nothing must be
+                    // deleted here (deleting it left only the new letter).
+                    resumedWordBeforeCursor = null
                     englishBuffer.append(typed)
                     val styled = com.spmods.sinkey.keyboard.FancyTextMapper.apply(typed, cachedFancyTextStyle)
                     ic.commitText(styled, 1)
