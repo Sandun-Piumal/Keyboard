@@ -1,0 +1,136 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Hero illustration for the Home screen welcome card: a purple keyboard
+  with a white "සිංහල" speech bubble (top-left) and a pink "A" speech
+  bubble (top-right), plus sparkle/dot accents. Matches the reference
+  artwork. Sinhala glyph rendering isn't reliable in a plain <path>-only
+  vector, so the "සිංහල" and "A" bubble labels are drawn as Compose Text
+  on top of this drawable in HomeScreen.kt — this vector supplies the
+  bubbles' shapes, the keyboard body/keys, and the decorative sparkles.
+-->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="280dp"
+    android:height="220dp"
+    android:viewportWidth="1456"
+    android:viewportHeight="1145">
+
+    <!-- soft ground shadow -->
+    <path
+        android:pathData="M 260,900 a 480,70 0 1,0 960,0 a 480,70 0 1,0 -960,0 Z"
+        android:fillColor="#1A2A1240"
+        android:fillAlpha="0.18" />
+
+    <!-- keyboard body -->
+    <path
+        android:pathData="M 340,400
+            L 1190,400
+            Q 1230,400 1230,440
+            L 1230,820
+            Q 1230,880 1170,880
+            L 400,880
+            Q 340,880 340,820
+            Z">
+        <aapt:attr xmlns:aapt="http://schemas.android.com/aapt" name="android:fillColor">
+            <gradient
+                android:type="linear"
+                android:startX="340"
+                android:startY="400"
+                android:endX="1230"
+                android:endY="880"
+                android:startColor="#B08CF0"
+                android:endColor="#7C4FE0" />
+        </aapt:attr>
+    </path>
+
+    <!-- row 1 keys -->
+    <path android:pathData="M 470,470 h 90 a 20,20 0 0 1 20,20 v 70 a 20,20 0 0 1 -20,20 h -90 a 20,20 0 0 1 -20,-20 v -70 a 20,20 0 0 1 20,-20 Z" android:fillColor="#C6B3F5" android:fillAlpha="0.85"/>
+    <path android:pathData="M 590,470 h 90 a 20,20 0 0 1 20,20 v 70 a 20,20 0 0 1 -20,20 h -90 a 20,20 0 0 1 -20,-20 v -70 a 20,20 0 0 1 20,-20 Z" android:fillColor="#C6B3F5" android:fillAlpha="0.85"/>
+    <path android:pathData="M 710,470 h 90 a 20,20 0 0 1 20,20 v 70 a 20,20 0 0 1 -20,20 h -90 a 20,20 0 0 1 -20,-20 v -70 a 20,20 0 0 1 20,-20 Z" android:fillColor="#C6B3F5" android:fillAlpha="0.85"/>
+    <path android:pathData="M 830,470 h 90 a 20,20 0 0 1 20,20 v 70 a 20,20 0 0 1 -20,20 h -90 a 20,20 0 0 1 -20,-20 v -70 a 20,20 0 0 1 20,-20 Z" android:fillColor="#C6B3F5" android:fillAlpha="0.85"/>
+    <path android:pathData="M 950,470 h 90 a 20,20 0 0 1 20,20 v 70 a 20,20 0 0 1 -20,20 h -90 a 20,20 0 0 1 -20,-20 v -70 a 20,20 0 0 1 20,-20 Z" android:fillColor="#C6B3F5" android:fillAlpha="0.85"/>
+    <path android:pathData="M 1070,470 h 90 a 20,20 0 0 1 20,20 v 70 a 20,20 0 0 1 -20,20 h -90 a 20,20 0 0 1 -20,-20 v -70 a 20,20 0 0 1 20,-20 Z" android:fillColor="#C6B3F5" android:fillAlpha="0.85"/>
+
+    <!-- row 2 keys -->
+    <path android:pathData="M 410,600 h 90 a 20,20 0 0 1 20,20 v 70 a 20,20 0 0 1 -20,20 h -90 a 20,20 0 0 1 -20,-20 v -70 a 20,20 0 0 1 20,-20 Z" android:fillColor="#C6B3F5" android:fillAlpha="0.85"/>
+    <path android:pathData="M 530,600 h 90 a 20,20 0 0 1 20,20 v 70 a 20,20 0 0 1 -20,20 h -90 a 20,20 0 0 1 -20,-20 v -70 a 20,20 0 0 1 20,-20 Z" android:fillColor="#C6B3F5" android:fillAlpha="0.85"/>
+    <path android:pathData="M 650,600 h 90 a 20,20 0 0 1 20,20 v 70 a 20,20 0 0 1 -20,20 h -90 a 20,20 0 0 1 -20,-20 v -70 a 20,20 0 0 1 20,-20 Z" android:fillColor="#C6B3F5" android:fillAlpha="0.85"/>
+    <path android:pathData="M 770,600 h 90 a 20,20 0 0 1 20,20 v 70 a 20,20 0 0 1 -20,20 h -90 a 20,20 0 0 1 -20,-20 v -70 a 20,20 0 0 1 20,-20 Z" android:fillColor="#C6B3F5" android:fillAlpha="0.85"/>
+    <path android:pathData="M 890,600 h 90 a 20,20 0 0 1 20,20 v 70 a 20,20 0 0 1 -20,20 h -90 a 20,20 0 0 1 -20,-20 v -70 a 20,20 0 0 1 20,-20 Z" android:fillColor="#C6B3F5" android:fillAlpha="0.85"/>
+    <path android:pathData="M 1010,600 h 90 a 20,20 0 0 1 20,20 v 70 a 20,20 0 0 1 -20,20 h -90 a 20,20 0 0 1 -20,-20 v -70 a 20,20 0 0 1 20,-20 Z" android:fillColor="#C6B3F5" android:fillAlpha="0.85"/>
+    <path android:pathData="M 1130,600 h 90 a 20,20 0 0 1 20,20 v 70 a 20,20 0 0 1 -20,20 h -90 a 20,20 0 0 1 -20,-20 v -70 a 20,20 0 0 1 20,-20 Z" android:fillColor="#C6B3F5" android:fillAlpha="0.85"/>
+
+    <!-- row 3: space bar row -->
+    <path android:pathData="M 390,730 h 100 a 20,20 0 0 1 20,20 v 70 a 20,20 0 0 1 -20,20 h -100 a 20,20 0 0 1 -20,-20 v -70 a 20,20 0 0 1 20,-20 Z" android:fillColor="#C6B3F5" android:fillAlpha="0.85"/>
+    <path android:pathData="M 540,730 h 380 a 20,20 0 0 1 20,20 v 70 a 20,20 0 0 1 -20,20 h -380 a 20,20 0 0 1 -20,-20 v -70 a 20,20 0 0 1 20,-20 Z" android:fillColor="#C6B3F5" android:fillAlpha="0.85"/>
+    <path android:pathData="M 970,730 h 100 a 20,20 0 0 1 20,20 v 70 a 20,20 0 0 1 -20,20 h -100 a 20,20 0 0 1 -20,-20 v -70 a 20,20 0 0 1 20,-20 Z" android:fillColor="#C6B3F5" android:fillAlpha="0.85"/>
+
+    <!-- white speech bubble, top-left ("සිංහල") -->
+    <path
+        android:pathData="M 220,240
+            L 560,240
+            Q 600,240 600,280
+            L 600,420
+            Q 600,460 560,460
+            L 400,460
+            L 340,530
+            L 340,460
+            L 220,460
+            Q 180,460 180,420
+            L 180,280
+            Q 180,240 220,240
+            Z"
+        android:fillColor="#FFFFFF" />
+
+    <!-- pink speech bubble, top-right ("A") -->
+    <path
+        android:pathData="M 1080,300
+            L 1240,300
+            Q 1280,300 1280,340
+            L 1280,440
+            Q 1280,480 1240,480
+            L 1140,480
+            L 1140,530
+            L 1080,480
+            L 1050,480
+            Q 1010,480 1010,440
+            L 1010,340
+            Q 1010,300 1050,300
+            Z"
+        android:fillColor="#F6B8D6" />
+
+    <!-- sparkle 1 (top-left area) -->
+    <path
+        android:pathData="M 360,110
+            C 366,140 372,146 400,152
+            C 372,158 366,164 360,194
+            C 354,164 348,158 320,152
+            C 348,146 354,140 360,110 Z"
+        android:fillColor="#FFFFFF"
+        android:fillAlpha="0.85" />
+
+    <!-- sparkle 2 (top-right area) -->
+    <path
+        android:pathData="M 968,100
+            C 976,140 984,148 1024,156
+            C 984,164 976,172 968,212
+            C 960,172 952,164 912,156
+            C 952,148 960,140 968,100 Z"
+        android:fillColor="#FFFFFF"
+        android:fillAlpha="0.9" />
+
+    <!-- small circle dot near sparkle 2 -->
+    <path
+        android:pathData="M 1050,196 m -14,0 a 14,14 0 1,0 28,0 a 14,14 0 1,0 -28,0"
+        android:fillColor="#FFFFFF"
+        android:fillAlpha="0.8" />
+
+    <!-- bottom-left decorative dots -->
+    <path
+        android:pathData="M 168,748 m -22,0 a 22,22 0 1,0 44,0 a 22,22 0 1,0 -44,0"
+        android:fillColor="#C6B3F5"
+        android:fillAlpha="0.9" />
+    <path
+        android:pathData="M 210,808 m -12,0 a 12,12 0 1,0 24,0 a 12,12 0 1,0 -24,0"
+        android:fillColor="#C6B3F5"
+        android:fillAlpha="0.8" />
+</vector>
