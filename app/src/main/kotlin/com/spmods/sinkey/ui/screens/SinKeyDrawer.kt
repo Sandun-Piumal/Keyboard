@@ -315,7 +315,7 @@ fun SinKeyDrawer(
                     Spacer(Modifier.width(10.dp))
                     Column(modifier = Modifier.weight(1f)) {
                         Text("SinKey v$version", fontSize = 15.sp, fontWeight = FontWeight.ExtraBold, color = Color.White, maxLines = 1)
-                        Text("SPMods Development", fontSize = 11.sp, color = Color.White.copy(alpha = 0.8f), maxLines = 1)
+                        Text("Founded by Sandun & Kavishka", fontSize = 11.sp, color = Color.White.copy(alpha = 0.8f), maxLines = 1)
                     }
                     Box(modifier = Modifier.width(1.dp).height(46.dp).background(Color.White.copy(alpha = 0.3f)))
                     Spacer(Modifier.width(12.dp))
