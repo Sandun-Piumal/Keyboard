@@ -152,8 +152,7 @@ private const val WEBSITE_URL = "https://www.spmods.download"
 private const val YOUTUBE_URL = "https://youtube.com/@datahackerz?si=3ORYJfLTK2LeInBj"
 /** TODO: put the real TikTok profile link here. While empty the TikTok tile does nothing. */
 private const val TIKTOK_URL = "https://tiktok.com/@sinkeyboard"
-private const val TELEGRAM_SANDUN_URL = "https://t.me/SPModsSandun"
-private const val TELEGRAM_DHWA_URL = "https://t.me/dhwhatsappultra"
+private const val TELEGRAM_URL = "https://t.me/sinkeyboard"
 private const val EMAIL_ADDRESS = "sinkeyboardofficial@gmail.com"
 
 // ── Scale ───────────────────────────────────────────────────────────────────
@@ -179,7 +178,7 @@ private val telegramPath: Path by lazy { PathParser().parsePathString(TELEGRAM_D
 /**
  * "About developer" screen. [onOpenLink] receives the raw URL / mailto — the
  * caller (MainActivity) turns that into an ACTION_VIEW intent. Tapping
- * "Telegram" opens a bottom sheet listing both Telegram channels.
+ * "Telegram" opens the SinKey Telegram channel directly.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -191,7 +190,6 @@ fun AboutDeveloperScreen(
     val unit = DevUnit(screenW / REF_WIDTH)
     // follows the app's own theme (System / Light / Dark setting), not just the OS
     val pal = if (MaterialTheme.colorScheme.background.luminance() < 0.5f) DarkDev else LightDev
-    var showTelegramSheet by remember { mutableStateOf(false) }
 
     CompositionLocalProvider(LocalDevUnit provides unit, LocalDevColors provides pal) {
         Scaffold(containerColor = pal.bg) { padding ->
@@ -221,7 +219,7 @@ fun AboutDeveloperScreen(
                     Spacer(Modifier.height(unit.d(36f)))
                     FollowCard(
                         onWebsite = { onOpenLink(WEBSITE_URL) },
-                        onTelegram = { showTelegramSheet = true },
+                        onTelegram = { onOpenLink(TELEGRAM_URL) },
                         onYouTube = { onOpenLink(YOUTUBE_URL) },
                         onTikTok = { if (TIKTOK_URL.isNotBlank()) onOpenLink(TIKTOK_URL) }
                     )
@@ -236,12 +234,6 @@ fun AboutDeveloperScreen(
             }
         }
 
-        if (showTelegramSheet) {
-            TelegramChannelsSheet(
-                onDismiss = { showTelegramSheet = false },
-                onOpenLink = onOpenLink
-            )
-        }
     }
 }
 
@@ -503,7 +495,7 @@ private fun DevelopersCard() {
                 painter = painterResource(id = R.drawable.avatar_male),
                 zoom = 1f,
                 name = "Kavishka Sandeepa",
-                role = "Co-Developer",
+                role = "Co-Developer & Owner",
                 quote = "\u201CTurning ideas\ninto amazing experiences.\u201D"
             )
         }
@@ -1033,91 +1025,5 @@ private fun TikTokGlyph(box: Dp) {
         layer(-0.9f, -0.7f, Color(0xFF25F4EE))
         layer(0.9f, 0.7f, Color(0xFFFE2C55))
         layer(0f, 0f, Color(0xFF0B0B12))
-    }
-}
-
-// ═══════════════════════════════════════════════════════════════════════════
-//  Telegram chooser sheet
-// ═══════════════════════════════════════════════════════════════════════════
-
-@OptIn(ExperimentalMaterial3Api::class)
-@Composable
-private fun TelegramChannelsSheet(
-    onDismiss: () -> Unit,
-    onOpenLink: (url: String) -> Unit
-) {
-    val pal = LocalDevColors.current
-    ModalBottomSheet(
-        onDismissRequest = onDismiss,
-        containerColor = MaterialTheme.colorScheme.surface
-    ) {
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 20.dp)
-                .padding(bottom = 20.dp)
-                .navigationBarsPadding()
-        ) {
-            Text("Telegram channels", fontSize = 17.sp, fontWeight = FontWeight.Bold)
-            Spacer(Modifier.height(4.dp))
-            Text("Choose a channel to open", fontSize = 13.sp, color = pal.sub)
-            Spacer(Modifier.height(16.dp))
-            TelegramChannelRow(
-                title = "SPMods Sandun",
-                subtitle = "Apps, mods, and updates",
-                onClick = {
-                    onOpenLink(TELEGRAM_SANDUN_URL)
-                    onDismiss()
-                }
-            )
-            Spacer(Modifier.height(10.dp))
-            TelegramChannelRow(
-                title = "DH WhatsApp Ultra",
-                subtitle = "WhatsApp mod releases",
-                onClick = {
-                    onOpenLink(TELEGRAM_DHWA_URL)
-                    onDismiss()
-                }
-            )
-        }
-    }
-}
-
-@Composable
-private fun TelegramChannelRow(
-    title: String,
-    subtitle: String,
-    onClick: () -> Unit
-) {
-    val pal = LocalDevColors.current
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clip(RoundedCornerShape(16.dp))
-            .background(pal.tile)
-            .clickable { onClick() }
-            .padding(horizontal = 14.dp, vertical = 14.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(14.dp)
-    ) {
-        Box(
-            modifier = Modifier
-                .size(40.dp)
-                .clip(RoundedCornerShape(12.dp))
-                .background(Color(0xFFDCEEFC)),
-            contentAlignment = Alignment.Center
-        ) {
-            Icon(Icons.Filled.Send, contentDescription = null, tint = Color(0xFF2AA9E0), modifier = Modifier.size(19.dp))
-        }
-        Column(modifier = Modifier.weight(1f)) {
-            Text(title, fontSize = 14.sp, fontWeight = FontWeight.SemiBold, color = pal.ink)
-            Text(subtitle, fontSize = 12.sp, color = pal.sub)
-        }
-        Icon(
-            Icons.Filled.ArrowForwardIos,
-            contentDescription = null,
-            tint = pal.sub,
-            modifier = Modifier.size(13.dp)
-        )
     }
 }
