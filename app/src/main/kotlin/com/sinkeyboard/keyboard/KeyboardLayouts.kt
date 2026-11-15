@@ -251,8 +251,8 @@ object WijesekaraLayout {
  *   • consonant + y + vowel → yansaya      thya → ත්‍ය  sathya → සත්‍ය
  *   • aliases  ae → ඇ / ැ ,  aee → ඈ / ෑ ,  x → ං ,  H → ඃ ,  zn → ං
  *   • n / m before a different consonant follows its place of articulation:
- *       m + p/b → ම්  (sampath → සම්පත්),   n + t/d → න්  (antha → අන්ත),
- *       otherwise → ං  (sinhala → සිංහල, lanka → ලංක).  x forces ං, _ forces hal.
+ *       m + p/b → ම්  (sampath → සම්පත්),
+ *       n + any other consonant → ං  (antha → අංත, sinhala → සිංහල).  x forces ං, _ forces hal.
  * A candidate from layer 2 is only used when it consumes MORE input than
  * the map's own longest match, so the map always wins ties.
  *
@@ -370,15 +370,16 @@ object SinhalaTransliterator {
         //  - n / m directly before a DIFFERENT consonant: the nasal follows the place of
         //    the next consonant, as in Sinhala spelling —
         //      m before p / b family   -> ම් (hal)    sampath -> සම්පත්, sambandha -> සම්බන්ධ
-        //      n before t / d family   -> න් (hal)    antha -> අන්ත, sandhya -> සන්ධ්‍ය
-        //      anything else           -> ං           sinhala -> සිංහල, lanka -> ලංක
+        //      n before any other consonant -> ං   antha -> අංත, sinhala -> සිංහල, lanka -> ලංක
         //    (a doubled letter stays hal kirima: amma -> අම්ම)
         if ((stem == "n" || stem == "m") && j < s.length && s[j] != s[i]) {
             val next = stemAt(s, j)
             if (next != null) {
                 val c = next[0]
-                val keepHal = (stem == "m" && (c == 'p' || c == 'P' || c == 'b' || c == 'B')) ||
-                              (stem == "n" && (c == 't' || c == 'T' || c == 'd' || c == 'D'))
+                // n + ANY other consonant -> ං (the typed consonant is NOT consumed here,
+                // it is parsed on its own next): anta -> අංත, sandesaya -> සංදෙසය.
+                // m still keeps hal before p / b.
+                val keepHal = stem == "m" && (c == 'p' || c == 'P' || c == 'b' || c == 'B')
                 if (!keepHal) return Syllable(stem.length, ANUSVARA)
             }
         }
