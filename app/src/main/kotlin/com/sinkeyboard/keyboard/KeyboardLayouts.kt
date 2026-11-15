@@ -367,22 +367,9 @@ object SinhalaTransliterator {
         // no vowel follows:
         //  - m_ / n_ ... force hal kirima (the underscore is consumed): m_pa -> ම්ප
         if (j < s.length && s[j] == '_') return Syllable(stem.length + 1, glyph + HAL)
-        //  - n / m directly before a DIFFERENT consonant: the nasal follows the place of
-        //    the next consonant, as in Sinhala spelling —
-        //      m before p / b family   -> ම් (hal)    sampath -> සම්පත්, sambandha -> සම්බන්ධ
-        //      n before any other consonant -> ං   antha -> අංත, sinhala -> සිංහල, lanka -> ලංක
-        //    (a doubled letter stays hal kirima: amma -> අම්ම)
-        if ((stem == "n" || stem == "m") && j < s.length && s[j] != s[i]) {
-            val next = stemAt(s, j)
-            if (next != null) {
-                val c = next[0]
-                // n + ANY other consonant -> ං (the typed consonant is NOT consumed here,
-                // it is parsed on its own next): anta -> අංත, sandesaya -> සංදෙසය.
-                // m still keeps hal before p / b.
-                val keepHal = stem == "m" && (c == 'p' || c == 'P' || c == 'b' || c == 'B')
-                if (!keepHal) return Syllable(stem.length, ANUSVARA)
-            }
-        }
+        //  - n / m are NEVER turned into ං automatically: n / m + any consonant stays
+        //    න් / ම් and the typed consonant is parsed on its own
+        //    (nm -> න්ම්, mk -> ම්ක්, sampath -> සම්පත්). Use x for ං.
         return Syllable(stem.length, glyph + HAL)        // bare consonant -> hal kirima
     }
 
