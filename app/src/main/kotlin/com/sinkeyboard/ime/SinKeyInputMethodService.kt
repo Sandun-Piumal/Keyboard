@@ -1757,7 +1757,9 @@ class SinKeyInputMethodService : InputMethodService() {
             return
         }
         maybeFeedback()
-        val ic = currentInputConnection ?: return
+        val ic = currentInputConnection
+        if (ic == null) android.util.Log.w("SinKeyDebug", "handleKey($key): currentInputConnection is NULL")
+        if (ic == null) return
         // Any key press other than tapping the undo chip itself (which goes
         // through undoAutocorrect(), not this function) means the user has
         // moved on from the word that was just autocorrected — the chip
