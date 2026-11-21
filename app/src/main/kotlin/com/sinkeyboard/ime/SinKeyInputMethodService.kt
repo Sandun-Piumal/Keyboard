@@ -944,6 +944,25 @@ class SinKeyInputMethodService : InputMethodService() {
     // live copies can never be composited together.
     private var imeComposeView: ImeComposeView? = null
 
+    // The Compose UI itself, kept so the view can be rebuilt (see
+    // ensureComposeViewAttached).
+    private var composeContent: (@androidx.compose.runtime.Composable () -> Unit)? = null
+
+    // True once the compose view has been detached from its window at least
+    // once. Compose cancels the view's Recomposer on detach, so after that
+    // the composition is dead (keyboard still drawn, but taps do nothing and
+    // theme/state changes never apply) until the view is rebuilt.
+    private var composeViewStale = false
+
+    private fun watchComposeView(view: ImeComposeView) {
+        view.addOnAttachStateChangeListener(object : View.OnAttachStateChangeListener {
+            override fun onViewAttachedToWindow(v: View) {}
+            override fun onViewDetachedFromWindow(v: View) {
+                composeViewStale = true
+            }
+        })
+    }
+
     // BUG FIX (WhatsApp-header-tap double/ghost keyboard): confirmed via
     // logcat instrumentation that onCreateInputView never re-fires and the
     // content ViewGroup's childCount stays constant (2) across this
@@ -995,7 +1014,7 @@ class SinKeyInputMethodService : InputMethodService() {
             return null
         }
 
-        val composeView = ImeComposeView(this, lifecycleOwner) {
+        val composeBody: @androidx.compose.runtime.Composable () -> Unit = {
                 val themeMode by prefs.themeMode.collectAsState(initial = com.sinkeyboard.data.ThemeMode.SYSTEM)
                 val isDark = when (themeMode) {
                     com.sinkeyboard.data.ThemeMode.LIGHT  -> false
@@ -1210,6 +1229,9 @@ class SinKeyInputMethodService : InputMethodService() {
                   }
                 }
         }
+        composeContent = composeBody
+        val composeView = ImeComposeView(this, lifecycleOwner, composeBody)
+        watchComposeView(composeView)
 
         // Owners must be installed on the decorView before the compose
         // view is attached, same as before (see onCreate()).
@@ -1288,16 +1310,28 @@ class SinKeyInputMethodService : InputMethodService() {
     private fun ensureComposeViewAttached() {
         val view = imeComposeView ?: return
         val content = window?.window?.findViewById<ViewGroup>(android.R.id.content) ?: return
-        if (view.parent === content) return
-        android.util.Log.w("SinKeyDebug", "compose view was orphaned (window content replaced) - re-attaching")
-        (view.parent as? ViewGroup)?.removeView(view)
-        content.addView(view)
+        if (view.parent === content && !composeViewStale) return
+        val body = composeContent ?: return
+        android.util.Log.w("SinKeyDebug", "compose view orphaned/stale - rebuilding with a fresh composition")
         // Re-assert the ViewTree owners in case the decor was rebuilt.
         window?.window?.decorView?.let { decor ->
             decor.setViewTreeLifecycleOwner(lifecycleOwner)
             decor.setViewTreeSavedStateRegistryOwner(lifecycleOwner)
             decor.setViewTreeViewModelStoreOwner(lifecycleOwner)
         }
+        view.disposeComposition()
+        (view.parent as? ViewGroup)?.removeView(view)
+        // A brand-new view gets a brand-new Recomposer; re-adding the old
+        // one would reuse the cancelled one and stay frozen.
+        val fresh = ImeComposeView(this, lifecycleOwner, body)
+        fresh.layoutParams = android.view.ViewGroup.LayoutParams(
+            android.view.ViewGroup.LayoutParams.MATCH_PARENT,
+            android.view.ViewGroup.LayoutParams.MATCH_PARENT
+        )
+        watchComposeView(fresh)
+        content.addView(fresh)
+        imeComposeView = fresh
+        composeViewStale = false
     }
 
     override fun onWindowShown() {
