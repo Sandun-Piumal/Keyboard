@@ -11,8 +11,6 @@ import android.view.inputmethod.EditorInfo
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.wrapContentHeight
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.layout.onGloballyPositioned
@@ -477,27 +475,30 @@ class SinKeyInputMethodService : InputMethodService() {
     // the API InputMethodService expects apps to use for exactly this:
     // it reports where the actual usable/touchable IME content starts,
     // measured from the top of our window.
-    // Window is WRAP_CONTENT again, so the framework's default insets
-    // (window bounds == keyboard bounds) are correct.
-    // Full-height (MATCH_PARENT) window again: only the keyboard strip at
-    // the bottom is touchable / reported as IME content.
     override fun onComputeInsets(outInsets: Insets) {
         super.onComputeInsets(outInsets)
-        val decor = window?.window?.decorView
-        val windowHeight = decor?.height ?: 0
-        val windowWidth = decor?.width ?: 0
-        val keyboardTop = if (keyboardContentHeightPx > 0 && windowHeight > 0) {
+        val windowHeight = window?.window?.decorView?.height ?: 0
+        // contentTopInsets / visibleTopInsets are both measured as an
+        // absolute Y coordinate within our window, not a height — so we
+        // need "window height minus the keyboard's own measured height",
+        // not the keyboard's height by itself. If the compose content
+        // hasn't been measured yet (e.g. very first frame, or hidden via
+        // hostWindowFocused), fall back to reporting the full window as
+        // content, matching the platform default so nothing regresses
+        // before our first layout pass / while content is intentionally
+        // blank.
+        val keyboardTop = if (keyboardContentHeightPx > 0) {
             (windowHeight - keyboardContentHeightPx).coerceAtLeast(0)
-        } else 0
+        } else {
+            0
+        }
         outInsets.contentTopInsets = keyboardTop
         outInsets.visibleTopInsets = keyboardTop
-        outInsets.touchableInsets = Insets.TOUCHABLE_INSETS_REGION
-        outInsets.touchableRegion.set(0, keyboardTop, windowWidth, windowHeight)
+        outInsets.touchableInsets = Insets.TOUCHABLE_INSETS_CONTENT
     }
 
     override fun onCreate() {
         super.onCreate()
-        makeImeWindowTransparent()
         lifecycleOwner = ImeLifecycleOwner()
         lifecycleOwner.performRestore()
         lifecycleOwner.handleLifecycleEvent(Lifecycle.Event.ON_CREATE)
@@ -1084,10 +1085,8 @@ class SinKeyInputMethodService : InputMethodService() {
                             val h = coords.size.height
                             if (h != keyboardContentHeightPx) {
                                 keyboardContentHeightPx = h
-                                // Force the window to recompute its insets
-                                // with the NEW height; otherwise the old
-                                // touchable region stays in effect and part
-                                // of the keyboard stops receiving touches.
+                                // Re-run onComputeInsets with the new height so
+                                // the touchable area never stays stale.
                                 imeComposeView?.requestLayout()
                             }
                         }
@@ -1261,20 +1260,10 @@ class SinKeyInputMethodService : InputMethodService() {
         // size are unchanged for the user — KeyboardView is now wrapped
         // in a full-bounds Box that bottom-aligns it (see below) — only
         // the *window's own* layout params changed.
-        // REVERTED to WRAP_CONTENT height: a MATCH_PARENT (full-screen) IME
-        // window showed as a black slab above the keyboard on re-open until
-        // the first redraw. The window is now only as tall as the keyboard.
         composeView.layoutParams = android.view.ViewGroup.LayoutParams(
             android.view.ViewGroup.LayoutParams.MATCH_PARENT,
             android.view.ViewGroup.LayoutParams.MATCH_PARENT
         )
-        // FIX (black screen over the host app): the window is now
-        // full-height, so any opaque window/decor background shows as a
-        // black slab above the keyboard. Make everything transparent.
-        window?.window?.setBackgroundDrawable(android.graphics.drawable.ColorDrawable(android.graphics.Color.TRANSPARENT))
-        window?.window?.decorView?.setBackgroundColor(android.graphics.Color.TRANSPARENT)
-        window?.window?.findViewById<ViewGroup>(android.R.id.content)?.setBackgroundColor(android.graphics.Color.TRANSPARENT)
-        composeView.setBackgroundColor(android.graphics.Color.TRANSPARENT)
         val content = window?.window?.findViewById<ViewGroup>(android.R.id.content)
         android.util.Log.d("SinKeyDebug", "onCreateInputView: content childCount BEFORE addView = ${content?.childCount}")
         content?.addView(composeView)
@@ -1311,21 +1300,8 @@ class SinKeyInputMethodService : InputMethodService() {
         }
     }
 
-    // FIX (black screen above the keyboard with a full-height window): the
-    // IME window's surface was OPAQUE, so the area outside the keyboard
-    // showed black until the first redraw. A TRANSLUCENT pixel format is
-    // what lets the host app show through.
-    private fun makeImeWindowTransparent() {
-        window?.window?.let { w ->
-            w.setFormat(android.graphics.PixelFormat.TRANSLUCENT)
-            w.setBackgroundDrawable(android.graphics.drawable.ColorDrawable(android.graphics.Color.TRANSPARENT))
-            w.decorView.setBackgroundColor(android.graphics.Color.TRANSPARENT)
-        }
-    }
-
     override fun onWindowShown() {
         super.onWindowShown()
-        makeImeWindowTransparent()
         ensureComposeViewAttached()
         android.util.Log.d("SinKeyDebug", "onWindowShown called, lifecycle state before = ${lifecycleOwner.lifecycle.currentState}, content childCount = ${window?.window?.findViewById<ViewGroup>(android.R.id.content)?.childCount}")
         // Unconditional, matching FlorisBoard's LifecycleInputMethodService
@@ -1376,15 +1352,9 @@ class SinKeyInputMethodService : InputMethodService() {
     override fun onStartInputView(info: EditorInfo?, restarting: Boolean) {
         super.onStartInputView(info, restarting)
         ensureComposeViewAttached()
-        // FIX (keyboard visible but keys don't respond until you switch
-        // keyboards and back): re-assert RESUMED and force the window to
-        // recompute its touchable region on every show, so a stale
-        // lifecycle/insets state from the previous session can't survive.
         if (lifecycleOwner.lifecycle.currentState != Lifecycle.State.RESUMED) {
             lifecycleOwner.handleLifecycleEvent(Lifecycle.Event.ON_RESUME)
         }
-        keyboardContentHeightPx = 0
-        imeComposeView?.requestLayout()
         android.util.Log.d("SinKeyDebug", "onStartInputView called, restarting=$restarting, packageName=${info?.packageName}")
         // lifecycle ON_RESUME is driven by onWindowShown()
 
