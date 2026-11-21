@@ -494,7 +494,14 @@ class SinKeyInputMethodService : InputMethodService() {
         }
         outInsets.contentTopInsets = keyboardTop
         outInsets.visibleTopInsets = keyboardTop
-        outInsets.touchableInsets = Insets.TOUCHABLE_INSETS_CONTENT
+        // FIX (taps on the keyboard fall through to the host app / keys
+        // "don't click"): TOUCHABLE_INSETS_CONTENT derived the touchable
+        // area from a height that could be stale (Compose measures after
+        // this callback runs). Use an explicit touchable REGION instead,
+        // covering exactly the keyboard's current bounds.
+        val windowWidth = window?.window?.decorView?.width ?: 0
+        outInsets.touchableInsets = Insets.TOUCHABLE_INSETS_REGION
+        outInsets.touchableRegion.set(0, keyboardTop, windowWidth, windowHeight)
     }
 
     override fun onCreate() {
@@ -1082,7 +1089,15 @@ class SinKeyInputMethodService : InputMethodService() {
                     ) {
                     Box(
                         modifier = Modifier.onGloballyPositioned { coords ->
-                            keyboardContentHeightPx = coords.size.height
+                            val h = coords.size.height
+                            if (h != keyboardContentHeightPx) {
+                                keyboardContentHeightPx = h
+                                // Force the window to recompute its insets
+                                // with the NEW height; otherwise the old
+                                // touchable region stays in effect and part
+                                // of the keyboard stops receiving touches.
+                                imeComposeView?.requestLayout()
+                            }
                         }
                     ) {
                     KeyboardView(
@@ -1346,6 +1361,15 @@ class SinKeyInputMethodService : InputMethodService() {
     override fun onStartInputView(info: EditorInfo?, restarting: Boolean) {
         super.onStartInputView(info, restarting)
         ensureComposeViewAttached()
+        // FIX (keyboard visible but keys don't respond until you switch
+        // keyboards and back): re-assert RESUMED and force the window to
+        // recompute its touchable region on every show, so a stale
+        // lifecycle/insets state from the previous session can't survive.
+        if (lifecycleOwner.lifecycle.currentState != Lifecycle.State.RESUMED) {
+            lifecycleOwner.handleLifecycleEvent(Lifecycle.Event.ON_RESUME)
+        }
+        keyboardContentHeightPx = 0
+        imeComposeView?.requestLayout()
         android.util.Log.d("SinKeyDebug", "onStartInputView called, restarting=$restarting, packageName=${info?.packageName}")
         // lifecycle ON_RESUME is driven by onWindowShown()
 
