@@ -11,6 +11,8 @@ import android.view.inputmethod.EditorInfo
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.wrapContentHeight
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.layout.onGloballyPositioned
@@ -475,33 +477,10 @@ class SinKeyInputMethodService : InputMethodService() {
     // the API InputMethodService expects apps to use for exactly this:
     // it reports where the actual usable/touchable IME content starts,
     // measured from the top of our window.
+    // Window is WRAP_CONTENT again, so the framework's default insets
+    // (window bounds == keyboard bounds) are correct.
     override fun onComputeInsets(outInsets: Insets) {
         super.onComputeInsets(outInsets)
-        val windowHeight = window?.window?.decorView?.height ?: 0
-        // contentTopInsets / visibleTopInsets are both measured as an
-        // absolute Y coordinate within our window, not a height — so we
-        // need "window height minus the keyboard's own measured height",
-        // not the keyboard's height by itself. If the compose content
-        // hasn't been measured yet (e.g. very first frame, or hidden via
-        // hostWindowFocused), fall back to reporting the full window as
-        // content, matching the platform default so nothing regresses
-        // before our first layout pass / while content is intentionally
-        // blank.
-        val keyboardTop = if (keyboardContentHeightPx > 0) {
-            (windowHeight - keyboardContentHeightPx).coerceAtLeast(0)
-        } else {
-            0
-        }
-        outInsets.contentTopInsets = keyboardTop
-        outInsets.visibleTopInsets = keyboardTop
-        // FIX (taps on the keyboard fall through to the host app / keys
-        // "don't click"): TOUCHABLE_INSETS_CONTENT derived the touchable
-        // area from a height that could be stale (Compose measures after
-        // this callback runs). Use an explicit touchable REGION instead,
-        // covering exactly the keyboard's current bounds.
-        val windowWidth = window?.window?.decorView?.width ?: 0
-        outInsets.touchableInsets = Insets.TOUCHABLE_INSETS_REGION
-        outInsets.touchableRegion.set(0, keyboardTop, windowWidth, windowHeight)
     }
 
     override fun onCreate() {
@@ -1084,7 +1063,7 @@ class SinKeyInputMethodService : InputMethodService() {
                     // reads as an ordinary keyboard show, not a flicker.
                     if (focused) {
                     Box(
-                        modifier = Modifier.fillMaxSize(),
+                        modifier = Modifier.fillMaxWidth().wrapContentHeight(),
                         contentAlignment = Alignment.BottomCenter
                     ) {
                     Box(
@@ -1269,10 +1248,20 @@ class SinKeyInputMethodService : InputMethodService() {
         // size are unchanged for the user — KeyboardView is now wrapped
         // in a full-bounds Box that bottom-aligns it (see below) — only
         // the *window's own* layout params changed.
+        // REVERTED to WRAP_CONTENT height: a MATCH_PARENT (full-screen) IME
+        // window showed as a black slab above the keyboard on re-open until
+        // the first redraw. The window is now only as tall as the keyboard.
         composeView.layoutParams = android.view.ViewGroup.LayoutParams(
             android.view.ViewGroup.LayoutParams.MATCH_PARENT,
-            android.view.ViewGroup.LayoutParams.MATCH_PARENT
+            android.view.ViewGroup.LayoutParams.WRAP_CONTENT
         )
+        // FIX (black screen over the host app): the window is now
+        // full-height, so any opaque window/decor background shows as a
+        // black slab above the keyboard. Make everything transparent.
+        window?.window?.setBackgroundDrawable(android.graphics.drawable.ColorDrawable(android.graphics.Color.TRANSPARENT))
+        window?.window?.decorView?.setBackgroundColor(android.graphics.Color.TRANSPARENT)
+        window?.window?.findViewById<ViewGroup>(android.R.id.content)?.setBackgroundColor(android.graphics.Color.TRANSPARENT)
+        composeView.setBackgroundColor(android.graphics.Color.TRANSPARENT)
         val content = window?.window?.findViewById<ViewGroup>(android.R.id.content)
         android.util.Log.d("SinKeyDebug", "onCreateInputView: content childCount BEFORE addView = ${content?.childCount}")
         content?.addView(composeView)
