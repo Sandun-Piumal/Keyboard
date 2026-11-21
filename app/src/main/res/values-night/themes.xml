@@ -5,6 +5,8 @@
     <style name="Theme.SinKey.IME" parent="android:Theme.Material.InputMethod">
         <item name="android:forceDarkAllowed" tools:targetApi="q">false</item>
         <item name="android:navigationBarColor">@android:color/transparent</item>
+        <item name="android:windowBackground">@android:color/transparent</item>
+        <item name="android:windowIsTranslucent">true</item>
     </style>
 
     <style name="Theme.SinKey.Splash" parent="Theme.SplashScreen">
