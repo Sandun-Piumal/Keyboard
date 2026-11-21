@@ -479,12 +479,25 @@ class SinKeyInputMethodService : InputMethodService() {
     // measured from the top of our window.
     // Window is WRAP_CONTENT again, so the framework's default insets
     // (window bounds == keyboard bounds) are correct.
+    // Full-height (MATCH_PARENT) window again: only the keyboard strip at
+    // the bottom is touchable / reported as IME content.
     override fun onComputeInsets(outInsets: Insets) {
         super.onComputeInsets(outInsets)
+        val decor = window?.window?.decorView
+        val windowHeight = decor?.height ?: 0
+        val windowWidth = decor?.width ?: 0
+        val keyboardTop = if (keyboardContentHeightPx > 0 && windowHeight > 0) {
+            (windowHeight - keyboardContentHeightPx).coerceAtLeast(0)
+        } else 0
+        outInsets.contentTopInsets = keyboardTop
+        outInsets.visibleTopInsets = keyboardTop
+        outInsets.touchableInsets = Insets.TOUCHABLE_INSETS_REGION
+        outInsets.touchableRegion.set(0, keyboardTop, windowWidth, windowHeight)
     }
 
     override fun onCreate() {
         super.onCreate()
+        makeImeWindowTransparent()
         lifecycleOwner = ImeLifecycleOwner()
         lifecycleOwner.performRestore()
         lifecycleOwner.handleLifecycleEvent(Lifecycle.Event.ON_CREATE)
@@ -1063,7 +1076,7 @@ class SinKeyInputMethodService : InputMethodService() {
                     // reads as an ordinary keyboard show, not a flicker.
                     if (focused) {
                     Box(
-                        modifier = Modifier.fillMaxWidth().wrapContentHeight(),
+                        modifier = Modifier.fillMaxSize(),
                         contentAlignment = Alignment.BottomCenter
                     ) {
                     Box(
@@ -1253,7 +1266,7 @@ class SinKeyInputMethodService : InputMethodService() {
         // the first redraw. The window is now only as tall as the keyboard.
         composeView.layoutParams = android.view.ViewGroup.LayoutParams(
             android.view.ViewGroup.LayoutParams.MATCH_PARENT,
-            android.view.ViewGroup.LayoutParams.WRAP_CONTENT
+            android.view.ViewGroup.LayoutParams.MATCH_PARENT
         )
         // FIX (black screen over the host app): the window is now
         // full-height, so any opaque window/decor background shows as a
@@ -1298,8 +1311,21 @@ class SinKeyInputMethodService : InputMethodService() {
         }
     }
 
+    // FIX (black screen above the keyboard with a full-height window): the
+    // IME window's surface was OPAQUE, so the area outside the keyboard
+    // showed black until the first redraw. A TRANSLUCENT pixel format is
+    // what lets the host app show through.
+    private fun makeImeWindowTransparent() {
+        window?.window?.let { w ->
+            w.setFormat(android.graphics.PixelFormat.TRANSLUCENT)
+            w.setBackgroundDrawable(android.graphics.drawable.ColorDrawable(android.graphics.Color.TRANSPARENT))
+            w.decorView.setBackgroundColor(android.graphics.Color.TRANSPARENT)
+        }
+    }
+
     override fun onWindowShown() {
         super.onWindowShown()
+        makeImeWindowTransparent()
         ensureComposeViewAttached()
         android.util.Log.d("SinKeyDebug", "onWindowShown called, lifecycle state before = ${lifecycleOwner.lifecycle.currentState}, content childCount = ${window?.window?.findViewById<ViewGroup>(android.R.id.content)?.childCount}")
         // Unconditional, matching FlorisBoard's LifecycleInputMethodService
